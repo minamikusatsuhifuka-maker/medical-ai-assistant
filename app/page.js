@@ -344,11 +344,11 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:"2
 <input value={newSnTitle} onChange={e=>setNewSnTitle(e.target.value)} placeholder="タイトル（ボタン表示名）" style={{...ib,width:140}}/>
 <input value={newSnText} onChange={e=>setNewSnText(e.target.value)} placeholder="追記テキスト内容" style={{...ib,flex:1}}/>
 <button onClick={()=>{if(newSnTitle.trim()&&newSnText.trim()){setSnippets([...snippets,{title:newSnTitle.trim(),text:newSnText.trim()}]);setNewSnTitle("");setNewSnText("")}}} style={btn(C.p,"#fff",{padding:"6px 14px",fontSize:13})}>追加</button></div>
-<div style={{maxHeight:300,overflow:"auto"}}>
-{snippets.map((sn,i)=>(<div key={i} style={{display:"flex",gap:6,alignItems:"center",padding:"6px 0",borderBottom:"1px solid "+C.g100}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pD,minWidth:80}}>{sn.title}</span>
-<span style={{flex:1,fontSize:12,color:C.g500}}>{sn.text}</span>
-<button onClick={()=>setSnippets(snippets.filter((_,j)=>j!==i))} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>✕</button></div>))}</div></div>
+<div style={{maxHeight:400,overflow:"auto"}}>
+{snippets.map((sn,i)=>(<div key={i} style={{display:"flex",gap:4,alignItems:"flex-start",padding:"5px 0",borderBottom:"1px solid "+C.g100}}>
+<input value={sn.title} onChange={e=>{const u=[...snippets];u[i]={...u[i],title:e.target.value};setSnippets(u)}} style={{...ib,width:100,padding:"4px 8px",fontSize:12,fontWeight:700,color:C.pD}}/>
+<textarea value={sn.text} onChange={e=>{const u=[...snippets];u[i]={...u[i],text:e.target.value};setSnippets(u)}} rows={1} onFocus={e=>{e.target.rows=Math.max(2,e.target.value.split("\n").length)}} onBlur={e=>{e.target.rows=1}} style={{...ib,flex:1,padding:"4px 8px",fontSize:11,color:C.g700,resize:"vertical",lineHeight:1.5}}/>
+<button onClick={()=>setSnippets(snippets.filter((_,j)=>j!==i))} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>✕</button></div>))}</div></div>
 {/* Dict */}
 <div style={{...card,marginBottom:16}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
