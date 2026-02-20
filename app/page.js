@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 
 // === COLOR THEME (Mint) ===
-const C={p:"#4a9e5c",pD:"#2b6e36",pDD:"#1a4d24",pL:"#d4edda",pLL:"#f0f8f2",acc:"#8cc63f",w:"#fff",g50:"#f9fafb",g100:"#f1f5f2",g200:"#dfe8e0",g300:"#c5d1c7",g400:"#8a9e8d",g500:"#5f7562",g700:"#344136",g900:"#1a2b1d",rG:"#22c55e",warn:"#f59e0b",err:"#ef4444"};
+const C={p:"#7dc89b",pD:"#5ba97a",pDD:"#3d7d56",pL:"#d4edda",pLL:"#f4faf6",acc:"#a8d8b9",w:"#fff",g50:"#f9fbfa",g100:"#f0f5f1",g200:"#dce6de",g300:"#c0d1c5",g400:"#8ea898",g500:"#647a6b",g700:"#3a4d3f",g900:"#1e2e22",rG:"#5ba97a",warn:"#f5a623",err:"#e85d5d"};
 
 // === TEMPLATES ===
 const T=[
@@ -165,7 +165,7 @@ const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in windo
 const pw=await window.documentPictureInPicture.requestWindow({width:200,height:90});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
-pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#1a4d24,#2b6e36);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
+pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#3d7d56,#5ba97a);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
 <div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;opacity:.5">${rmName}</span>
 <input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:1px 5px;border-radius:4px;border:none;font-size:9px;background:rgba(255,255,255,.15);color:#fff;outline:none"/>
 <span id="pip-status" style="font-size:9px;font-weight:600;color:#94a3b8">停止</span></div>
@@ -174,7 +174,7 @@ pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear
 <div style="display:flex;gap:4px;justify-content:center">
 <button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:none;background:#4a9e5c;color:#1a4d24;font-size:13px;font-weight:700;cursor:pointer">開始</button>
 <button id="pip-pause" style="padding:2px 10px;border-radius:8px;border:none;background:#fbbf24;color:#78350f;font-size:13px;font-weight:700;cursor:pointer;display:none">一時停止</button>
-<button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:#2b6e36;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
+<button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:#5ba97a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
 <button id="pip-stop" style="padding:2px 10px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">停止</button></div></div>`;
 pw.document.head.innerHTML=`<style>::placeholder{color:rgba(255,255,255,.35)}</style>`;
 const pipPiEl=pw.document.getElementById("pip-pid");if(pipPiEl){pipPiEl.value=pId;pipPiEl.addEventListener("input",e=>{sPId(e.target.value)})}
