@@ -1,18 +1,23 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
-const T=[{id:"soap",name:"📋 ASOP",prompt:"あなたは皮膚科専門の医療秘書です。以下の書き起こしテキストをカルテ形式で要約。\n\n【出力フォーマット】\n■ 診断名（疾患名のみ簡潔に）\n■ S：（主訴の内容のみ。「患者の主訴」等の説明不要）\n■ O：（所見の内容のみ。「医師の所見」等の説明不要）\n■ P：（計画の内容のみ。「治療計画」等の説明不要）\n■ 患者情報（言及あれば）\n\n【ルール】\n- 各項目は内容のみ記載し、項目の説明文は付けない\n- 会話の情報のみ記載。推測しない\n- 言及なしの項目は「言及なし」\n- コンパクトに"},{id:"disease",name:"🏥 疾患名",prompt:"皮膚科医療秘書として疾患情報を抽出。\n■ 疾患名（正式名称）\n■ 部位\n■ 重症度\n■ 既往歴\n■ 鑑別診断（言及時のみ）\n推測しない。医学用語使用。コンパクトに。"},{id:"cosmetic",name:"✨ 美容",prompt:"美容皮膚科の医療秘書として施術記録を要約。\n■ 施術名\n■ 施術部位\n■ 患者の希望\n■ 施術内容・パラメータ\n■ 使用薬剤・機器\n■ 術後注意事項\n■ 次回予定\n会話の情報のみ。コンパクトに。"},{id:"procedure",name:"🔧 処置",prompt:"皮膚科医療秘書として処置記録を要約。\n■ 処置名\n■ 部位・範囲\n■ 麻酔\n■ 処置内容\n■ 使用器具\n■ 検体提出\n■ 術後指示・処方\n■ 次回予定\n手順は時系列。数値は正確に。"},{id:"followup",name:"🔄 経過",prompt:"皮膚科医療秘書として経過記録を要約。\n■ 疾患名\n■ 前回からの経過\n■ 現在の症状\n■ 現在の所見\n■ 治療効果判定\n■ 今後の方針\n■ 次回予定\n前回比較を明記。"},{id:"free",name:"📝 フリー",prompt:"皮膚科医療秘書として簡潔に要約。医学用語は正式名称。時系列で整理。推測しない。"}];
+const T=[{id:"soap",name:"📋 ASOP",prompt:"あなたは皮膚科専門の医療秘書です。以下の書き起こしテキストをカルテ形式で要約してください。\n\n【出力フォーマット - 必ずこの形式を厳守】\n■ 診断名\n（疾患名のみ1行で簡潔に）\n\n■ S\n（症状・身体の訴えのみ記載。結婚式・旅行・仕事等のイベントや生活情報はここに書かない）\n\n■ O\n（医師の客観的所見のみ）\n\n■ P\n（治療計画・処方内容のみ）\n\n■ 患者情報\n（年齢・性別・結婚式・旅行・仕事・学校行事等のイベントや生活背景はすべてここに記載）\n\n【厳守ルール】\n- 各セクションは必ず「■ 」で始める\n- 項目名の後に説明（「患者の主訴」等）を絶対に付けない\n- S欄には身体症状のみ。イベント・予定・生活情報は必ず患者情報欄へ\n- 会話の情報のみ記載。推測しない\n- 言及なしの項目は「言及なし」\n- 余計な空行や装飾を入れない"},{id:"disease",name:"🏥 疾患名",prompt:"皮膚科医療秘書として疾患情報を抽出。\n■ 疾患名（正式名称）\n■ 部位\n■ 重症度\n■ 既往歴\n■ 鑑別診断（言及時のみ）\n推測しない。医学用語使用。コンパクトに。"},{id:"cosmetic",name:"✨ 美容",prompt:"美容皮膚科の医療秘書として施術記録を要約。\n■ 施術名\n■ 施術部位\n■ 患者の希望\n■ 施術内容・パラメータ\n■ 使用薬剤・機器\n■ 術後注意事項\n■ 次回予定\n会話の情報のみ。コンパクトに。"},{id:"procedure",name:"🔧 処置",prompt:"皮膚科医療秘書として処置記録を要約。\n■ 処置名\n■ 部位・範囲\n■ 麻酔\n■ 処置内容\n■ 使用器具\n■ 検体提出\n■ 術後指示・処方\n■ 次回予定\n手順は時系列。数値は正確に。"},{id:"followup",name:"🔄 経過",prompt:"皮膚科医療秘書として経過記録を要約。\n■ 疾患名\n■ 前回からの経過\n■ 現在の症状\n■ 現在の所見\n■ 治療効果判定\n■ 今後の方針\n■ 次回予定\n前回比較を明記。"},{id:"free",name:"📝 フリー",prompt:"皮膚科医療秘書として簡潔に要約。医学用語は正式名称。時系列で整理。推測しない。"}];
 const R=[{id:"r1",l:"診察室1",i:"1️⃣"},{id:"r2",l:"診察室2",i:"2️⃣"},{id:"r3",l:"診察室3",i:"3️⃣"},{id:"r4",l:"処置室",i:"🔧"},{id:"r5",l:"美容室",i:"✨"},{id:"r6",l:"カウンセリング",i:"💬"},{id:"r7",l:"その他",i:"📋"}];
 export default function Home(){
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("");
 const[hist,sHist]=useState([]),[showHist,setShowHist]=useState(false),[search,setSearch]=useState("");
 const[pName,sPName]=useState(""),[pId,sPId]=useState("");
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
+const[showSettings,setShowSettings]=useState(false);
+const[dict,setDict]=useState([]);
+const[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState("");
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef("");
 const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive");
+const pIdRef=useRef("");
 useEffect(()=>{iR.current=inp},[inp]);
 useEffect(()=>{elRef.current=el},[el]);
 useEffect(()=>{lvRef.current=lv},[lv]);
+useEffect(()=>{pIdRef.current=pId},[pId]);
 useEffect(()=>{rsRef.current=rs},[rs]);
 useEffect(()=>{if(rs==="recording"){tR.current=setInterval(()=>sEl(t=>t+1),1000)}else{clearInterval(tR.current);if(rs==="inactive")sEl(0)}return()=>clearInterval(tR.current)},[rs]);
 // PiP update loop
@@ -24,13 +29,19 @@ if(s){const r=rsRef.current;s.textContent=r==="recording"?"🔴 録音中":r==="
 return()=>clearInterval(id)},[]);
 const fm=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const ct=T.find(t=>t.id===tid)||T[0],cr=R.find(r=>r.id===rid);
-const saveRecord=async(input,output)=>{if(!supabase)return;try{await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:input,output_text:output,patient_name:pName,patient_id:pId})}catch(e){console.error("Save error:",e)}};
+const saveRecord=async(input,output)=>{if(!supabase)return;try{await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:input,output_text:output,patient_name:pName,patient_id:pIdRef.current})}catch(e){console.error("Save error:",e)}};
 const loadHist=async()=>{if(!supabase)return;try{let q=supabase.from("records").select("*").order("created_at",{ascending:false}).limit(50);const{data}=await q;if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
 const delRecord=async(id)=>{if(!supabase)return;try{await supabase.from("records").delete().eq("id",id);sHist(h=>h.filter(r=>r.id!==id))}catch(e){console.error("Delete error:",e)}};
+// Dictionary functions
+const loadDict=async()=>{if(!supabase)return;try{const{data}=await supabase.from("dictionary").select("*").order("created_at",{ascending:true});if(data)setDict(data)}catch(e){console.error("Dict load error:",e)}};
+const addDict=async()=>{if(!newFrom.trim()||!newTo.trim())return;if(!supabase)return;try{const{data}=await supabase.from("dictionary").insert({from_word:newFrom.trim(),to_word:newTo.trim()}).select();if(data){setDict(d=>[...d,...data]);setNewFrom("");setNewTo("")}}catch(e){console.error("Dict add error:",e)}};
+const delDict=async(id)=>{if(!supabase)return;try{await supabase.from("dictionary").delete().eq("id",id);setDict(d=>d.filter(r=>r.id!==id))}catch(e){console.error("Dict del error:",e)}};
+const applyDict=(text)=>{let t=text;dict.forEach(d=>{if(d.from_word&&d.to_word){t=t.replaceAll(d.from_word,d.to_word)}});return t};
+useEffect(()=>{loadDict()},[]);
 const filteredHist=hist.filter(h=>{if(!search.trim())return true;const s=search.toLowerCase();return(h.patient_name||"").toLowerCase().includes(s)||(h.patient_id||"").toLowerCase().includes(s)||(h.output_text||"").toLowerCase().includes(s)});
 const sAM=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({audio:true});msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch{sSt("マイク取得失敗");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
-const tc=async(b)=>{if(b.size<500)return;sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){sInp(p=>p+(p?"\n":"")+d.text.trim());sSt("録音中 ✓")}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
+const tc=async(b)=>{if(b.size<500)return;sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const corrected=applyDict(d.text.trim());sInp(p=>p+(p?"\n":"")+corrected);sSt("録音中 ✓")}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
 const go=async()=>{const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},5000)};
 const stop=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;xAM();sRS("inactive");sSt("待機中")};
@@ -106,11 +117,31 @@ filteredHist.map(h=>(<div key={h.id} style={{background:"#fff",borderRadius:14,p
 <button onClick={()=>delRecord(h.id)} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:"#fff",fontSize:11,fontFamily:"inherit",cursor:"pointer",color:"#ef4444"}}>🗑</button></div></div>
 <div style={{fontSize:13,color:"#374151",lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:80,overflow:"hidden"}}>{h.output_text}</div></div>))}
 </div>);
+if(showSettings)return(<div style={{maxWidth:600,margin:"0 auto",padding:"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+<h2 style={{fontSize:18,fontWeight:700,margin:0}}>⚙️ 設定</h2>
+<button onClick={()=>setShowSettings(false)} style={{padding:"8px 20px",borderRadius:12,border:"none",background:ac,color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button></div>
+<div style={{background:"#fff",borderRadius:16,padding:20,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+<h3 style={{fontSize:15,fontWeight:700,marginBottom:12,color:aD}}>📖 辞書登録（文字起こし自動修正）</h3>
+<p style={{fontSize:12,color:"#64748b",marginBottom:12}}>音声認識の誤変換を自動修正します。</p>
+<div style={{display:"flex",gap:8,marginBottom:16}}>
+<input value={newFrom} onChange={e=>setNewFrom(e.target.value)} placeholder="変換前" style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid #e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+<span style={{display:"flex",alignItems:"center",color:"#94a3b8",fontSize:16}}>→</span>
+<input value={newTo} onChange={e=>setNewTo(e.target.value)} placeholder="変換後" style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid #e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+<button onClick={addDict} disabled={!newFrom.trim()||!newTo.trim()} style={{padding:"8px 16px",borderRadius:10,border:"none",background:ac,color:"#fff",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:(!newFrom.trim()||!newTo.trim())?.4:1,whiteSpace:"nowrap"}}>追加</button></div>
+{dict.length===0?<p style={{color:"#94a3b8",textAlign:"center",padding:20,fontSize:13}}>辞書が空です</p>:
+<div style={{maxHeight:300,overflowY:"auto"}}>{dict.map(d=>(<div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:"#f8fafc",marginBottom:6}}>
+<span style={{flex:1,fontSize:13,color:"#ef4444",fontWeight:600}}>{d.from_word}</span>
+<span style={{color:"#94a3b8",fontSize:14}}>→</span>
+<span style={{flex:1,fontSize:13,color:"#16a34a",fontWeight:600}}>{d.to_word}</span>
+<button onClick={()=>delDict(d.id)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:"#fff",fontSize:11,fontFamily:"inherit",cursor:"pointer",color:"#ef4444"}}>削除</button></div>))}</div>}
+</div></div>);
 return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"10px 16px",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:16,boxShadow:"0 4px 16px rgba(99,102,241,.2)"}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>🩺</span><span style={{fontWeight:700,fontSize:15,color:"#fff"}}>AI診療アシスタント</span><span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(255,255,255,.2)",color:"#fff",fontWeight:600}}>{cr?.i} {cr?.l}</span><button onClick={()=>{stop();sRid("")}} style={{fontSize:11,padding:"2px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"transparent",color:"rgba(255,255,255,.9)",fontFamily:"inherit",cursor:"pointer"}}>変更</button></div>
 <div style={{display:"flex",alignItems:"center",gap:6}}>{pc>0&&<span style={{fontSize:12,color:"#fbbf24",fontWeight:600}}>⏳</span>}<span style={{fontSize:12,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.8)",fontWeight:st.includes("✓")?600:400}}>{st}</span>
-<button onClick={()=>{loadHist();setShowHist(true)}} style={{fontSize:11,padding:"4px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",color:"#fff",fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📂 履歴</button></div></header>
+<button onClick={()=>{loadHist();setShowHist(true)}} style={{fontSize:11,padding:"4px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",color:"#fff",fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📂 履歴</button>
+<button onClick={()=>{loadDict();setShowSettings(true)}} style={{fontSize:11,padding:"4px 10px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",color:"#fff",fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>⚙️</button></div></header>
 <div style={{display:"flex",gap:8,marginBottom:10}}>
 <input value={pName} onChange={e=>sPName(e.target.value)} placeholder="👤 患者名" style={{...ib,flex:1}}/>
 <input value={pId} onChange={e=>sPId(e.target.value)} placeholder="🔢 患者ID" style={{...ib,width:120}}/>
