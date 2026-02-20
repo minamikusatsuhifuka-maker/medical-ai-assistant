@@ -42,21 +42,35 @@ const clr=()=>{sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("")};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === PiP Functions ===
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("この機能はChrome 116以降で利用可能です");return}
-const pw=await window.documentPictureInPicture.requestWindow({width:320,height:160});
-const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i} ${rm.l}`:"";
-pw.document.body.innerHTML=`<div style="font-family:'Zen Maru Gothic',sans-serif;background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:12px 16px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+const pw=await window.documentPictureInPicture.requestWindow({width:260,height:110});
+const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
+pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
+pw.document.body.innerHTML=`<div id="pip-root" style="font-family:'Zen Maru Gothic',sans-serif;background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:8px 12px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:4px">
 <div style="display:flex;justify-content:space-between;align-items:center">
-<span style="font-size:13px;font-weight:600">${rmName}</span>
-<span id="pip-status" style="font-size:13px;font-weight:600;color:#22c55e">🔴 録音中</span></div>
-<div style="text-align:center">
-<div id="pip-timer" style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:2px">00:00</div></div>
-<div style="display:flex;gap:8px;align-items:center">
-<span style="font-size:11px;color:rgba(255,255,255,.6)">🎙</span>
-<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden">
-<div id="pip-level" style="width:0%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:3px;transition:width 0.15s"></div></div></div></div>`;
+<span style="font-size:11px;opacity:.7">${rmName}</span>
+<span id="pip-status" style="font-size:11px;font-weight:600;color:#22c55e">⏹ 停止</span></div>
+<div style="display:flex;align-items:center;justify-content:center;gap:10px">
+<div id="pip-timer" style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px">00:00</div></div>
+<div style="display:flex;align-items:center;gap:6px">
+<div style="flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden">
+<div id="pip-level" style="width:0%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:2px;transition:width 0.15s"></div></div></div>
+<div style="display:flex;gap:6px;justify-content:center">
+<button id="pip-rec" style="padding:3px 12px;border-radius:12px;border:none;background:#6366f1;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🎙 開始</button>
+<button id="pip-pause" style="padding:3px 10px;border-radius:12px;border:none;background:#fbbf24;color:#78350f;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:none">⏸</button>
+<button id="pip-stop" style="padding:3px 10px;border-radius:12px;border:none;background:#ef4444;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:none">⏹</button>
+<button id="pip-sum" style="padding:3px 10px;border-radius:12px;border:none;background:#4338ca;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:none">✓要約</button></div></div>`;
 pw.document.head.innerHTML=`<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">`;
+const pipBtnUpdate=()=>{const d=pipRef.current;if(!d)return;const r=rsRef.current;const rb=d.getElementById("pip-rec"),pb=d.getElementById("pip-pause"),sb=d.getElementById("pip-stop"),smb=d.getElementById("pip-sum");if(!rb)return;
+rb.style.display=r==="inactive"?"inline-block":"none";pb.style.display=r==="recording"?"inline-block":r==="paused"?(pb.textContent="▶ 再開",pb.style.background="#22c55e",pb.style.color="#fff","inline-block"):"none";
+if(r==="recording"){pb.textContent="⏸";pb.style.background="#fbbf24";pb.style.color="#78350f"}
+sb.style.display=r!=="inactive"?"inline-block":"none";smb.style.display=r!=="inactive"?"inline-block":"none"};
+pw.document.getElementById("pip-rec").onclick=()=>{go();setTimeout(pipBtnUpdate,500)};
+pw.document.getElementById("pip-pause").onclick=()=>{if(rsRef.current==="recording"){pause()}else{resume()}setTimeout(pipBtnUpdate,300)};
+pw.document.getElementById("pip-stop").onclick=()=>{stop();setTimeout(pipBtnUpdate,300)};
+pw.document.getElementById("pip-sum").onclick=()=>{stopSum();setTimeout(pipBtnUpdate,500)};
 pipRef.current=pw.document;setPipWin(pw);setPipActive(true);
-pw.addEventListener("pagehide",()=>{pipRef.current=null;setPipWin(null);setPipActive(false)});
+const btnLoop=setInterval(()=>{if(!pipRef.current){clearInterval(btnLoop);return}pipBtnUpdate()},600);
+pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;setPipWin(null);setPipActive(false)});
 }catch(e){console.error("PiP error:",e);sSt("小窓を開けませんでした")}
 },[rid]);
 const closePip=useCallback(()=>{if(pipWin){pipWin.close()}pipRef.current=null;setPipWin(null);setPipActive(false)},[pipWin]);
