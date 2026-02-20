@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 const T=[{id:"soap",name:"📋 ASOP",prompt:"あなたは皮膚科専門の医療秘書です。ASOP形式で要約。\n■ A（評価・診断名）\n■ S（患者の主訴）\n■ O（医師の所見）\n■ P（治療計画・処方）\n■ 患者情報（言及あれば）\n会話の情報のみ記載。推測しない。言及なしは「言及なし」。コンパクトに。"},{id:"disease",name:"🏥 疾患名",prompt:"皮膚科医療秘書として疾患情報を抽出。\n■ 疾患名（正式名称）\n■ 部位\n■ 重症度\n■ 既往歴\n■ 鑑別診断（言及時のみ）\n推測しない。医学用語使用。コンパクトに。"},{id:"cosmetic",name:"✨ 美容",prompt:"美容皮膚科の医療秘書として施術記録を要約。\n■ 施術名\n■ 施術部位\n■ 患者の希望\n■ 施術内容・パラメータ\n■ 使用薬剤・機器\n■ 術後注意事項\n■ 次回予定\n会話の情報のみ。コンパクトに。"},{id:"procedure",name:"🔧 処置",prompt:"皮膚科医療秘書として処置記録を要約。\n■ 処置名\n■ 部位・範囲\n■ 麻酔\n■ 処置内容\n■ 使用器具\n■ 検体提出\n■ 術後指示・処方\n■ 次回予定\n手順は時系列。数値は正確に。"},{id:"followup",name:"🔄 経過",prompt:"皮膚科医療秘書として経過記録を要約。\n■ 疾患名\n■ 前回からの経過\n■ 現在の症状\n■ 現在の所見\n■ 治療効果判定\n■ 今後の方針\n■ 次回予定\n前回比較を明記。"},{id:"free",name:"📝 フリー",prompt:"皮膚科医療秘書として簡潔に要約。医学用語は正式名称。時系列で整理。推測しない。"}];
 const R=[{id:"r1",l:"診察室1",i:"1️⃣"},{id:"r2",l:"診察室2",i:"2️⃣"},{id:"r3",l:"診察室3",i:"3️⃣"},{id:"r4",l:"処置室",i:"🔧"},{id:"r5",l:"美容室",i:"✨"},{id:"r6",l:"カウンセリング",i:"💬"},{id:"r7",l:"その他",i:"📋"}];
@@ -7,9 +7,21 @@ export default function Home(){
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("");
 const[hist,sHist]=useState([]),[showHist,setShowHist]=useState(false),[search,setSearch]=useState("");
 const[pName,sPName]=useState(""),[pId,sPId]=useState("");
+const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef("");
+const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive");
 useEffect(()=>{iR.current=inp},[inp]);
+useEffect(()=>{elRef.current=el},[el]);
+useEffect(()=>{lvRef.current=lv},[lv]);
+useEffect(()=>{rsRef.current=rs},[rs]);
 useEffect(()=>{if(rs==="recording"){tR.current=setInterval(()=>sEl(t=>t+1),1000)}else{clearInterval(tR.current);if(rs==="inactive")sEl(0)}return()=>clearInterval(tR.current)},[rs]);
+// PiP update loop
+useEffect(()=>{
+const id=setInterval(()=>{if(!pipRef.current)return;const d=pipRef.current;const t=d.getElementById("pip-timer"),l=d.getElementById("pip-level"),s=d.getElementById("pip-status");
+if(t){const e=elRef.current;t.textContent=`${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`}
+if(l)l.style.width=`${lvRef.current}%`;
+if(s){const r=rsRef.current;s.textContent=r==="recording"?"🔴 録音中":r==="paused"?"⏸ 一時停止":"⏹ 停止";s.style.color=r==="recording"?"#22c55e":r==="paused"?"#f59e0b":"#94a3b8"}},500);
+return()=>clearInterval(id)},[]);
 const fm=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const ct=T.find(t=>t.id===tid)||T[0],cr=R.find(r=>r.id===rid);
 const saveRecord=async(input,output)=>{if(!supabase)return;try{await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:input,output_text:output,patient_name:pName,patient_id:pId})}catch(e){console.error("Save error:",e)}};
@@ -28,6 +40,26 @@ const sum=async(tx)=>{const t=tx||iR.current;if(!t.trim()){sSt("テキストを�
 const stopSum=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const ft=iR.current+(iR.current?"\n":"")+d.text.trim();sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;xAM();sRS("inactive")};
 const clr=()=>{sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("")};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
+// === PiP Functions ===
+const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("この機能はChrome 116以降で利用可能です");return}
+const pw=await window.documentPictureInPicture.requestWindow({width:320,height:160});
+const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i} ${rm.l}`:"";
+pw.document.body.innerHTML=`<div style="font-family:'Zen Maru Gothic',sans-serif;background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:12px 16px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<span style="font-size:13px;font-weight:600">${rmName}</span>
+<span id="pip-status" style="font-size:13px;font-weight:600;color:#22c55e">🔴 録音中</span></div>
+<div style="text-align:center">
+<div id="pip-timer" style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:2px">00:00</div></div>
+<div style="display:flex;gap:8px;align-items:center">
+<span style="font-size:11px;color:rgba(255,255,255,.6)">🎙</span>
+<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden">
+<div id="pip-level" style="width:0%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:3px;transition:width 0.15s"></div></div></div></div>`;
+pw.document.head.innerHTML=`<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">`;
+pipRef.current=pw.document;setPipWin(pw);setPipActive(true);
+pw.addEventListener("pagehide",()=>{pipRef.current=null;setPipWin(null);setPipActive(false)});
+}catch(e){console.error("PiP error:",e);sSt("小窓を開けませんでした")}
+},[rid]);
+const closePip=useCallback(()=>{if(pipWin){pipWin.close()}pipRef.current=null;setPipWin(null);setPipActive(false)},[pipWin]);
 const ac="#6366f1",aD="#4338ca",aS="#eef2ff",rG="#22c55e";
 const rb={width:74,height:74,borderRadius:"50%",border:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,fontFamily:"inherit",fontWeight:700,fontSize:10,boxShadow:"0 4px 14px rgba(99,102,241,.25)",cursor:"pointer"};
 const fmD=(d)=>{const dt=new Date(d);return `${dt.getMonth()+1}/${dt.getDate()} ${dt.getHours()}:${String(dt.getMinutes()).padStart(2,"0")}`};
@@ -67,7 +99,10 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <input value={pId} onChange={e=>sPId(e.target.value)} placeholder="🔢 患者ID" style={{...ib,width:120}}/>
 </div>
 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{T.map(t=>(<button key={t.id} onClick={()=>sTid(t.id)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:tid===t.id?`2px solid ${ac}`:"2px solid transparent",background:tid===t.id?aS:"#f1f5f9",fontWeight:tid===t.id?700:500,color:tid===t.id?aD:"#64748b",transition:"all 0.15s"}}>{t.name}</button>))}</div>
-<div style={{background:"#fff",borderRadius:20,padding:"20px",boxShadow:"0 4px 24px rgba(0,0,0,.05)"}}>
+<div style={{background:"#fff",borderRadius:20,padding:"20px",boxShadow:"0 4px 24px rgba(0,0,0,.05)",position:"relative"}}>
+{/* PiP Button */}
+<button onClick={pipActive?closePip:openPip} style={{position:"absolute",top:16,right:16,width:44,height:44,borderRadius:"50%",border:"none",background:pipActive?"#22c55e":"linear-gradient(135deg,#6366f1,#8b5cf6)",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,boxShadow:pipActive?"0 0 0 3px rgba(34,197,94,.3)":"0 2px 8px rgba(99,102,241,.3)"}}>
+<span style={{fontSize:16}}>🌟</span><span style={{fontSize:9}}>{pipActive?"小窓OFF":"小窓ON"}</span></button>
 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:16}}>
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?rG:"#d97706",fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:"#e2e8f0",overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${rG},#4ade80)`,borderRadius:3,transition:"width 0.1s"}}/></div>}
