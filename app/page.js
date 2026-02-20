@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 
 // === COLOR THEME (Mint) ===
-const C={p:"#2dd4bf",pD:"#0d9488",pDD:"#115e59",pL:"#ccfbf1",pLL:"#f0fdfa",acc:"#f0abfc",w:"#fff",g50:"#f8fafc",g100:"#f1f5f9",g200:"#e2e8f0",g300:"#cbd5e1",g400:"#94a3b8",g500:"#64748b",g700:"#334155",g900:"#0f172a",rG:"#22c55e",warn:"#f59e0b",err:"#ef4444"};
+const C={p:"#4a9e5c",pD:"#2b6e36",pDD:"#1a4d24",pL:"#d4edda",pLL:"#f0f8f2",acc:"#8cc63f",w:"#fff",g50:"#f9fafb",g100:"#f1f5f2",g200:"#dfe8e0",g300:"#c5d1c7",g400:"#8a9e8d",g500:"#5f7562",g700:"#344136",g900:"#1a2b1d",rG:"#22c55e",warn:"#f59e0b",err:"#ef4444"};
 
 // === TEMPLATES ===
 const T=[
@@ -151,10 +151,10 @@ const sAM=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({audio
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
 const tc=async(b)=>{if(b.size<500)return;sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const fixed=applyDict(d.text.trim());sInp(p=>p+(p?"\n":"")+fixed);sSt("録音中 ✓")}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
-const go=async()=>{const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},5000)};
+const go=async()=>{const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},3000)};
 const stop=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;xAM();sRS("inactive");sSt("待機中")};
 const pause=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();sRS("paused");sSt("一時停止")};
-const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(msR.current);m2.start();mR.current=m2}},5000)};
+const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(msR.current);m2.start();mR.current=m2}},3000)};
 const sum=async(tx)=>{const t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}sLd(true);sSt(md==="claude"?"Claude で要約中...":"Gemini で要約中...");try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,mode:md,prompt:ct.prompt})}),d=await r.json();if(d.error){sSt("エラー: "+d.error);return}sOut(d.summary);await saveRecord(t,d.summary);try{await navigator.clipboard.writeText(d.summary);sSt("要約完了・保存済み ✓")}catch{sSt("要約完了・保存済み")}}catch{sSt("エラーが発生しました")}finally{sLd(false)}};
 const stopSum=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const ft=iR.current+(iR.current?"\n":"")+applyDict(d.text.trim());sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;xAM();sRS("inactive")};
 const clr=()=>{sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("")};
@@ -165,16 +165,16 @@ const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in windo
 const pw=await window.documentPictureInPicture.requestWindow({width:200,height:90});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
-pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#115e59,#0d9488);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
+pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#1a4d24,#2b6e36);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
 <div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;opacity:.5">${rmName}</span>
 <input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:1px 5px;border-radius:4px;border:none;font-size:9px;background:rgba(255,255,255,.15);color:#fff;outline:none"/>
 <span id="pip-status" style="font-size:9px;font-weight:600;color:#94a3b8">停止</span></div>
 <div style="display:flex;align-items:center;gap:6px"><div id="pip-timer" style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">00:00</div>
 <div style="flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden"><div id="pip-level" style="width:0%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.15s"></div></div></div>
 <div style="display:flex;gap:4px;justify-content:center">
-<button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:none;background:#2dd4bf;color:#115e59;font-size:13px;font-weight:700;cursor:pointer">開始</button>
+<button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:none;background:#4a9e5c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">開始</button>
 <button id="pip-pause" style="padding:2px 10px;border-radius:8px;border:none;background:#fbbf24;color:#78350f;font-size:13px;font-weight:700;cursor:pointer;display:none">一時停止</button>
-<button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:#0d9488;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
+<button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:#2b6e36;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
 <button id="pip-stop" style="padding:2px 10px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">停止</button></div></div>`;
 pw.document.head.innerHTML=`<style>::placeholder{color:rgba(255,255,255,.35)}</style>`;
 const pipPiEl=pw.document.getElementById("pip-pid");if(pipPiEl){pipPiEl.value=pId;pipPiEl.addEventListener("input",e=>{sPId(e.target.value)})}
@@ -278,15 +278,17 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:"2
 {/* Logo */}
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🖼 ロゴ設定</h3>
-<p style={{fontSize:12,color:C.g400,marginBottom:8}}>ヘッダーにロゴ画像を表示できます。画像URLを入力してください。</p>
-<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-<input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://example.com/logo.png" style={{...ib,flex:1}}/>
-{logoUrl&&<img src={logoUrl} alt="preview" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain",border:`1px solid ${C.g200}`}}/>}
+<p style={{fontSize:12,color:C.g400,marginBottom:8}}>画像ファイルをドロップまたはクリックしてアップロードできます。</p>
+<div style={{display:"flex",gap:12,alignItems:"center",marginBottom:8}}>
+<div onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=C.p}} onDragLeave={e=>{e.currentTarget.style.borderColor=C.g200}} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=C.g200;const f=e.dataTransfer.files[0];if(f&&f.type.startsWith("image/")){const r=new FileReader();r.onload=ev=>setLogoUrl(ev.target.result);r.readAsDataURL(f)}}} onClick={()=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setLogoUrl(ev.target.result);r.readAsDataURL(f)}};i.click()}} style={{width:80,height:80,borderRadius:12,border:`2px dashed ${C.g200}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",flexShrink:0,transition:"border-color 0.2s"}}>
+{logoUrl?<img src={logoUrl} alt="logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<span style={{fontSize:12,color:C.g400,textAlign:"center"}}>ドロップ<br/>または<br/>クリック</span>}
 </div>
+<div>
+{logoUrl&&<button onClick={()=>setLogoUrl("")} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,color:C.err,fontFamily:"inherit",cursor:"pointer",marginBottom:6,display:"block"}}>✕ ロゴ削除</button>}
 <div style={{display:"flex",gap:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500}}>サイズ:</span>
 {[24,32,40,48].map(s=>(<button key={s} onClick={()=>setLogoSize(s)} style={{padding:"4px 12px",borderRadius:8,border:logoSize===s?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:logoSize===s?C.pLL:C.w,fontSize:12,fontWeight:logoSize===s?700:400,color:logoSize===s?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{s}px</button>))}
-</div></div>
+</div></div></div>
 {/* Dict */}
 <div style={{...card,marginBottom:16}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -333,7 +335,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <div style={{display:"flex",gap:2,background:C.g100,borderRadius:20,padding:2}}>
 <button onClick={()=>sMd("gemini")} style={{padding:"6px 16px",borderRadius:18,border:"none",fontSize:13,fontWeight:md==="gemini"?700:400,background:md==="gemini"?C.w:"transparent",color:md==="gemini"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer",boxShadow:md==="gemini"?"0 1px 4px rgba(0,0,0,.06)":"none"}}>⚡ Gemini</button>
 <button onClick={()=>sMd("claude")} style={{padding:"6px 16px",borderRadius:18,border:"none",fontSize:13,fontWeight:md==="claude"?700:400,background:md==="claude"?C.w:"transparent",color:md==="claude"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer",boxShadow:md==="claude"?"0 1px 4px rgba(0,0,0,.06)":"none"}}>🧠 Claude</button></div>
-{rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
+{rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 3秒ごとに自動書き起こし</div>}
 </div>
 <div style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><label style={{fontSize:13,fontWeight:700,color:C.g500}}>📝 書き起こし</label><span style={{fontSize:12,color:C.g400}}>{inp.length}文字</span></div>
 <textarea value={inp} onChange={e=>sInp(e.target.value)} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:140,padding:12,borderRadius:14,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/></div>
