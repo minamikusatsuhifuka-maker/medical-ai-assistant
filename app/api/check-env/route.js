@@ -10,10 +10,3 @@ export async function GET() {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "未設定",
   });
 }
-```
-
-「**Commit changes...**」→「**Commit changes**」
-
-ビルドがReadyになったら、ブラウザで以下にアクセス：
-```
-https://medical-ai-assistant-nine.vercel.app/api/check-env
