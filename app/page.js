@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
-const T=[{id:"soap",name:"📋 ASOP",prompt:"あなたは皮膚科専門の医療秘書です。ASOP形式で要約。\n■ A（評価・診断名）\n■ S（患者の主訴）\n■ O（医師の所見）\n■ P（治療計画・処方）\n■ 患者情報（言及あれば）\n会話の情報のみ記載。推測しない。言及なしは「言及なし」。コンパクトに。"},{id:"disease",name:"🏥 疾患名",prompt:"皮膚科医療秘書として疾患情報を抽出。\n■ 疾患名（正式名称）\n■ 部位\n■ 重症度\n■ 既往歴\n■ 鑑別診断（言及時のみ）\n推測しない。医学用語使用。コンパクトに。"},{id:"cosmetic",name:"✨ 美容",prompt:"美容皮膚科の医療秘書として施術記録を要約。\n■ 施術名\n■ 施術部位\n■ 患者の希望\n■ 施術内容・パラメータ\n■ 使用薬剤・機器\n■ 術後注意事項\n■ 次回予定\n会話の情報のみ。コンパクトに。"},{id:"procedure",name:"🔧 処置",prompt:"皮膚科医療秘書として処置記録を要約。\n■ 処置名\n■ 部位・範囲\n■ 麻酔\n■ 処置内容\n■ 使用器具\n■ 検体提出\n■ 術後指示・処方\n■ 次回予定\n手順は時系列。数値は正確に。"},{id:"followup",name:"🔄 経過",prompt:"皮膚科医療秘書として経過記録を要約。\n■ 疾患名\n■ 前回からの経過\n■ 現在の症状\n■ 現在の所見\n■ 治療効果判定\n■ 今後の方針\n■ 次回予定\n前回比較を明記。"},{id:"free",name:"📝 フリー",prompt:"皮膚科医療秘書として簡潔に要約。医学用語は正式名称。時系列で整理。推測しない。"}];
+const T=[{id:"soap",name:"📋 ASOP",prompt:"あなたは皮膚科専門の医療秘書です。以下の書き起こしテキストをカルテ形式で要約。\n\n【出力フォーマット】\n■ 診断名（疾患名のみ簡潔に）\n■ S：（主訴の内容のみ。「患者の主訴」等の説明不要）\n■ O：（所見の内容のみ。「医師の所見」等の説明不要）\n■ P：（計画の内容のみ。「治療計画」等の説明不要）\n■ 患者情報（言及あれば）\n\n【ルール】\n- 各項目は内容のみ記載し、項目の説明文は付けない\n- 会話の情報のみ記載。推測しない\n- 言及なしの項目は「言及なし」\n- コンパクトに"},{id:"disease",name:"🏥 疾患名",prompt:"皮膚科医療秘書として疾患情報を抽出。\n■ 疾患名（正式名称）\n■ 部位\n■ 重症度\n■ 既往歴\n■ 鑑別診断（言及時のみ）\n推測しない。医学用語使用。コンパクトに。"},{id:"cosmetic",name:"✨ 美容",prompt:"美容皮膚科の医療秘書として施術記録を要約。\n■ 施術名\n■ 施術部位\n■ 患者の希望\n■ 施術内容・パラメータ\n■ 使用薬剤・機器\n■ 術後注意事項\n■ 次回予定\n会話の情報のみ。コンパクトに。"},{id:"procedure",name:"🔧 処置",prompt:"皮膚科医療秘書として処置記録を要約。\n■ 処置名\n■ 部位・範囲\n■ 麻酔\n■ 処置内容\n■ 使用器具\n■ 検体提出\n■ 術後指示・処方\n■ 次回予定\n手順は時系列。数値は正確に。"},{id:"followup",name:"🔄 経過",prompt:"皮膚科医療秘書として経過記録を要約。\n■ 疾患名\n■ 前回からの経過\n■ 現在の症状\n■ 現在の所見\n■ 治療効果判定\n■ 今後の方針\n■ 次回予定\n前回比較を明記。"},{id:"free",name:"📝 フリー",prompt:"皮膚科医療秘書として簡潔に要約。医学用語は正式名称。時系列で整理。推測しない。"}];
 const R=[{id:"r1",l:"診察室1",i:"1️⃣"},{id:"r2",l:"診察室2",i:"2️⃣"},{id:"r3",l:"診察室3",i:"3️⃣"},{id:"r4",l:"処置室",i:"🔧"},{id:"r5",l:"美容室",i:"✨"},{id:"r6",l:"カウンセリング",i:"💬"},{id:"r7",l:"その他",i:"📋"}];
 export default function Home(){
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("");
@@ -42,28 +42,35 @@ const clr=()=>{sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("")};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === PiP Functions ===
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("この機能はChrome 116以降で利用可能です");return}
-const pw=await window.documentPictureInPicture.requestWindow({width:260,height:110});
+const pw=await window.documentPictureInPicture.requestWindow({width:240,height:140});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
-pw.document.body.innerHTML=`<div id="pip-root" style="font-family:'Zen Maru Gothic',sans-serif;background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:8px 12px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:4px">
+pw.document.body.innerHTML=`<div style="font-family:'Zen Maru Gothic',sans-serif;background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:6px 10px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
 <div style="display:flex;justify-content:space-between;align-items:center">
-<span style="font-size:11px;opacity:.7">${rmName}</span>
-<span id="pip-status" style="font-size:11px;font-weight:600;color:#22c55e">⏹ 停止</span></div>
-<div style="display:flex;align-items:center;justify-content:center;gap:10px">
-<div id="pip-timer" style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px">00:00</div></div>
-<div style="display:flex;align-items:center;gap:6px">
-<div style="flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden">
-<div id="pip-level" style="width:0%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:2px;transition:width 0.15s"></div></div></div>
-<div style="display:flex;gap:6px;justify-content:center">
-<button id="pip-rec" style="padding:3px 12px;border-radius:12px;border:none;background:#6366f1;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🎙 開始</button>
-<button id="pip-pause" style="padding:3px 10px;border-radius:12px;border:none;background:#fbbf24;color:#78350f;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:none">⏸</button>
-<button id="pip-stop" style="padding:3px 10px;border-radius:12px;border:none;background:#ef4444;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:none">⏹</button>
-<button id="pip-sum" style="padding:3px 10px;border-radius:12px;border:none;background:#4338ca;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:none">✓要約</button></div></div>`;
-pw.document.head.innerHTML=`<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">`;
+<span style="font-size:10px;opacity:.6">${rmName}</span>
+<span id="pip-status" style="font-size:10px;font-weight:600;color:#94a3b8">⏹停止</span></div>
+<div style="display:flex;gap:4px">
+<input id="pip-pname" placeholder="患者名" value="" style="flex:1;padding:2px 6px;border-radius:6px;border:none;font-size:10px;background:rgba(255,255,255,.15);color:#fff;outline:none;font-family:inherit"/>
+<input id="pip-pid" placeholder="ID" value="" style="width:50px;padding:2px 6px;border-radius:6px;border:none;font-size:10px;background:rgba(255,255,255,.15);color:#fff;outline:none;font-family:inherit"/></div>
+<div style="display:flex;align-items:center;justify-content:center;gap:8px">
+<div id="pip-timer" style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums">00:00</div></div>
+<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden">
+<div id="pip-level" style="width:0%;height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:2px;transition:width 0.15s"></div></div>
+<div style="display:flex;gap:5px;justify-content:center;align-items:center">
+<button id="pip-rec" style="width:32px;height:32px;border-radius:50%;border:none;background:#6366f1;color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center">🎙</button>
+<button id="pip-pause" style="width:28px;height:28px;border-radius:50%;border:none;background:#fbbf24;color:#78350f;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center">⏸</button>
+<button id="pip-sum" style="width:28px;height:28px;border-radius:50%;border:none;background:#4338ca;color:#fff;font-size:13px;cursor:pointer;display:none;align-items:center;justify-content:center">✓</button>
+<button id="pip-stop" style="width:28px;height:28px;border-radius:50%;border:none;background:#ef4444;color:#fff;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center">⏹</button></div></div>`;
+pw.document.head.innerHTML=`<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet"><style>::placeholder{color:rgba(255,255,255,.4)}</style>`;
+const pipSyncPatient=()=>{const d=pipRef.current;if(!d)return;const pn=d.getElementById("pip-pname"),pi=d.getElementById("pip-pid");if(pn)pn.value=pName;if(pi)pi.value=pId};pipSyncPatient();
+const pipPnEl=pw.document.getElementById("pip-pname"),pipPiEl=pw.document.getElementById("pip-pid");
+if(pipPnEl)pipPnEl.addEventListener("input",e=>{sPName(e.target.value)});
+if(pipPiEl)pipPiEl.addEventListener("input",e=>{sPId(e.target.value)});
 const pipBtnUpdate=()=>{const d=pipRef.current;if(!d)return;const r=rsRef.current;const rb=d.getElementById("pip-rec"),pb=d.getElementById("pip-pause"),sb=d.getElementById("pip-stop"),smb=d.getElementById("pip-sum");if(!rb)return;
-rb.style.display=r==="inactive"?"inline-block":"none";pb.style.display=r==="recording"?"inline-block":r==="paused"?(pb.textContent="▶ 再開",pb.style.background="#22c55e",pb.style.color="#fff","inline-block"):"none";
-if(r==="recording"){pb.textContent="⏸";pb.style.background="#fbbf24";pb.style.color="#78350f"}
-sb.style.display=r!=="inactive"?"inline-block":"none";smb.style.display=r!=="inactive"?"inline-block":"none"};
+rb.style.display=r==="inactive"?"flex":"none";
+pb.style.display=r!=="inactive"?"flex":"none";
+if(r==="recording"){pb.textContent="⏸";pb.style.background="#fbbf24";pb.style.color="#78350f"}else if(r==="paused"){pb.textContent="▶";pb.style.background="#22c55e";pb.style.color="#fff"}
+sb.style.display=r!=="inactive"?"flex":"none";smb.style.display=r!=="inactive"?"flex":"none"};
 pw.document.getElementById("pip-rec").onclick=()=>{go();setTimeout(pipBtnUpdate,500)};
 pw.document.getElementById("pip-pause").onclick=()=>{if(rsRef.current==="recording"){pause()}else{resume()}setTimeout(pipBtnUpdate,300)};
 pw.document.getElementById("pip-stop").onclick=()=>{stop();setTimeout(pipBtnUpdate,300)};
@@ -72,7 +79,7 @@ pipRef.current=pw.document;setPipWin(pw);setPipActive(true);
 const btnLoop=setInterval(()=>{if(!pipRef.current){clearInterval(btnLoop);return}pipBtnUpdate()},600);
 pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;setPipWin(null);setPipActive(false)});
 }catch(e){console.error("PiP error:",e);sSt("小窓を開けませんでした")}
-},[rid]);
+},[rid,pName,pId]);
 const closePip=useCallback(()=>{if(pipWin){pipWin.close()}pipRef.current=null;setPipWin(null);setPipActive(false)},[pipWin]);
 const ac="#6366f1",aD="#4338ca",aS="#eef2ff",rG="#22c55e";
 const rb={width:74,height:74,borderRadius:"50%",border:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,fontFamily:"inherit",fontWeight:700,fontSize:10,boxShadow:"0 4px 14px rgba(99,102,241,.25)",cursor:"pointer"};
