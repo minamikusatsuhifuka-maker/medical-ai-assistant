@@ -243,7 +243,12 @@ const DEFAULT_SNIPPETS=[
 {title:"帯状疱疹ワクチン",text:"帯状疱疹ワクチン（シングリックス）説明：\n・不活化ワクチン、2回接種（2ヶ月間隔）\n・予防効果90%以上、50歳以上対象\n・接種部位の痛み腫れは数日で改善",cat:"その他"},
 ];
 const[snippets,setSnippets]=useState(DEFAULT_SNIPPETS),[newSnTitle,setNewSnTitle]=useState(""),[newSnText,setNewSnText]=useState(""),[pipSnippets,setPipSnippets]=useState([0,1,2,3,4]),[openCats,setOpenCats]=useState([]);
-const[docDisease,setDocDisease]=useState(""),[docOut,setDocOut]=useState(""),[docLd,setDocLd]=useState(false);
+const[docDisease,setDocDisease]=useState(""),[docOut,setDocOut]=useState(""),[docLd,setDocLd]=useState(false),[docFreePrompt,setDocFreePrompt]=useState("");
+const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
+const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]);
+const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
+useEffect(()=>{audioSaveRef.current=audioSave},[audioSave]);
+const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef("");
 const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef(""),snippetsRef=useRef(DEFAULT_SNIPPETS),pipSnippetsRef=useRef([0,1,2,3,4]);
 useEffect(()=>{iR.current=inp},[inp]);
@@ -264,21 +269,33 @@ const ct=T.find(t=>t.id===tid)||T[0],cr=R.find(r=>r.id===rid);
 const saveRecord=async(input,output)=>{if(!supabase)return;try{await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:input,output_text:output,patient_name:pNameRef.current,patient_id:pIdRef.current})}catch(e){console.error("Save error:",e)}};
 const generateDoc=async()=>{if(!docDisease.trim())return;setDocLd(true);setDocOut("");try{let histData=[];if(supabase){const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(200);if(data)histData=data.map(r=>r.output_text).filter(Boolean)}
 const related=histData.filter(s=>s.includes(docDisease)).slice(0,20);const histText=related.length>0?related.join("\n---\n"):"";
-const sysPrompt=`あなたは皮膚科専門医です。以下の疾患について患者向けの説明資料を作成してください。
-【疾患名】${docDisease}
-${histText?"【当院の過去の診療記録（参考）】\n"+histText+"\n":""}
+const sysPrompt=`あなたは皮膚科専門医です。以下の疾患/テーマについて患者向けの説明資料を作成してください。
+【疾患名/テーマ】${docDisease}
+${docFreePrompt?`【追加指示】${docFreePrompt}\n`:""}${histText?"【当院の過去の診療記録（参考）】\n"+histText+"\n":""}
 以下の構成で患者さんにわかりやすく作成：
 1. 疾患の概要（どんな病気か、原因）
 2. 症状
 3. 当院での治療方法（過去記録がある場合、当院で使用されている薬剤・施術を優先して記載）
-4. 外用薬の使い方（該当する場合）
+4. 外用薬の使い方（該当する場合、FTU・塗り方・頻度・重ね塗り順序を含む）
 5. 日常生活での注意点・スキンケア
 6. 治療スケジュール・通院頻度の目安
-7. よくある質問（Q&A 2-3個）
+7. 術後・施術後の注意点（該当する場合）
+8. よくある質問（Q&A 2-3個）
 ※過去記録がある場合、当院で実際に使用されている薬剤名・施術名・治療プロトコルを反映
 ※専門用語は噛み砕いて説明
-※美容施術の場合はカウンセリング用に効果・ダウンタイム・施術間隔も含める`;
+※美容施術の場合はカウンセリング用に効果・ダウンタイム・施術間隔も含める
+※外用方法が関係する場合はFTU（1FTU=約0.5g）、塗布順序（保湿剤→ステロイド等）、プロアクティブ療法についても記載
+※手術後の注意点が関係する場合はシャワー・入浴・抜糸・出血時の対応も記載`;
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPrompt,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary)}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false)}};
+
+const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
+const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0)ch.push(e.data)};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){setMinInp(p=>p+(p?"\n":"")+d.text.trim())}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);minTI.current=setInterval(()=>{setMinEl(t=>t+1);if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000)};
+const minStop=()=>{if(minTI.current)clearInterval(minTI.current);if(minMR.current&&minMR.current.state==="recording")minMR.current.stop();setMinRS("inactive");minSR.current="inactive";xAM()};
+const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);
+const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
+const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
+try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:prompt,mode:"gemini",prompt:"議事録を作成してください。"})});const d=await r.json();if(d.error){setMinOut("エラー: "+d.error)}else{setMinOut(d.summary)}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false)}};
+useEffect(()=>{minSR.current=minRS},[minRS]);
 const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(50);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
 const delRecord=async(id)=>{if(!supabase)return;try{await supabase.from("records").delete().eq("id",id);sHist(h=>h.filter(r=>r.id!==id))}catch(e){console.error("Delete error:",e)}};
 const filteredHist=hist.filter(h=>{if(!search.trim())return true;const s=search.toLowerCase();return(h.patient_name||"").toLowerCase().includes(s)||(h.patient_id||"").toLowerCase().includes(s)||(h.output_text||"").toLowerCase().includes(s)});
@@ -289,10 +306,10 @@ const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
-const tc=async(b)=>{if(b.size<500)return;sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const fixed=applyDict(d.text.trim());sInp(p=>p+(p?"\n":"")+fixed);sSt("録音中 ✓")}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
+const tc=async(b)=>{if(b.size<500)return;if(audioSaveRef.current)allAudioChunks.current.push(b);sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const fixed=applyDict(d.text.trim());sInp(p=>p+(p?"\n":"")+fixed);sSt("録音中 ✓")}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
 const go=async()=>{const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},5000)};
-const stop=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;xAM();sRS("inactive");sSt("待機中")};
+const stop=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;xAM();sRS("inactive");sSt("待機中");if(audioSaveRef.current&&allAudioChunks.current.length>0){const blob=new Blob(allAudioChunks.current,{type:"audio/webm"});saveAudio(blob);allAudioChunks.current=[]}};
 const pause=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();sRS("paused");sSt("一時停止")};
 const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(msR.current);m2.start();mR.current=m2}},5000)};
 const sum=async(tx)=>{const t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}sLd(true);sSt("Gemini で要約中...");try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,mode:"gemini",prompt:ct.prompt})}),d=await r.json();if(d.error){sSt("エラー: "+d.error);return}sOut(d.summary);await saveRecord(t,d.summary);try{await navigator.clipboard.writeText(d.summary);sSt("要約完了・保存済み ✓")}catch{sSt("要約完了・保存済み")}}catch{sSt("エラーが発生しました")}finally{sLd(false)}};
@@ -413,9 +430,10 @@ if(page==="doc")return(<div style={{maxWidth:700,margin:"0 auto",padding:"20px 1
 <input value={docDisease} onChange={e=>setDocDisease(e.target.value)} placeholder="疾患名・施術名を入力（例：アトピー性皮膚炎、ポテンツァ）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
 <button onClick={generateDoc} disabled={docLd||!docDisease.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:docLd?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!docDisease.trim()?.45:1}}>
 {docLd?"⏳ 生成中...":"✨ 生成"}</button></div>
-<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-{["アトピー性皮膚炎","ざ瘡（ニキビ）","蕁麻疹","乾癬","帯状疱疹","尋常性疣贅","脂漏性皮膚炎","円形脱毛症","シミ・肝斑","医療脱毛","ポテンツァ","ノーリス（IPL）","ゼオスキン","ピーリング"].map(d=>(<button key={d} onClick={()=>{setDocDisease(d)}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:500,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{d}</button>))}
+<div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+{["アトピー性皮膚炎","ざ瘡（ニキビ）","蕁麻疹","乾癬","帯状疱疹","尋常性疣贅","脂漏性皮膚炎","円形脱毛症","白斑","酒さ","シミ・肝斑","医療脱毛","ポテンツァ","ノーリス（IPL）","ゼオスキン","ピーリング","外用方法の説明","皮膚腫瘍切除術後の注意点","レーザー施術後の注意点","ピーリング後の注意点"].map(d=>(<button key={d} onClick={()=>{setDocDisease(d)}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:500,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{d}</button>))}
 </div>
+<textarea value={docFreePrompt} onChange={e=>setDocFreePrompt(e.target.value)} placeholder="追加指示（任意）：例「小児向けに平易な表現で」「治療費の目安欄も追加して」「英語併記で」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:12,resize:"vertical",boxSizing:"border-box"}}/>
 {docLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが履歴を分析して説明資料を作成中...</span></div>}
 {docOut&&<div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -425,12 +443,42 @@ if(page==="doc")return(<div style={{maxWidth:700,margin:"0 auto",padding:"20px 1
 </div>}
 </div></div>);
 
+// === MINUTES ===
+if(page==="minutes")return(<div style={{maxWidth:700,margin:"0 auto",padding:"20px 16px"}}><div style={card}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📝 議事録まとめ</h2><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<p style={{fontSize:13,color:C.g500,marginBottom:12}}>会議やミーティングを録音・書き起こしし、AIが議事録を自動作成します。</p>
+<textarea value={minPrompt} onChange={e=>setMinPrompt(e.target.value)} placeholder="AIへの追加指示（任意）：例「院内勉強会の形式で」「スタッフミーティング用に簡潔に」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:10,resize:"vertical",boxSizing:"border-box"}}/>
+<div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+<span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(minEl/60)).padStart(2,"0")}:{String(minEl%60).padStart(2,"0")}</span>
+{minRS==="inactive"?<button onClick={minGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>🎙 録音開始</button>:
+<><button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 要約</button>
+<button onClick={minStop} style={{padding:"10px 16px",borderRadius:14,border:"none",background:C.err,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⏹ 停止</button></>}
+<span style={{fontSize:12,color:minRS==="recording"?C.rG:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":"停止"}</span></div>
+<div style={{marginBottom:12}}>
+<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:600,color:C.g500}}>書き起こし（10秒間隔）</span><span style={{fontSize:11,color:C.g400}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span></div>
+<textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:120,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
+{minLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが議事録を作成中...</span></div>}
+{minOut&&<div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録</span>
+<button onClick={()=>{navigator.clipboard.writeText(minOut)}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
+<textarea value={minOut} onChange={e=>setMinOut(e.target.value)} style={{width:"100%",height:300,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
+</div>}
+</div></div>);
+
 // === SETTINGS ===
 if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
 <h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>⚙️ 設定</h2>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 {/* Logo */}
+<div style={{...card,marginBottom:16}}>
+<h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🔊 音声保存</h3>
+<p style={{fontSize:12,color:C.g400,marginBottom:8}}>ONにすると診察の音声をSupabase Storageに保存します。カウンセリング分析やトークスクリプト改善に活用できます。</p>
+<div style={{display:"flex",alignItems:"center",gap:12}}>
+<button onClick={()=>setAudioSave(!audioSave)} style={{padding:"6px 20px",borderRadius:10,border:"none",background:audioSave?C.rG:C.g200,color:audioSave?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{audioSave?"ON":"OFF"}</button>
+<span style={{fontSize:12,color:audioSave?C.rG:C.g400}}>{audioSave?"録音停止時に自動保存されます":"音声は保存されません"}</span>
+</div></div>
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🖼 ロゴ設定</h3>
 <p style={{fontSize:12,color:C.g400,marginBottom:8}}>画像をドロップまたはクリックしてアップロード</p>
@@ -486,7 +534,8 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <button onClick={()=>{loadHist();setPage("hist")}} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📂</button>
 <button onClick={()=>setPage("settings")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>⚙️</button>
 <button onClick={()=>setPage("help")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>❓</button>
-<button onClick={()=>setPage("doc")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📄</button></div></header>
+<button onClick={()=>setPage("doc")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📄</button>
+<button onClick={()=>setPage("minutes")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📝</button></div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
