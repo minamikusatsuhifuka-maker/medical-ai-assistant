@@ -44,7 +44,7 @@ P）ルリコン液 1日1回
 - 各行の間に空行を入れない
 - イベント情報（結婚式・旅行等）は患者情報）に記載
 - 会話にない情報は推測しない
-- 言及なしは「言及なし」
+- 会話に含まれない項目は出力しない（「言及なし」と書かない）
 - コンパクトに詰めて記載`},
 {id:"disease",name:"🏥 疾患名",prompt:`皮膚科専門の医療秘書として疾患情報を抽出。話者分離：丁寧語・指示語は医師、訴え・希望は患者。
 
@@ -97,7 +97,7 @@ P）ルリコン液 1日1回
 {id:"free",name:"📝 フリー",prompt:`皮膚科専門の医療秘書として簡潔に要約。話者分離：丁寧語・指示語は医師、訴え・希望は患者。医学用語は正式名称。時系列で整理。推測しない。コンパクトに。`}
 ];
 
-const R=[{id:"r1",l:"診察室1",i:"1️⃣"},{id:"r2",l:"診察室2",i:"2️⃣"},{id:"r3",l:"診察室3",i:"3️⃣"},{id:"r4",l:"処置室",i:"🔧"},{id:"r5",l:"美容室",i:"✨"},{id:"r6",l:"カウンセリング",i:"💬"},{id:"r7",l:"その他",i:"📋"}];
+const R=[{id:"r1",l:"診察室1",i:"1"},{id:"r2",l:"診察室2",i:"2"},{id:"r3",l:"診察室3",i:"3"},{id:"r4",l:"施術室1",i:"①"},{id:"r5",l:"施術室2",i:"②"},{id:"r6",l:"施術室3",i:"③"},{id:"r7",l:"カウンセリング",i:"💬"}];
 
 const DEFAULT_DICT=[
 ["りんでろん","リンデロン"],["リンデロンVG","リンデロン-VG"],["りんでろんぶいじー","リンデロン-VG"],["アンテベート","アンテベート"],["でるもべーと","デルモベート"],["ロコイド","ロコイド"],["プロトピック","プロトピック"],["キンダベート","キンダベート"],["ヒルドイド","ヒルドイド"],["ひるどいど","ヒルドイド"],["プロペト","プロペト"],
@@ -118,7 +118,7 @@ const DEFAULT_DICT=[
 // === MAIN COMPONENT ===
 export default function Home(){
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("");
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("r1");
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState("");
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
@@ -255,20 +255,9 @@ const rb={width:70,height:70,borderRadius:"50%",border:"none",display:"flex",fle
 const titleRow=()=>(<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl&&<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:8,objectFit:"contain"}}/>}<span style={{fontWeight:700,fontSize:15,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>);
 
 // === ROOM SELECT ===
-if(!rid)return(<div style={{maxWidth:600,margin:"0 auto",padding:"40px 16px"}}>
-<div style={{background:`linear-gradient(135deg,${C.pD},${C.p})`,borderRadius:24,padding:"40px 24px",boxShadow:`0 8px 32px rgba(13,148,136,.2)`,textAlign:"center"}}>
-<div style={{width:48,height:48,borderRadius:16,background:"rgba(255,255,255,.2)",margin:"0 auto 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:32,height:32,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:24}}>🩺</span>}</div>
-<h1 style={{fontSize:20,fontWeight:700,color:C.w,marginBottom:4}}>南草津皮フ科AIカルテ要約</h1>
-<p style={{fontSize:14,color:"rgba(255,255,255,.8)",marginBottom:28}}>部屋を選択してください</p>
-<div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"center"}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"14px 20px",borderRadius:14,border:"none",background:"rgba(255,255,255,.95)",fontSize:14,fontWeight:600,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:8,minWidth:140,boxShadow:"0 2px 8px rgba(0,0,0,.08)",transition:"transform 0.15s"}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.03)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}><span style={{fontSize:20}}>{rm.i}</span>{rm.l}</button>))}</div>
-<div style={{marginTop:24,display:"flex",gap:10,justifyContent:"center"}}>
-<button onClick={()=>{sRid("_");setPage("help")}} style={{padding:"8px 16px",borderRadius:12,border:"1px solid rgba(255,255,255,.3)",background:"transparent",color:C.w,fontSize:12,fontFamily:"inherit",cursor:"pointer"}}>📖 使い方</button>
-<button onClick={()=>{sRid("_");setPage("about")}} style={{padding:"8px 16px",borderRadius:12,border:"1px solid rgba(255,255,255,.3)",background:"transparent",color:C.w,fontSize:12,fontFamily:"inherit",cursor:"pointer"}}>ℹ️ 機能紹介</button>
-</div></div></div>);
-
 // === HELP PAGE ===
 if(page==="help")return(<div style={{maxWidth:700,margin:"0 auto",padding:"20px 16px"}}><div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📖 使い方ガイド</h2><button onClick={()=>{sRid("");setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📖 使い方ガイド</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <div style={{fontSize:14,color:C.g700,lineHeight:2}}>
 <h3 style={{color:C.pD,fontSize:15}}>1. 部屋を選択</h3>
 <p>トップ画面で診察室・処置室などを選択します。部屋情報は履歴に保存されます。</p>
@@ -290,7 +279,7 @@ if(page==="help")return(<div style={{maxWidth:700,margin:"0 auto",padding:"20px 
 
 // === ABOUT PAGE ===
 if(page==="about")return(<div style={{maxWidth:700,margin:"0 auto",padding:"20px 16px"}}><div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>ℹ️ 機能紹介</h2><button onClick={()=>{sRid("");setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>ℹ️ 機能紹介</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <div style={{fontSize:14,color:C.g700,lineHeight:2}}>
 <h3 style={{color:C.pD}}>🎙 リアルタイム音声書き起こし</h3><p>OpenAI Whisper APIによる高精度な日本語音声認識。5秒間隔で自動書き起こし。</p>
 <h3 style={{color:C.pD}}>🤖 AI要約</h3><p>Gemini 2.5 Flashでカルテ形式に自動要約。複数疾患の自動分離にも対応。</p>
@@ -374,10 +363,12 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:"2
 // === MAIN ===
 return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"10px 16px",background:`linear-gradient(135deg,${C.pD},${C.p})`,borderRadius:16,boxShadow:`0 4px 16px rgba(13,148,136,.15)`}}>
-<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:14,color:C.w}}>南草津皮フ科AIカルテ要約</span><span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:"rgba(255,255,255,.2)",color:C.w,fontWeight:600}}>{cr?.i} {cr?.l}</span><button onClick={()=>{stop();sRid("")}} style={{fontSize:11,padding:"2px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"transparent",color:"rgba(255,255,255,.9)",fontFamily:"inherit",cursor:"pointer"}}>変更</button></div>
+<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:14,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:12,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.8)",fontWeight:st.includes("✓")?600:400}}>{st}</span>
 <button onClick={()=>{loadHist();setPage("hist")}} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📂</button>
-<button onClick={()=>setPage("settings")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>⚙️</button></div></header>
+<button onClick={()=>setPage("settings")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>⚙️</button>
+<button onClick={()=>setPage("help")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>❓</button></div></header>
+<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
 <select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",color:C.g700,background:C.w,cursor:"pointer"}}>
@@ -408,7 +399,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <textarea value={inp} onChange={e=>sInp(e.target.value)} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:140,padding:12,borderRadius:14,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/></div>
 <div style={{display:"flex",gap:8,marginBottom:14}}>
 <button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"10px 0",borderRadius:14,border:"none",background:ld?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?.45:1,boxShadow:!ld&&inp.trim()?`0 4px 12px rgba(13,148,136,.25)`:"none"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
-<button onClick={clr} style={{padding:"10px 20px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🗑</button></div>
+<button onClick={()=>{if(!inp.trim()&&!out.trim()){clr()}else if(confirm("現在の内容をクリアして次の患者に進みますか？")){clr()}}} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>次へ ▶</button></div>
 {out&&<div style={{borderRadius:14,border:`2px solid ${C.pL}`,padding:16,background:`linear-gradient(135deg,${C.pLL},#f0fdf4)`}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:13,fontWeight:700,color:C.pD}}>{ct.name} 要約結果</span><button onClick={()=>cp(out)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 <textarea value={out} onChange={e=>sOut(e.target.value)} style={{width:"100%",height:180,padding:12,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/>
