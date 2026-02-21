@@ -123,6 +123,9 @@ const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=us
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
+const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
+const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
+useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
 const DEFAULT_SNIPPETS=[
 {title:"f/u 1w",text:"f/u 1w後（1週間後再診）"},
 {title:"f/u 2w",text:"f/u 2w後（2週間後再診）"},
@@ -196,7 +199,7 @@ const filteredHist=hist.filter(h=>{if(!search.trim())return true;const s=search.
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(from&&to&&from!==to){r=r.split(from).join(to)}}return r};
 
 // Audio
-const sAM=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({audio:true});msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch{sSt("マイク取得失敗");return null}};
+const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
 const tc=async(b)=>{if(b.size<500)return;sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const fixed=applyDict(d.text.trim());sInp(p=>p+(p?"\n":"")+fixed);sSt("録音中 ✓")}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
@@ -375,6 +378,13 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <div style={{display:"flex",alignItems:"center",gap:5}}>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:12,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.8)",fontWeight:st.includes("✓")?600:400}}>{st}</span>
 <button onClick={()=>{loadHist();setPage("hist")}} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>📂</button>
 <button onClick={()=>setPage("settings")} style={{fontSize:11,padding:"4px 8px",borderRadius:10,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.12)",color:C.w,fontFamily:"inherit",cursor:"pointer",fontWeight:600}}>⚙️</button></div></header>
+<div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+<span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
+<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",color:C.g700,background:C.w,cursor:"pointer"}}>
+{micDevices.length===0?<option value="">マイクが見つかりません</option>:micDevices.map((d,i)=>(<option key={d.deviceId} value={d.deviceId}>{d.label||`マイク ${i+1}`}</option>))}
+</select>
+<button onClick={loadMics} style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontFamily:"inherit",cursor:"pointer",color:C.g500,flexShrink:0}}>🔄</button>
+</div>
 <div style={{display:"flex",gap:8,marginBottom:10}}>
 <input value={pName} onChange={e=>sPName(e.target.value)} placeholder="👤 患者名" style={{...ib,flex:1}}/>
 <input value={pId} onChange={e=>sPId(e.target.value)} placeholder="🔢 患者ID" style={{...ib,width:120}}/>
