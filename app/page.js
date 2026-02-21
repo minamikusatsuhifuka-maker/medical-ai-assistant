@@ -174,15 +174,17 @@ const DEFAULT_SNIPPETS=[
 {title:"イソトレチノイン",text:"イソトレチノイン内服開始　mg/日\n注意：避妊必須（女性：前1M〜後1M）、献血不可、定期血液検査（肝機能・脂質）、保湿（唇・皮膚・眼の乾燥対策）\n次回血液検査：4w後"},
 {title:"帯状疱疹ワクチン",text:"帯状疱疹ワクチン（シングリックス）説明：\n・不活化ワクチン、2回接種（2ヶ月間隔）\n・予防効果90%以上、50歳以上対象\n・接種部位の痛み腫れは数日で改善"},
 ];
-const[snippets,setSnippets]=useState(DEFAULT_SNIPPETS),[newSnTitle,setNewSnTitle]=useState(""),[newSnText,setNewSnText]=useState("");
+const[snippets,setSnippets]=useState(DEFAULT_SNIPPETS),[newSnTitle,setNewSnTitle]=useState(""),[newSnText,setNewSnText]=useState(""),[pipSnippets,setPipSnippets]=useState([0,1,2,3,4]);
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef("");
-const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef("");
+const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef(""),snippetsRef=useRef([]),pipSnippetsRef=useRef([]);
 useEffect(()=>{iR.current=inp},[inp]);
 useEffect(()=>{elRef.current=el},[el]);
 useEffect(()=>{lvRef.current=lv},[lv]);
 useEffect(()=>{rsRef.current=rs},[rs]);
 useEffect(()=>{pNameRef.current=pName},[pName]);
 useEffect(()=>{pIdRef.current=pId},[pId]);
+useEffect(()=>{snippetsRef.current=snippets},[snippets]);
+useEffect(()=>{pipSnippetsRef.current=pipSnippets},[pipSnippets]);
 useEffect(()=>{if(rs==="recording"){tR.current=setInterval(()=>sEl(t=>t+1),1000)}else{clearInterval(tR.current);if(rs==="inactive")sEl(0)}return()=>clearInterval(tR.current)},[rs]);
 useEffect(()=>{const id=setInterval(()=>{if(!pipRef.current)return;const d=pipRef.current;const t=d.getElementById("pip-timer"),l=d.getElementById("pip-level"),s=d.getElementById("pip-status");if(t){const e=elRef.current;t.textContent=`${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`}if(l)l.style.width=`${lvRef.current}%`;if(s){const r=rsRef.current;s.textContent=r==="recording"?"録音中":r==="paused"?"一時停止":"停止";s.style.color=r==="recording"?C.rG:r==="paused"?C.warn:C.g400}},500);return()=>clearInterval(id)},[]);
 
@@ -214,7 +216,7 @@ const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済
 
 // PiP
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("Chrome 116以降で利用可能です");return}
-const pw=await window.documentPictureInPicture.requestWindow({width:200,height:90});
+const pw=await window.documentPictureInPicture.requestWindow({width:240,height:130});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
 pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#3d5a1e,#567d2a);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
@@ -227,7 +229,9 @@ pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear
 <button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:none;background:#4a9e5c;color:#1a4d24;font-size:13px;font-weight:700;cursor:pointer">開始</button>
 <button id="pip-pause" style="padding:2px 10px;border-radius:8px;border:none;background:#fbbf24;color:#78350f;font-size:13px;font-weight:700;cursor:pointer;display:none">一時停止</button>
 <button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:#567d2a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
-<button id="pip-stop" style="padding:2px 10px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">停止</button></div></div>`;
+<button id="pip-stop" style="padding:2px 10px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">停止</button>
+<button id="pip-next" style="padding:4px 16px;border-radius:8px;border:2px solid #fff;background:rgba(255,255,255,.15);color:#fff;font-size:14px;font-weight:700;cursor:pointer">次へ ▶</button></div>
+<div id="pip-snippets" style="display:flex;gap:3px;flex-wrap:wrap;overflow:hidden;max-height:22px"></div></div>`;
 pw.document.head.innerHTML=`<style>::placeholder{color:rgba(255,255,255,.35)}</style>`;
 const pipPiEl=pw.document.getElementById("pip-pid");if(pipPiEl){pipPiEl.value=pId;pipPiEl.addEventListener("input",e=>{sPId(e.target.value)})}
 const pipBtnUpdate=()=>{const d=pipRef.current;if(!d)return;const r=rsRef.current;const rb=d.getElementById("pip-rec"),pb=d.getElementById("pip-pause"),sb=d.getElementById("pip-stop"),smb=d.getElementById("pip-sum");if(!rb)return;rb.style.display=r==="inactive"?"inline-block":"none";pb.style.display=r!=="inactive"?"inline-block":"none";if(r==="recording"){pb.textContent="一時停止";pb.style.background="#fbbf24";pb.style.color="#78350f"}else if(r==="paused"){pb.textContent="再開";pb.style.background="#22c55e";pb.style.color="#fff"}sb.style.display=r!=="inactive"?"inline-block":"none";smb.style.display=r!=="inactive"?"inline-block":"none"};
@@ -235,6 +239,9 @@ pw.document.getElementById("pip-rec").onclick=()=>{go();setTimeout(pipBtnUpdate,
 pw.document.getElementById("pip-pause").onclick=()=>{if(rsRef.current==="recording"){pause()}else{resume()}setTimeout(pipBtnUpdate,300)};
 pw.document.getElementById("pip-stop").onclick=()=>{stop();setTimeout(pipBtnUpdate,300)};
 pw.document.getElementById("pip-sum").onclick=()=>{stopSum();setTimeout(pipBtnUpdate,500)};
+pw.document.getElementById("pip-next").onclick=()=>{clr();const d=pipRef.current;if(d){const pi=d.getElementById("pip-pid");if(pi)pi.value=""}setTimeout(pipBtnUpdate,300)};
+const renderPipSnippets=()=>{const d=pipRef.current;if(!d)return;const c=d.getElementById("pip-snippets");if(!c)return;c.innerHTML="";const sn=snippetsRef.current;const ids=pipSnippetsRef.current;ids.forEach(idx=>{if(idx<sn.length){const b=d.createElement("button");b.textContent=sn[idx].title;b.style.cssText="padding:1px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:9px;font-weight:600;cursor:pointer";b.onclick=()=>{const t=snippetsRef.current[idx];if(t)sOut(o=>o+(o?"\n":"")+t.text)};c.appendChild(b)}})};
+renderPipSnippets();
 pipRef.current=pw.document;setPipWin(pw);setPipActive(true);
 const btnLoop=setInterval(()=>{if(!pipRef.current){clearInterval(btnLoop);return}pipBtnUpdate()},600);
 pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;setPipWin(null);setPipActive(false)});
@@ -331,13 +338,14 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:"2
 {/* Snippets */}
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>📌 追記テンプレート（{snippets.length}件）</h3>
-<p style={{fontSize:12,color:C.g400,marginBottom:10}}>要約後にワンタップで追記できるテンプレートを管理します。</p>
+<p style={{fontSize:12,color:C.g400,marginBottom:10}}>要約後にワンタップで追記。🌟マークで小窓にも表示。</p>
 <div style={{display:"flex",gap:6,marginBottom:6}}>
 <input value={newSnTitle} onChange={e=>setNewSnTitle(e.target.value)} placeholder="タイトル（ボタン表示名）" style={{...ib,width:140}}/>
 <input value={newSnText} onChange={e=>setNewSnText(e.target.value)} placeholder="追記テキスト内容" style={{...ib,flex:1}}/>
 <button onClick={()=>{if(newSnTitle.trim()&&newSnText.trim()){setSnippets([...snippets,{title:newSnTitle.trim(),text:newSnText.trim()}]);setNewSnTitle("");setNewSnText("")}}} style={btn(C.p,"#fff",{padding:"6px 14px",fontSize:13})}>追加</button></div>
 <div style={{maxHeight:400,overflow:"auto"}}>
 {snippets.map((sn,i)=>(<div key={i} style={{display:"flex",gap:4,alignItems:"flex-start",padding:"5px 0",borderBottom:"1px solid "+C.g100}}>
+<button onClick={()=>{if(pipSnippets.includes(i)){setPipSnippets(pipSnippets.filter(x=>x!==i))}else{setPipSnippets([...pipSnippets,i])}}} style={{padding:"3px 6px",borderRadius:6,border:pipSnippets.includes(i)?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:pipSnippets.includes(i)?C.pLL:C.w,fontSize:10,color:pipSnippets.includes(i)?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer",flexShrink:0}} title="小窓に表示">{pipSnippets.includes(i)?"🌟":"☆"}</button>
 <input value={sn.title} onChange={e=>{const u=[...snippets];u[i]={...u[i],title:e.target.value};setSnippets(u)}} style={{...ib,width:100,padding:"4px 8px",fontSize:12,fontWeight:700,color:C.pD}}/>
 <textarea value={sn.text} onChange={e=>{const u=[...snippets];u[i]={...u[i],text:e.target.value};setSnippets(u)}} rows={1} onFocus={e=>{e.target.rows=Math.max(2,e.target.value.split("\n").length)}} onBlur={e=>{e.target.rows=1}} style={{...ib,flex:1,padding:"4px 8px",fontSize:11,color:C.g700,resize:"vertical",lineHeight:1.5}}/>
 <button onClick={()=>setSnippets(snippets.filter((_,j)=>j!==i))} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>✕</button></div>))}</div></div>
