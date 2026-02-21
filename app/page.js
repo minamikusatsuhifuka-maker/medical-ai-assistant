@@ -186,7 +186,7 @@ useEffect(()=>{pIdRef.current=pId},[pId]);
 useEffect(()=>{snippetsRef.current=snippets},[snippets]);
 useEffect(()=>{pipSnippetsRef.current=pipSnippets},[pipSnippets]);
 useEffect(()=>{if(rs==="recording"){tR.current=setInterval(()=>sEl(t=>t+1),1000)}else{clearInterval(tR.current);if(rs==="inactive")sEl(0)}return()=>clearInterval(tR.current)},[rs]);
-useEffect(()=>{const id=setInterval(()=>{if(!pipRef.current)return;const d=pipRef.current;const t=d.getElementById("pip-timer"),l=d.getElementById("pip-level"),s=d.getElementById("pip-status");if(t){const e=elRef.current;t.textContent=`${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`}if(l)l.style.width=`${lvRef.current}%`;if(s){const r=rsRef.current;s.textContent=r==="recording"?"録音中":r==="paused"?"一時停止":"停止";s.style.color=r==="recording"?C.rG:r==="paused"?C.warn:C.g400}},500);return()=>clearInterval(id)},[]);
+useEffect(()=>{const id=setInterval(()=>{if(!pipRef.current)return;const d=pipRef.current;const t=d.getElementById("pip-timer"),l=d.getElementById("pip-level"),s=d.getElementById("pip-status"),tr=d.getElementById("pip-transcript");if(t){const e=elRef.current;t.textContent=`${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`}if(l)l.style.width=`${lvRef.current}%`;if(s){const r=rsRef.current;s.textContent=r==="recording"?"録音中":r==="paused"?"一時停止":"停止";s.style.color=r==="recording"?C.rG:r==="paused"?C.warn:C.g400}if(tr){const txt=iR.current;if(txt){const lines=txt.split("\n");tr.textContent=lines[lines.length-1]}else{tr.textContent=""}}},500);return()=>clearInterval(id)},[]);
 
 const fm=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const ct=T.find(t=>t.id===tid)||T[0],cr=R.find(r=>r.id===rid);
@@ -216,21 +216,22 @@ const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済
 
 // PiP
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("Chrome 116以降で利用可能です");return}
-const pw=await window.documentPictureInPicture.requestWindow({width:240,height:130});
+const pw=await window.documentPictureInPicture.requestWindow({width:260,height:160});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
-pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#3d5a1e,#567d2a);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:3px">
+pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#3d5a1e,#567d2a);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:2px">
 <div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;opacity:.5">${rmName}</span>
 <input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:1px 5px;border-radius:4px;border:none;font-size:9px;background:rgba(255,255,255,.15);color:#fff;outline:none"/>
 <span id="pip-status" style="font-size:9px;font-weight:600;color:#94a3b8">停止</span></div>
 <div style="display:flex;align-items:center;gap:6px"><div id="pip-timer" style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">00:00</div>
 <div style="flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden"><div id="pip-level" style="width:0%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.15s"></div></div></div>
+<div id="pip-transcript" style="height:18px;overflow:hidden;border-radius:4px;background:rgba(0,0,0,.2);padding:1px 6px;font-size:9px;color:#a0c96a;white-space:nowrap;text-overflow:ellipsis"></div>
 <div style="display:flex;gap:4px;justify-content:center">
-<button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:none;background:#4a9e5c;color:#1a4d24;font-size:13px;font-weight:700;cursor:pointer">開始</button>
+<button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:2px solid #fff;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:700;cursor:pointer">開始</button>
 <button id="pip-pause" style="padding:2px 10px;border-radius:8px;border:none;background:#fbbf24;color:#78350f;font-size:13px;font-weight:700;cursor:pointer;display:none">一時停止</button>
 <button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:#567d2a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
 <button id="pip-stop" style="padding:2px 10px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">停止</button>
-<button id="pip-next" style="padding:4px 16px;border-radius:8px;border:2px solid #fff;background:rgba(255,255,255,.15);color:#fff;font-size:14px;font-weight:700;cursor:pointer">次へ ▶</button></div>
+<button id="pip-next" style="padding:2px 12px;border-radius:8px;border:2px solid #fff;background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:700;cursor:pointer">次へ▶</button></div>
 <div id="pip-snippets" style="display:flex;gap:3px;flex-wrap:wrap;overflow:hidden;max-height:22px"></div></div>`;
 pw.document.head.innerHTML=`<style>::placeholder{color:rgba(255,255,255,.35)}</style>`;
 const pipPiEl=pw.document.getElementById("pip-pid");if(pipPiEl){pipPiEl.value=pId;pipPiEl.addEventListener("input",e=>{sPId(e.target.value)})}
@@ -246,7 +247,7 @@ pipRef.current=pw.document;setPipWin(pw);setPipActive(true);
 const btnLoop=setInterval(()=>{if(!pipRef.current){clearInterval(btnLoop);return}pipBtnUpdate()},600);
 pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;setPipWin(null);setPipActive(false)});
 }catch(e){console.error("PiP error:",e);sSt("小窓を開けませんでした")}
-},[rid,pId]);
+},[rid,pId,pipSnippets,snippets]);
 const closePip=useCallback(()=>{if(pipWin){pipWin.close()}pipRef.current=null;setPipWin(null);setPipActive(false)},[pipWin]);
 
 // Helpers
@@ -407,7 +408,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
 <textarea value={inp} onChange={e=>sInp(e.target.value)} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:140,padding:12,borderRadius:14,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/></div>
 <div style={{display:"flex",gap:8,marginBottom:14}}>
 <button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"10px 0",borderRadius:14,border:"none",background:ld?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?.45:1,boxShadow:!ld&&inp.trim()?`0 4px 12px rgba(13,148,136,.25)`:"none"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
-<button onClick={()=>{if(!inp.trim()&&!out.trim()){clr()}else if(confirm("現在の内容をクリアして次の患者に進みますか？")){clr()}}} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>次へ ▶</button></div>
+<button onClick={clr} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>次へ ▶</button></div>
 {out&&<div style={{borderRadius:14,border:`2px solid ${C.pL}`,padding:16,background:`linear-gradient(135deg,${C.pLL},#f0fdf4)`}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:13,fontWeight:700,color:C.pD}}>{ct.name} 要約結果</span><button onClick={()=>cp(out)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 <textarea value={out} onChange={e=>sOut(e.target.value)} style={{width:"100%",height:180,padding:12,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/>
