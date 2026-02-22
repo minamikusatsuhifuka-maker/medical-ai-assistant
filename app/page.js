@@ -240,7 +240,7 @@ const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const li=localStorage.getItem("mk_itemList");if(li)setListSavedItems(JSON.parse(li))}catch{}},[]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
 useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
@@ -305,6 +305,7 @@ const[manualLd,setManualLd]=useState(false);
 const[manualType,setManualType]=useState("flow");
 const[manualCat,setManualCat]=useState("all");
 const[catStats,setCatStats]=useState({insurance:0,cosmetic:0,counseling:0});
+const[listItemLd,setListItemLd]=useState(false);
 const[listInput,setListInput]=useState("");
 const[listOut,setListOut]=useState(null);
 const[listLd,setListLd]=useState(false);
@@ -673,6 +674,178 @@ const tn=(id)=>{const t=T.find(x=>x.id===id);return t?t.name:id};
 const rn=(id)=>{const r=R.find(x=>x.id===id);return r?`${r.i}${r.l}`:id};
 
 const titleRow=()=>(<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl&&<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:8,objectFit:"contain"}}/>}<span style={{fontWeight:700,fontSize:15,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>);
+
+// === ITEM LIST PAGE ===
+if(page==="itemlist")return(<div style={{maxWidth:mob?"100%":900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:mob?16:18,fontWeight:700,color:C.pDD,margin:0}}>📋 当院使用品一覧表作成</h2><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<p style={{fontSize:mob?12:13,color:C.g500,marginBottom:6}}>テキストや画像をアップロード、または過去の診療記録から当院で使用している薬剤・施術・製品の正確な一覧表を作成します。</p>
+<p style={{fontSize:11,color:C.err,marginBottom:12,fontWeight:600}}>⚠️ 生成後は必ず内容を確認してください。AI生成のため誤りがある可能性があります。</p>
+
+{/* カテゴリ選択 */}
+<div style={{marginBottom:12}}>
+<div style={{fontSize:12,fontWeight:700,color:C.g500,marginBottom:6}}>📂 カテゴリ</div>
+<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+{[{id:"all",l:"🔄 全て"},{id:"rx",l:"💊 処方薬"},{id:"cosmetic",l:"✨ 美容施術・機器"},{id:"product",l:"🛍 販売製品"},{id:"exam",l:"🔬 検査・処置"}].map(c=>(<button key={c.id} onClick={()=>setListCat(c.id)} style={{padding:"5px 12px",borderRadius:10,border:listCat===c.id?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:listCat===c.id?C.pLL:C.w,fontSize:mob?11:12,fontWeight:listCat===c.id?700:500,color:listCat===c.id?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{c.l}</button>))}
+</div></div>
+
+{/* データソース */}
+<div style={{marginBottom:12}}>
+<div style={{fontSize:12,fontWeight:700,color:C.g500,marginBottom:6}}>📤 データソース（複数可）</div>
+
+{/* ファイルアップロード */}
+<div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+<div onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=C.p}} onDragLeave={e=>{e.currentTarget.style.borderColor=C.g200}} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=C.g200;const f=e.dataTransfer.files[0];if(f){setListFile(f);setListFileName(f.name);if(f.type.startsWith("image/")){const r=new FileReader();r.onload=ev=>setListPreview(ev.target.result);r.readAsDataURL(f)}else{setListPreview("");const r=new FileReader();r.onload=ev=>setListText(ev.target.result);r.readAsText(f)}}}} onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".txt,.csv,.tsv,.text,image/*";i.onchange=e=>{const f=e.target.files[0];if(f){setListFile(f);setListFileName(f.name);if(f.type.startsWith("image/")){const r=new FileReader();r.onload=ev=>setListPreview(ev.target.result);r.readAsDataURL(f)}else{setListPreview("");const r2=new FileReader();r2.onload=ev=>setListText(ev.target.result);r2.readAsText(f)}}};i.click()}} style={{padding:"14px 20px",borderRadius:12,border:`2px dashed ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",textAlign:"center",flex:1,minWidth:200,transition:"border-color 0.2s"}}>
+{listFileName?`📎 ${listFileName}`:"📁 ファイルをドロップまたはクリック（画像・テキスト）"}
+</div>
+{listFileName&&<button onClick={()=>{setListFile(null);setListFileName("");setListPreview("");setListText("")}} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>✕ クリア</button>}
+</div>
+
+{/* 画像プレビュー */}
+{listPreview&&<div style={{marginBottom:8}}><img src={listPreview} alt="preview" style={{maxWidth:"100%",maxHeight:200,borderRadius:10,border:`1px solid ${C.g200}`}}/></div>}
+
+{/* テキスト直接入力 */}
+<textarea value={listText} onChange={e=>setListText(e.target.value)} placeholder={"薬剤リストや在庫表のテキストを直接貼り付けもOK\n例：\nリンデロン-VG軟膏 5g\nヒルドイドソフト軟膏 25g\nアンテベート軟膏 10g"} rows={4} style={{width:"100%",padding:mob?8:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+</div>
+
+{/* 生成ボタン */}
+<div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+<button onClick={async()=>{
+setListItemLd(true);setListOutStr("");
+try{
+const catFilter={all:"全カテゴリ（処方薬・美容施術/機器・販売製品・検査/処置）",rx:"処方薬（外用薬・内服薬・注射薬）のみ",cosmetic:"美容施術・使用機器のみ",product:"院内販売製品（コスメ・サプリ等）のみ",exam:"検査・処置のみ"}[listCat];
+
+const basePrompt=`あなたは皮膚科クリニックの薬剤・製品管理の専門家です。以下の情報から当院で使用・取扱いしている品目の正確な一覧表を作成してください。
+
+【対象カテゴリ】${catFilter}
+
+【出力フォーマット（厳守）】
+カテゴリごとにセクション分けし、各品目を以下の形式で記載：
+
+## 💊 処方薬（外用）
+| No | 正式名称 | 規格 | 用法用量 | 適応疾患 | 略称・別名 | よくある入力ミス |
+|----|----------|------|----------|----------|------------|------------------|
+| 1 | リンデロン-VG軟膏 | 5g/10g | 1日1-2回 患部に塗布 | 湿疹・皮膚炎群 | リンデロン | りんでろん、リンデロンVG |
+
+## 💊 処方薬（内服）
+（同様の表形式）
+
+## 💉 注射薬・生物学的製剤
+（同様の表形式）
+
+## ✨ 美容施術・機器
+| No | 施術/機器名 | 正式名称 | 主な適応 | 施術間隔目安 | 略称・別名 | よくある入力ミス |
+|----|-------------|----------|----------|--------------|------------|------------------|
+
+## 🛍 院内販売製品
+| No | 製品名 | ブランド | 用途・効果 | 略称・別名 | よくある入力ミス |
+|----|--------|----------|------------|------------|------------------|
+
+## 🔬 検査・処置
+| No | 検査/処置名 | 正式名称 | 目的・適応 | 略称・別名 | よくある入力ミス |
+|----|-------------|----------|------------|------------|------------------|
+
+【重要ルール】
+- 正式名称は添付文書・公式表記に準拠（推測で書かない）
+- 用法用量は一般的な標準用量を記載
+- 「よくある入力ミス」は音声認識の誤変換も含める
+- 情報が不明確な場合は「※要確認」と明記
+- アップロードされたデータに含まれる品目のみ記載（勝手に追加しない）
+- ただし過去の診療記録から当院で使用が確認できるものは追加してよい`;
+
+let result="";
+
+// ファイルがある場合
+if(listFile&&listFile.size>0){
+const fd=new FormData();
+fd.append("file",listFile);
+fd.append("prompt",basePrompt);
+if(listText)fd.append("textContent",listText);
+const r=await fetch("/api/analyze-image",{method:"POST",body:fd});
+const d=await r.json();
+if(d.error)throw new Error(d.error);
+result=d.result;
+}else{
+// テキストのみ、または過去記録から
+let sourceText=listText;
+
+// 過去の診療記録も参照
+if(supabase){
+try{
+const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(200);
+if(data){const recs=data.map(r=>r.output_text).filter(Boolean).join("\n---\n");sourceText=(sourceText?sourceText+"\n\n":"")+"【過去の診療記録から抽出】\n"+recs}
+const{data:pd}=await supabase.from("past_records").select("content").order("created_at",{ascending:false}).limit(50);
+if(pd&&pd.length>0)sourceText+="\n\n【過去カルテ】\n"+pd.map(r=>r.content).join("\n---\n");
+}catch{}}
+
+if(!sourceText.trim()){setListOutStr("データソースがありません。ファイルをアップロードするか、テキストを入力してください。");setListItemLd(false);return}
+
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sourceText,mode:"gemini",prompt:basePrompt})});
+const d=await r.json();
+if(d.error)throw new Error(d.error);
+result=d.summary;
+}
+
+setListOutStr(result);
+}catch(e){setListOutStr("エラー: "+e.message)}finally{setListItemLd(false)}
+}} disabled={listItemLd} style={{flex:1,padding:"12px 24px",borderRadius:14,border:"none",background:listItemLd?C.g200:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
+{listItemLd?"⏳ AI分析中...":"📋 一覧表を生成"}</button>
+
+<button onClick={async()=>{
+setListItemLd(true);setListOutStr("");
+try{
+let sourceText="";
+if(supabase){
+const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(300);
+if(data)sourceText=data.map(r=>r.output_text).filter(Boolean).join("\n---\n");
+const{data:pd}=await supabase.from("past_records").select("content").order("created_at",{ascending:false}).limit(50);
+if(pd&&pd.length>0)sourceText+="\n\n"+pd.map(r=>r.content).join("\n---\n");
+}
+if(!sourceText){setListOutStr("診療記録がありません");setListItemLd(false);return}
+const catFilter={all:"全カテゴリ",rx:"処方薬のみ",cosmetic:"美容施術・機器のみ",product:"販売製品のみ",exam:"検査・処置のみ"}[listCat];
+const prompt=`あなたは皮膚科クリニックの薬剤管理専門家です。以下の診療記録から当院で実際に使用されている品目を全て抽出し、正確な一覧表を作成してください。
+
+【対象】${catFilter}
+
+【出力形式】カテゴリごとに表形式（正式名称・規格・用法用量・適応・略称/別名・よくある入力ミス）
+【重要】記録に実際に登場する品目のみ抽出。推測で追加しない。不明点は「※要確認」と記載。
+
+【診療記録】
+${sourceText}`;
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:prompt,mode:"gemini",prompt:"正確な一覧表を作成してください。"})});
+const d=await r.json();
+setListOutStr(d.error?"エラー: "+d.error:d.summary);
+}catch(e){setListOutStr("エラー: "+e.message)}finally{setListItemLd(false)}
+}} disabled={listItemLd} style={{padding:"12px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
+📂 過去記録から抽出</button>
+</div>
+
+{listItemLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが品目を分析中...正確性のため少し時間がかかります</span></div>}
+
+{listOutStr&&<div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 当院使用品一覧表</span>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>{navigator.clipboard.writeText(listOutStr);sSt("📋 一覧表をコピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{try{localStorage.setItem("mk_itemList",JSON.stringify([...listSavedItems,{date:new Date().toISOString(),cat:listCat,content:listOutStr}]));setListSavedItems(prev=>[...prev,{date:new Date().toISOString(),cat:listCat,content:listOutStr}]);sSt("💾 一覧表を保存しました")}catch{}}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+</div></div>
+<div style={{padding:"8px 12px",borderRadius:8,background:"#fef3c7",border:"1px solid #fcd34d",marginBottom:8}}>
+<span style={{fontSize:11,color:"#92400e",fontWeight:600}}>⚠️ 重要：AI生成のため、必ず薬剤師・医師が内容を確認してください。用法用量・適応は添付文書を正とします。</span>
+</div>
+<textarea value={listOutStr} onChange={e=>setListOutStr(e.target.value)} style={{width:"100%",height:mob?350:500,padding:mob?10:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:mob?12:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
+</div>}
+
+{/* 保存済み一覧 */}
+{listSavedItems.length>0&&<div style={{marginTop:14}}>
+<div style={{fontSize:12,fontWeight:700,color:C.g500,marginBottom:6}}>💾 保存済み一覧表（{listSavedItems.length}件）</div>
+{listSavedItems.map((s,i)=>(<div key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:11,color:C.g400}}>{new Date(s.date).toLocaleDateString()}</span>
+<span style={{fontSize:11,color:C.pD,fontWeight:600}}>{s.cat==="all"?"全て":s.cat}</span>
+<button onClick={()=>setListOutStr(s.content)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 開く</button>
+<button onClick={()=>{const u=listSavedItems.filter((_,j)=>j!==i);setListSavedItems(u);localStorage.setItem("mk_itemList",JSON.stringify(u))}} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>🗑</button>
+</div>))}
+</div>}
+
+</div></div>);
 
 // === MANUAL GENERATION PAGE ===
 if(page==="manual")return(<div style={{maxWidth:mob?"100%":800,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
@@ -1203,12 +1376,12 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 </div>);
 
 // === MAIN ===
-return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+return(<><div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:mob?"8px 10px":"10px 16px",background:`linear-gradient(135deg,${C.pD},${C.p})`,borderRadius:16,boxShadow:`0 4px 16px rgba(13,148,136,.15)`}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?12:14,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.7)",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成",f:()=>{loadClinicItems();setPage("doc")}},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"manual",i:"📚",t:"マニュアル",f:()=>{loadCatStats();setPage("manual")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成",f:()=>{loadClinicItems();setPage("doc")}},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"manual",i:"📚",t:"マニュアル",f:()=>{loadCatStats();setPage("manual")}},{p:"itemlist",i:"📋",t:"一覧表"},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
@@ -1261,8 +1434,9 @@ const fn=actions[sc.id];if(fn)fn();
 {[...new Set(snippets.map(s=>s.cat||"その他"))].map(cat=>{const items=snippets.map((s,i)=>({...s,idx:i})).filter(s=>(s.cat||"その他")===cat&&!pipSnippets.includes(s.idx));if(!items.length)return null;const isOpen=openCats.includes(cat);return(<div key={cat} style={{marginBottom:2}}>
 <button onClick={()=>setOpenCats(o=>o.includes(cat)?o.filter(c=>c!==cat):[...o,cat])} style={{width:"100%",padding:"3px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:isOpen?C.pLL:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{cat}（{items.length}）</span><span>{isOpen?"▼":"▶"}</span></button>
 {isOpen&&<div style={{display:"flex",gap:4,flexWrap:"wrap",padding:"4px 0"}}>{items.map(sn=>(<button key={sn.idx} onClick={()=>sOut(o=>o+(o?"\n":"")+sn.text)} style={{padding:"3px 8px",borderRadius:8,border:`1px solid ${C.p}33`,background:C.w,fontSize:11,fontWeight:500,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{sn.title}</button>))}</div>}
-</div>)})}
+</div>)} )}
 </div>}
-</div>}
+</div>
 {ld&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが要約を作成中...</span></div>}
-</div></div>);}
+}</div></div>);
+}git checkout app/page.js
