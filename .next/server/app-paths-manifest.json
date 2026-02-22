@@ -1,7 +1,0 @@
-{
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/transcribe/route": "app/api/transcribe/route.js",
-  "/api/check-env/route": "app/api/check-env/route.js",
-  "/api/summarize/route": "app/api/summarize/route.js",
-  "/page": "app/page.js"
-}
