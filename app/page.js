@@ -305,6 +305,13 @@ const[manualLd,setManualLd]=useState(false);
 const[manualType,setManualType]=useState("flow");
 const[manualCat,setManualCat]=useState("all");
 const[catStats,setCatStats]=useState({insurance:0,cosmetic:0,counseling:0});
+const[listInput,setListInput]=useState("");
+const[listOut,setListOut]=useState(null);
+const[listLd,setListLd]=useState(false);
+const[listTab,setListTab]=useState("medicine");
+const[listMsg,setListMsg]=useState("");
+const[listSaved,setListSaved]=useState([]);
+const[listVerified,setListVerified]=useState({});
 const undoRef=useRef(null);
 const loadCsCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("counseling_records").select("*",{count:"exact",head:true});setCsCount(count||0)}catch{}};
 useEffect(()=>{loadCsCount()},[]);
@@ -504,6 +511,89 @@ const{data}=await supabase.from("records").select("category").order("created_at"
 if(data){const stats={insurance:0,cosmetic:0,counseling:0};data.forEach(r=>{const c=r.category||"insurance";if(stats[c]!==undefined)stats[c]++});setCatStats(stats)}
 }catch{}};
 const delRecord=async(id)=>{if(!supabase)return;try{await supabase.from("records").delete().eq("id",id);sHist(h=>h.filter(r=>r.id!==id))}catch(e){console.error("Delete error:",e)}};
+const loadClinicItems=async()=>{if(!supabase)return;try{const{data}=await supabase.from("clinic_items").select("*").order("category").order("name");if(data)setListSaved(data)}catch(e){console.error("clinic_items load error:",e)}};
+const saveClinicItem=async(item)=>{if(!supabase)return;try{const{error}=await supabase.from("clinic_items").insert(item);if(error){setListMsg("保存エラー: "+error.message);return false}return true}catch(e){setListMsg("エラー: "+e.message);return false}};
+const saveAllVerified=async(items)=>{if(!supabase||!items||items.length===0)return;setListMsg("保存中...");try{
+const rows=items.filter(item=>listVerified[item.name]!==false).map(item=>({
+category:item.category||"other",
+name:item.name,
+details:item.details||"",
+diseases:item.diseases||"",
+usage_info:item.usage||"",
+notes:item.notes||"",
+verified:listVerified[item.name]===true
+}));
+const batchSize=50;let total=0;
+for(let i=0;i<rows.length;i+=batchSize){const batch=rows.slice(i,i+batchSize);const{error}=await supabase.from("clinic_items").insert(batch);if(error){setListMsg("保存エラー: "+error.message);return}total+=batch.length}
+setListMsg(`✅ ${total}件を保存しました`);loadClinicItems();
+}catch(e){setListMsg("エラー: "+e.message)}};
+const importListFile=async(file)=>{if(!file)return;setListLd(true);setListMsg("ファイル読み込み中...");try{const text=await file.text();setListInput(text);setListMsg(`ファイル読み込み完了（${Math.round(text.length/1024)}KB）`)}catch(e){setListMsg("読み込みエラー: "+e.message)}finally{setListLd(false)}};
+const generateList=async(source)=>{
+setListLd(true);setListOut(null);setListMsg("");setListVerified({});
+try{
+let inputText=listInput;
+
+if(source==="records"){
+let recText="";
+if(supabase){
+const{data}=await supabase.from("records").select("output_text,template").order("created_at",{ascending:false}).limit(300);
+if(data)recText=data.map(r=>r.output_text).filter(Boolean).join("\n---\n");
+const{data:pd}=await supabase.from("past_records").select("content").order("created_at",{ascending:false}).limit(50);
+if(pd&&pd.length>0)recText+="\n\n"+pd.map(r=>r.content).join("\n---\n");
+}
+inputText=recText;
+if(!inputText){setListMsg("診療記録がありません");setListLd(false);return}
+}
+
+if(!inputText.trim()){setListMsg("テキストを入力またはファイルをアップロードしてください");setListLd(false);return}
+
+const prompt=`あなたは皮膚科クリニックの薬剤・医療機器の専門家です。以下のテキストから、このクリニックで実際に使用されている薬剤・施術・製品・処置を正確に抽出し、JSON形式で一覧表を作成してください。
+
+【重要：正確性ルール】
+- テキストに明記されているものだけを抽出すること（推測で追加しない）
+- 薬剤名は正式名称を使用（商品名と一般名が分かれば両方記載）
+- 用法用量はテキストに記載がある場合のみ記載
+- 疾患名は実際にテキスト内でその薬剤・施術と関連付けられているもののみ
+
+【入力テキスト】
+${inputText.slice(0,15000)}
+
+【出力形式】必ず以下のJSON形式のみで出力してください。説明文は不要です。
+{
+  "medicine": [
+    {"name":"薬剤名（正式名称）","details":"剤形・規格・用法用量","diseases":"対象疾患（カンマ区切り）","usage":"1日2回 朝夕食後 等","notes":"注意点・備考"}
+  ],
+  "procedure": [
+    {"name":"施術・機器名","details":"パラメータ・設定値","diseases":"対象疾患・症状","usage":"施術頻度・間隔","notes":"注意点"}
+  ],
+  "product": [
+    {"name":"製品名","details":"種類・成分・価格帯","diseases":"対象の悩み","usage":"使用方法","notes":"備考"}
+  ],
+  "surgery": [
+    {"name":"処置・手術名","details":"手順・使用器具","diseases":"対象疾患","usage":"定型文テンプレート","notes":"術後注意"}
+  ],
+  "disease_rx": [
+    {"name":"疾患名","details":"第一選択薬","diseases":"代替薬・追加治療","usage":"処方パターン（用法用量含む）","notes":"注意点・禁忌"}
+  ]
+}
+
+JSON以外の文字は一切出力しないでください。`;
+
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:prompt,mode:"gemini",prompt:"JSON形式のみで出力してください。"})});
+const d=await r.json();
+if(d.error){setListMsg("エラー: "+d.error);setListLd(false);return}
+
+try{
+const cleaned=d.summary.replace(/```json|```/g,"").trim();
+const parsed=JSON.parse(cleaned);
+setListOut(parsed);
+setListMsg(`✅ 抽出完了 - 内容を確認して「✓確認済み」をチェックしてから保存してください`);
+}catch(e){
+setListMsg("JSON解析エラー - 再度お試しください");
+setListOut(null);
+}
+}catch(e){setListMsg("エラー: "+e.message)}finally{setListLd(false)}
+};
 const filteredHist=hist.filter(h=>{if(!search.trim())return true;const s=search.toLowerCase();return(h.patient_name||"").toLowerCase().includes(s)||(h.patient_id||"").toLowerCase().includes(s)||(h.output_text||"").toLowerCase().includes(s)});
 
 // Dict
@@ -879,7 +969,7 @@ if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padd
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>疾患名や施術名を入力すると、当院の診療履歴をAIが参照して患者向け説明資料を自動生成します。</p>
 <div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
 <input value={docDisease} onChange={e=>setDocDisease(e.target.value)} placeholder="疾患名・施術名を入力（例：アトピー性皮膚炎、ポテンツァ）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
-<button onClick={generateDoc} disabled={docLd||!docDisease.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:docLd?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!docDisease.trim()?.45:1}}>
+<button onClick={generateDoc} disabled={docLd||!docDisease.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:docLd?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!docDisease.trim()?0.45:1}}>
 {docLd?"⏳ 生成中...":"✨ 生成"}</button></div>
 <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
 {["アトピー性皮膚炎","ざ瘡（ニキビ）","蕁麻疹","乾癬","帯状疱疹","尋常性疣贅","脂漏性皮膚炎","円形脱毛症","白斑","酒さ","シミ・肝斑","医療脱毛","ポテンツァ","ノーリス（IPL）","ゼオスキン","ピーリング","外用方法の説明","皮膚腫瘍切除術後の注意点","レーザー施術後の注意点","ピーリング後の注意点"].map(d=>(<button key={d} onClick={()=>{setDocDisease(d)}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:500,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{d}</button>))}
@@ -891,6 +981,81 @@ if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padd
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 {docDisease} 説明資料</span>
 <button onClick={()=>{navigator.clipboard.writeText(docOut)}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 <textarea value={docOut} onChange={e=>setDocOut(e.target.value)} style={{width:"100%",height:400,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
+</div>}
+{/* 当院一覧表セクション */}
+<div style={{marginTop:24,paddingTop:20,borderTop:`2px solid ${C.g200}`}}>
+<h3 style={{fontSize:mob?15:16,fontWeight:700,color:C.pDD,marginBottom:8}}>📋 当院 薬剤・施術・製品 一覧表</h3>
+<p style={{fontSize:12,color:C.g400,marginBottom:12}}>テキストファイルや過去の診療記録から、当院で使用している薬剤・施術・製品を自動抽出します。<br/><span style={{color:C.err,fontWeight:600}}>⚠️ AI抽出後に必ず内容を確認・修正してから保存してください</span></p>
+<div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+<div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)importListFile(f)}} onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".txt,.csv,.tsv,.text";i.onchange=e=>{const f=e.target.files[0];if(f)importListFile(f)};i.click()}} style={{padding:"8px 16px",borderRadius:10,border:`2px dashed ${C.p}`,background:C.pLL,fontSize:12,color:C.pD,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>📁 ファイルをアップロード</div>
+<button onClick={()=>generateList("records")} disabled={listLd} style={{padding:"8px 16px",borderRadius:10,border:"none",background:listLd?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>🔍 過去の記録から抽出</button>
+</div>
+<textarea value={listInput} onChange={e=>setListInput(e.target.value)} placeholder={"薬剤・施術・製品の情報をペーストしてください。\n例：\nリンデロン-VG軟膏 1日2回 湿疹・皮膚炎\nアンテベート軟膏 1日2回 アトピー性皮膚炎\nポテンツァ ニードルRF 毛穴・ニキビ跡\nゼオスキンヘルス ミラミン 肝斑"} rows={4} style={{width:"100%",padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box",marginBottom:10}}/>
+<button onClick={()=>generateList("input")} disabled={listLd||!listInput.trim()} style={{width:"100%",padding:"10px 24px",borderRadius:14,border:"none",background:listLd?C.g200:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:10,opacity:listLd||!listInput.trim()?0.45:1}}>
+{listLd?"⏳ AI抽出中...":"📋 一覧表を生成"}</button>
+{listMsg&&<div style={{padding:"8px 14px",borderRadius:10,background:listMsg.includes("✅")?C.pLL:listMsg.includes("エラー")?"#fef2f2":C.g50,border:`1px solid ${listMsg.includes("✅")?C.p+"44":listMsg.includes("エラー")?"#fecaca":C.g200}`,fontSize:12,fontWeight:600,color:listMsg.includes("✅")?C.pD:listMsg.includes("エラー")?C.err:C.g500,marginBottom:10}}>{listMsg}</div>}
+{listLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIがテキストから薬剤・施術・製品を抽出中...</span></div>}
+{listOut&&<div>
+<div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
+{[
+{id:"medicine",label:"💊 薬剤",count:listOut.medicine?.length||0},
+{id:"procedure",label:"✨ 施術・機器",count:listOut.procedure?.length||0},
+{id:"product",label:"🛍 販売製品",count:listOut.product?.length||0},
+{id:"surgery",label:"🔧 処置・手術",count:listOut.surgery?.length||0},
+{id:"disease_rx",label:"📖 疾患別処方",count:listOut.disease_rx?.length||0},
+].map(t=>(<button key={t.id} onClick={()=>setListTab(t.id)} style={{padding:"5px 10px",borderRadius:10,border:listTab===t.id?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:listTab===t.id?C.pLL:C.w,fontSize:mob?10:11,fontWeight:listTab===t.id?700:500,color:listTab===t.id?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{t.label}({t.count})</button>))}
+</div>
+<div style={{padding:"8px 12px",borderRadius:10,background:"#fef3c7",border:"1px solid #fcd34d",fontSize:12,color:"#92400e",fontWeight:600,marginBottom:10}}>
+⚠️ 確認フロー：各項目の内容を確認 → ✓ボタンで確認済みにする → 「確認済みを保存」で保存
+</div>
+<div style={{overflowX:"auto",marginBottom:12}}>
+<table style={{width:"100%",borderCollapse:"collapse",fontSize:mob?11:12}}>
+<thead><tr style={{background:C.pLL}}>
+<th style={{padding:"6px 8px",textAlign:"left",borderBottom:`2px solid ${C.p}`,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>確認</th>
+<th style={{padding:"6px 8px",textAlign:"left",borderBottom:`2px solid ${C.p}`,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{listTab==="disease_rx"?"疾患名":"名称"}</th>
+<th style={{padding:"6px 8px",textAlign:"left",borderBottom:`2px solid ${C.p}`,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{listTab==="disease_rx"?"第一選択":"詳細・規格"}</th>
+<th style={{padding:"6px 8px",textAlign:"left",borderBottom:`2px solid ${C.p}`,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{listTab==="disease_rx"?"代替・追加":"対象疾患"}</th>
+<th style={{padding:"6px 8px",textAlign:"left",borderBottom:`2px solid ${C.p}`,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{listTab==="disease_rx"?"処方パターン":"用法・頻度"}</th>
+<th style={{padding:"6px 8px",textAlign:"left",borderBottom:`2px solid ${C.p}`,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>備考</th>
+</tr></thead>
+<tbody>
+{(listOut[listTab]||[]).map((item,i)=>(<tr key={i} style={{borderBottom:`1px solid ${C.g100}`,background:listVerified[item.name]===true?"#f0fdf4":listVerified[item.name]===false?"#fef2f2":C.w}}>
+<td style={{padding:"6px 8px",whiteSpace:"nowrap"}}><div style={{display:"flex",gap:3}}>
+<button onClick={()=>setListVerified(v=>({...v,[item.name]:v[item.name]===true?undefined:true}))} style={{padding:"2px 6px",borderRadius:6,border:listVerified[item.name]===true?`2px solid ${C.rG}`:`1px solid ${C.g200}`,background:listVerified[item.name]===true?"#dcfce7":C.w,fontSize:10,fontFamily:"inherit",cursor:"pointer",color:listVerified[item.name]===true?C.rG:C.g400}}>✓</button>
+<button onClick={()=>setListVerified(v=>({...v,[item.name]:v[item.name]===false?undefined:false}))} style={{padding:"2px 6px",borderRadius:6,border:listVerified[item.name]===false?`2px solid ${C.err}`:`1px solid ${C.g200}`,background:listVerified[item.name]===false?"#fef2f2":C.w,fontSize:10,fontFamily:"inherit",cursor:"pointer",color:listVerified[item.name]===false?C.err:C.g400}}>✕</button>
+</div></td>
+<td style={{padding:"6px 8px",fontWeight:700,color:C.g900}}><input value={item.name} onChange={e=>{const u={...listOut};u[listTab]=[...u[listTab]];u[listTab][i]={...u[listTab][i],name:e.target.value};setListOut(u)}} style={{border:"none",background:"transparent",fontWeight:700,fontSize:12,color:C.g900,width:"100%",outline:"none",fontFamily:"inherit"}}/></td>
+<td style={{padding:"6px 8px",color:C.g700}}><input value={item.details||""} onChange={e=>{const u={...listOut};u[listTab]=[...u[listTab]];u[listTab][i]={...u[listTab][i],details:e.target.value};setListOut(u)}} style={{border:"none",background:"transparent",fontSize:11,color:C.g700,width:"100%",outline:"none",fontFamily:"inherit"}}/></td>
+<td style={{padding:"6px 8px",color:C.g500}}><input value={item.diseases||""} onChange={e=>{const u={...listOut};u[listTab]=[...u[listTab]];u[listTab][i]={...u[listTab][i],diseases:e.target.value};setListOut(u)}} style={{border:"none",background:"transparent",fontSize:11,color:C.g500,width:"100%",outline:"none",fontFamily:"inherit"}}/></td>
+<td style={{padding:"6px 8px",color:C.g500}}><input value={item.usage||""} onChange={e=>{const u={...listOut};u[listTab]=[...u[listTab]];u[listTab][i]={...u[listTab][i],usage:e.target.value};setListOut(u)}} style={{border:"none",background:"transparent",fontSize:11,color:C.g500,width:"100%",outline:"none",fontFamily:"inherit"}}/></td>
+<td style={{padding:"6px 8px",color:C.g400}}><input value={item.notes||""} onChange={e=>{const u={...listOut};u[listTab]=[...u[listTab]];u[listTab][i]={...u[listTab][i],notes:e.target.value};setListOut(u)}} style={{border:"none",background:"transparent",fontSize:11,color:C.g400,width:"100%",outline:"none",fontFamily:"inherit"}}/></td>
+</tr>))}
+</tbody></table>
+</div>
+<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+<button onClick={()=>{
+const allItems=["medicine","procedure","product","surgery","disease_rx"].flatMap(cat=>(listOut[cat]||[]).map(item=>({...item,category:cat})));
+saveAllVerified(allItems);
+}} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 確認済みを保存</button>
+<button onClick={()=>{
+const allItems=["medicine","procedure","product","surgery","disease_rx"].flatMap(cat=>(listOut[cat]||[]).filter(item=>listVerified[item.name]!==false));
+const text=allItems.map(item=>`${item.name}\t${item.details||""}\t${item.diseases||""}\t${item.usage||""}\t${item.notes||""}`).join("\n");
+navigator.clipboard.writeText("名称\t詳細\t疾患\t用法\t備考\n"+text);
+setListMsg("📋 一覧表をコピーしました（タブ区切り・Excel貼り付け可）");
+}} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー（Excel用）</button>
+</div>
+{listSaved.length>0&&<div style={{marginTop:16,paddingTop:12,borderTop:`1px solid ${C.g200}`}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>💾 保存済み一覧（{listSaved.length}件）</span>
+<button onClick={loadClinicItems} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontFamily:"inherit",cursor:"pointer",color:C.g500}}>🔄 更新</button>
+</div>
+<div style={{maxHeight:200,overflow:"auto"}}>
+{["medicine","procedure","product","surgery","disease_rx"].map(cat=>{const items=listSaved.filter(s=>s.category===cat);if(!items.length)return null;const catLabel={"medicine":"💊 薬剤","procedure":"✨ 施術","product":"🛍 製品","surgery":"🔧 処置","disease_rx":"📖 疾患別"}[cat]||cat;return(<div key={cat} style={{marginBottom:8}}>
+<div style={{fontSize:11,fontWeight:700,color:C.pD,marginBottom:3}}>{catLabel}（{items.length}件）</div>
+<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{items.map((s,j)=>(<span key={j} style={{padding:"2px 8px",borderRadius:6,background:s.verified?C.pLL:C.g50,border:`1px solid ${s.verified?C.p+"44":C.g200}`,fontSize:10,fontWeight:600,color:s.verified?C.pD:C.g500}}>{s.verified?"✓ ":""}{s.name}</span>))}</div>
+</div>)})}
+</div>
+</div>}
 </div>}
 </div></div>);
 
@@ -1043,7 +1208,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?12:14,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.7)",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"manual",i:"📚",t:"マニュアル",f:()=>{loadCatStats();setPage("manual")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成",f:()=>{loadClinicItems();setPage("doc")}},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"manual",i:"📚",t:"マニュアル",f:()=>{loadCatStats();setPage("manual")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
@@ -1084,7 +1249,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><label style={{fontSize:13,fontWeight:700,color:C.g500}}>📝 書き起こし</label><span style={{fontSize:12,color:C.g400}}>{inp.length}文字</span></div>
 <textarea value={inp} onChange={e=>sInp(e.target.value)} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:mob?100:140,padding:mob?10:12,borderRadius:mob?10:14,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/></div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
-<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"10px 0",borderRadius:14,border:"none",background:ld?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?.45:1,boxShadow:!ld&&inp.trim()?`0 4px 12px rgba(13,148,136,.25)`:"none"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
+<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"10px 0",borderRadius:14,border:"none",background:ld?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.45:1,boxShadow:!ld&&inp.trim()?`0 4px 12px rgba(13,148,136,.25)`:"none"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
 <button onClick={()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")}} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🗑</button>
 <button onClick={undo} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35}} title="元に戻す (Ctrl+Z)">↩</button>
 <button onClick={clr} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>次へ ▶</button></div>
