@@ -7,9 +7,9 @@ async function callGemini(text, prompt) {
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
 
   const models = [
+    "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-2.5-pro",
-    "gemini-2.0-flash",
   ];
 
   let lastError = null;
