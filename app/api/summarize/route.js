@@ -7,8 +7,8 @@ async function callGemini(text, prompt) {
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
 
   const models = [
-    "gemini-2.5-flash",
     "gemini-2.5-pro",
+    "gemini-2.5-flash",
     "gemini-2.0-flash",
   ];
 
@@ -33,7 +33,8 @@ async function callGemini(text, prompt) {
 
       const data = await res.json();
       if (data.candidates?.[0]?.content?.parts) {
-        return data.candidates[0].content.parts.map(p => p.text || "").join("");
+        const summary = data.candidates[0].content.parts.map(p => p.text || "").join("");
+        return { summary, model };
       }
       lastError = `${model}: ${JSON.stringify(data?.error || data)}`;
     } catch (e) {
@@ -77,13 +78,17 @@ export async function POST(request) {
 
     const systemPrompt = prompt || DEFAULT_PROMPT;
     let summary;
+    let model = null;
     if (mode === "claude") {
       summary = await callClaude(text, systemPrompt);
+      model = "claude-sonnet";
     } else {
-      summary = await callGemini(text, systemPrompt);
+      const result = await callGemini(text, systemPrompt);
+      summary = result.summary;
+      model = result.model;
     }
 
-    return NextResponse.json({ summary });
+    return NextResponse.json({ summary, model });
   } catch (e) {
     console.error("Summarize error:", e);
     return NextResponse.json({ error: "要約エラー: " + e.message }, { status: 500 });
