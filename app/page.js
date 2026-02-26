@@ -332,6 +332,9 @@ const[manualMinText,setManualMinText]=useState("");
 const[manualMinTitle,setManualMinTitle]=useState("");
 const[manualMinMode,setManualMinMode]=useState("text");
 const[mergeLd,setMergeLd]=useState(false);
+const[openTaskId,setOpenTaskId]=useState(null);
+const[todos,setTodos]=useState([]);
+const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
@@ -426,12 +429,18 @@ sSt("ファイル読み込みエラー: "+e.message);
 }finally{setProg(0)}
 };
 const loadTasks=async()=>{if(!supabase)return;try{const{data}=await supabase.from("tasks").select("*").order("created_at",{ascending:false});if(data)setTasks(data)}catch{}};
+const loadTodos=async()=>{if(!supabase)return;try{const{data}=await supabase.from("todos").select("*").order("sort_order");if(data)setTodos(data)}catch{}};
+const generateTodosForTask=async(task)=>{if(!supabase)return;setTodoLd(true);setProg(10);try{const p="以下のタスクについて、すぐに実行できる具体的なTODOリストを生成してください。皮膚科・美容皮膚科クリニックの実務に即した内容にしてください。\nJSON配列のみ返してください。\n[{\"title\":\"TODO内容\",\"assignee\":\"\",\"due_date\":null,\"sort_order\":1}]\n\nタスク: "+task.title;setProg(30);const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:p,mode:"gemini",prompt:"JSON配列のみ返してください。"})});const d=await r.json();setProg(60);if(d.summary){let j=d.summary.replace(/```json?\s*/gi,"").replace(/```\s*/g,"").trim();const si=j.indexOf("[");const ei=j.lastIndexOf("]");if(si!==-1&&ei!==-1){j=j.substring(si,ei+1);const parsed=JSON.parse(j);if(Array.isArray(parsed)){for(let i=0;i<parsed.length;i++){await supabase.from("todos").insert({task_id:task.id,title:parsed[i].title||"",assignee:parsed[i].assignee||"",due_date:parsed[i].due_date||null,sort_order:i+1})}await loadTodos();sSt("✓ "+parsed.length+"件のTODOを生成")}}}setProg(90)}catch(e){sSt("TODO生成エラー: "+e.message)}finally{setTodoLd(false);setProg(0)}};
+const deleteTask=async(id)=>{if(!supabase)return;if(!window.confirm("このタスクを削除しますか？"))return;await supabase.from("tasks").delete().eq("id",id);await loadTasks();await loadTodos();sSt("✓ タスクを削除しました")};
+const toggleTodo=async(id,done)=>{if(!supabase)return;await supabase.from("todos").update({done:!done}).eq("id",id);loadTodos()};
+const updateTodo=async(id,field,value)=>{if(!supabase)return;await supabase.from("todos").update({[field]:value}).eq("id",id);loadTodos()};
+const deleteTodo=async(id)=>{if(!supabase)return;await supabase.from("todos").delete().eq("id",id);loadTodos()};
 const loadStaff=async()=>{if(!supabase)return;try{const{data}=await supabase.from("staff").select("*").order("name");if(data)setStaffList(data)}catch{}};
 const toggleTask=async(id,done)=>{if(!supabase)return;await supabase.from("tasks").update({done:!done}).eq("id",id);loadTasks()};
 const updateTask=async(id,field,value)=>{if(!supabase)return;await supabase.from("tasks").update({[field]:value}).eq("id",id);loadTasks()};
 const generateTasksFromMinute=async(minute)=>{
 if(!supabase||!minute.output_text)return;
-sSt("タスク生成中...");setProg(10);
+sSt("タスク生成中...");setProg(5);
 try{
 const taskPrompt=`以下の皮膚科・美容皮膚科クリニックの議事録からタスクとTODOを抽出してください。
 
@@ -446,23 +455,25 @@ const taskPrompt=`以下の皮膚科・美容皮膚科クリニックの議事�
 - 美容メニュー開発・価格設定（重要度:中）
 
 必ず以下のJSON配列のみを返してください。説明文やマークダウンは不要です。
-[{"title":"タスク名","assignee":"","due_date":null,"urgency":2,"importance":2,"category":"operations"}]
+[{"title":"タスク名","assignee":"","due_date":null,"urgency":2,"importance":2,"category":"operations","role_level":"staff"}]
 
 categoryは: operations(運営), medical(医療), hr(人事), finance(経理)
 urgency: 1=低 2=やや低 3=やや高 4=高
 importance: 1=低 2=やや低 3=やや高 4=高
+role_levelは: director(院長), manager(マネジャー), leader(リーダー), staff(スタッフ)
 
 議事録:
 `+minute.output_text;
 
-setProg(40);
+setProg(15);
+setProg(30);
 const tr=await fetch("/api/summarize",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({text:taskPrompt,mode:"gemini",prompt:"JSONの配列のみ返してください。他のテキストは一切不要です。"})
 });
 const td=await tr.json();
-setProg(70);
+setProg(55);
 
 if(td.error){sSt("タスク生成エラー: "+td.error);return}
 if(td.summary){
@@ -475,9 +486,11 @@ jsonStr=jsonStr.substring(startIdx,endIdx+1);
 }
 try{
 const parsed=JSON.parse(jsonStr);
+setProg(70);
 if(Array.isArray(parsed)&&parsed.length>0){
 let count=0;
-for(const t of parsed){
+for(let i=0;i<parsed.length;i++){
+const t=parsed[i];
 await supabase.from("tasks").insert({
 minute_id:minute.id,
 title:t.title||"未定",
@@ -485,13 +498,15 @@ assignee:t.assignee||"",
 due_date:t.due_date||null,
 urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),
 importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),
-category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations"
+category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",
+role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff"
 });
 count++;
+setProg(70+Math.floor(i/parsed.length*20));
 }
-setProg(90);
 await loadTasks();
-sSt(`✓ ${count}件のタスクを生成しました`);
+setProg(95);
+sSt("");setTimeout(()=>{const ok=window.confirm(count+"件のタスクを生成しました！\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300);
 }else{
 sSt("タスクが抽出できませんでした");
 }
@@ -505,7 +520,7 @@ console.error("Task gen error:",e);
 sSt("タスク生成エラー: "+e.message);
 }finally{setProg(0)}
 };
-const generateTasksFromSelected=async()=>{if(selMinutes.length===0)return;for(const id of selMinutes){const m=minHist.find(x=>x.id===id);if(m)await generateTasksFromMinute(m)}setSelMinutes([])};
+const generateTasksFromSelected=async()=>{if(selMinutes.length===0)return;for(const id of selMinutes){const m=minHist.find(x=>x.id===id);if(m)await generateTasksFromMinute(m)}setSelMinutes([]);sSt("");setTimeout(()=>{const ok=window.confirm("選択した議事録からタスクを生成しました！\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300)};
 const analyzeSelectedMinutes=async()=>{if(selMinutes.length===0||!supabase)return;setTaskAnalLd(true);setTaskAnalysis("");try{const selected=selMinutes.map(id=>minHist.find(x=>x.id===id)).filter(Boolean).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));const combined=selected.map(m=>`【${new Date(m.created_at).toLocaleDateString("ja-JP")} ${m.title||"無題"}】\n${m.output_text||""}`).join("\n\n---\n\n");const prompt=`以下の複数の議事録を時系列で分析してください。\n\n${combined}\n\n以下の観点で分析：\n1. 各会議の要点サマリー\n2. 時系列での進捗・変化\n3. 繰り返し出ているテーマ・課題\n4. 未解決のアクションアイテム\n5. 次回会議への提言`;const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:prompt,mode:"gemini",prompt:"時系列分析してください。"})});const d=await r.json();if(d.summary)setTaskAnalysis(d.summary);else if(d.error)setTaskAnalysis("エラー: "+d.error)}catch(e){setTaskAnalysis("エラー: "+e.message)}finally{setTaskAnalLd(false)}};
 const mergeSelectedMinutes=async()=>{
 if(!supabase||selMinutes.length<2)return;
@@ -570,7 +585,7 @@ urgency: 1=低 2=やや低 3=やや高 4=高
 importance: 1=低 2=やや低 3=やや高 4=高
 
 議事録:
-`+d.summary;const tr2=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:taskPrompt,mode:"gemini",prompt:"JSONの配列のみ返してください。他のテキストは一切不要です。"})});const td=await tr2.json();if(td.summary){let jsonStr2=td.summary;jsonStr2=jsonStr2.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const si2=jsonStr2.indexOf("[");const ei2=jsonStr2.lastIndexOf("]");if(si2!==-1&&ei2!==-1)jsonStr2=jsonStr2.substring(si2,ei2+1);try{const parsed=JSON.parse(jsonStr2);if(Array.isArray(parsed)){for(const t of parsed){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",minute_id:minData.id,done:false})}}}catch(e){console.error("minSum task parse error:",e)}}}}catch{}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
+`+d.summary;const tr2=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:taskPrompt,mode:"gemini",prompt:"JSONの配列のみ返してください。他のテキストは一切不要です。"})});const td=await tr2.json();if(td.summary){let jsonStr2=td.summary;jsonStr2=jsonStr2.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const si2=jsonStr2.indexOf("[");const ei2=jsonStr2.lastIndexOf("]");if(si2!==-1&&ei2!==-1)jsonStr2=jsonStr2.substring(si2,ei2+1);try{const parsed=JSON.parse(jsonStr2);if(Array.isArray(parsed)){for(const t of parsed){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}}}catch(e){console.error("minSum task parse error:",e)}}}}catch{}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(200);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
@@ -835,7 +850,9 @@ filteredHist.map(h=>(<div key={h.id} style={{...card,marginBottom:10,padding:16,
 </div>);
 
 // === DOC GENERATION ===
-if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
+if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+<div style={card}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📄 説明資料の作成</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>疾患名や施術名を入力すると、当院の診療履歴をAIが参照して患者向け説明資料を自動生成します。</p>
 <div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
@@ -857,9 +874,10 @@ if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padd
 
 // === MINUTES ===
 if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-{prog>0&&<div style={{width:"100%",height:4,background:"#d8ddd0",borderRadius:2,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#7ba83e,#6a9e3a)",borderRadius:2,transition:"width 0.5s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
 <div style={card}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📝 議事録まとめ</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+{st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>会議やミーティングを録音・書き起こしし、AIが議事録を自動作成します。</p>
 <input value={minTitle} onChange={e=>setMinTitle(e.target.value)} placeholder="議事録タイトル（例：2月定例ミーティング）" style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",marginBottom:12,boxSizing:"border-box"}}/>
 <textarea value={minPrompt} onChange={e=>setMinPrompt(e.target.value)} placeholder="AIへの追加指示（任意）：例「院内勉強会の形式で」「スタッフミーティング用に簡潔に」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:10,resize:"vertical",boxSizing:"border-box"}}/>
@@ -934,7 +952,9 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 </div></div>);
 
 // === COUNSELING ANALYSIS ===
-if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
+if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+<div style={card}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>🧠 カウンセリング分析</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>カウンセリング内容をAIが多角的に分析。傾聴力・ニーズ把握・提案力の改善やトークスクリプト提案、年間計画を生成します。<br/><span style={{fontSize:12,color:C.pD,fontWeight:600}}>💬 カウンセリング履歴: {csCount}件保存済み（カウンセリング室の記録を自動蓄積）</span></p>
 <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
@@ -957,14 +977,24 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 
 // === TASKS ===
 if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-{prog>0&&<div style={{width:"100%",height:4,background:"#d8ddd0",borderRadius:2,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#7ba83e,#6a9e3a)",borderRadius:2,transition:"width 0.5s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
 <h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>✅ タスク管理</h2>
 <span style={{fontSize:10,color:C.g400}}>{geminiModel||"Gemini 3 Flash"}</span>
-<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div><div style={{marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}>
-{[{k:"matrix",l:"📊 四象限マトリクス"},{k:"daily",l:"📅 日別タスク"},{k:"timeline",l:"📊 タイムライン"},{k:"staff",l:"⚙️ スタッフ管理"}].map(v=>(<button key={v.k} onClick={()=>setTaskView(v.k)} style={{padding:"4px 12px",borderRadius:8,border:taskView===v.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:taskView===v.k?C.pLL:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{v.l}</button>))}
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+{st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
+<div style={{marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}>
+{[{k:"matrix",l:"📊 四象限マトリクス",match:v=>taskView.startsWith("matrix")},{k:"daily",l:"📅 日別タスク"},{k:"timeline",l:"📊 タイムライン"},{k:"staff",l:"⚙️ スタッフ管理"}].map(v=>(<button key={v.k} onClick={()=>setTaskView(v.k)} style={{padding:"4px 12px",borderRadius:8,border:(v.match?v.match(v):taskView===v.k)?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:(v.match?v.match(v):taskView===v.k)?C.pLL:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{v.l}</button>))}
 </div>
-{taskView==="matrix"?<div>
+{taskView.startsWith("matrix")?<div>
+{(()=>{const ROLE_COLORS={director:{bg:"#fef2f2",border:"#fca5a5",text:"#dc2626",label:"👨‍⚕️ 院長"},manager:{bg:"#eff6ff",border:"#93c5fd",text:"#2563eb",label:"📊 マネジャー"},leader:{bg:"#f0fdf4",border:"#86efac",text:"#16a34a",label:"👤 リーダー"},staff:{bg:"#fffbeb",border:"#fcd34d",text:"#ca8a04",label:"🏥 スタッフ"}};
+const roleFilter=taskView.replace("matrix_","");
+const filteredTasks=taskView==="matrix"?tasks:tasks.filter(t=>(t.role_level||"staff")===roleFilter);
+return(<>
+<div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
+{Object.entries(ROLE_COLORS).map(([key,rc])=>(<button key={key} onClick={()=>setTaskView("matrix_"+key)} style={{padding:"4px 10px",borderRadius:8,border:taskView==="matrix_"+key?"2px solid "+rc.border:"1px solid #e5e7eb",background:taskView==="matrix_"+key?rc.bg:"#fff",fontSize:11,fontWeight:600,color:rc.text,fontFamily:"inherit",cursor:"pointer"}}>{rc.label}</button>))}
+<button onClick={()=>setTaskView("matrix")} style={{padding:"4px 10px",borderRadius:8,border:taskView==="matrix"?"2px solid #6b7280":"1px solid #e5e7eb",background:taskView==="matrix"?"#f3f4f6":"#fff",fontSize:11,fontWeight:600,color:"#374151",fontFamily:"inherit",cursor:"pointer"}}>📋 全体</button>
+</div>
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
 {[{label:"🔴 緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3,bg:"#fef2f2",border:"#fca5a5"},
 {label:"🟡 非緊急×重要",filter:t=>t.urgency<3&&t.importance>=3,bg:"#fffbeb",border:"#fcd34d"},
@@ -972,31 +1002,48 @@ if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?
 {label:"🟢 非緊急×非重要",filter:t=>t.urgency<3&&t.importance<3,bg:"#f0fdf4",border:"#86efac"}
 ].map((q,qi)=>(<div key={qi} style={{padding:10,borderRadius:12,border:`2px solid ${q.border}`,background:q.bg,minHeight:120}}>
 <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{q.label}</div>
-{tasks.filter(q.filter).map(t=>(<div key={t.id} style={{padding:6,borderRadius:8,background:"#fff",marginBottom:4,fontSize:11,border:"1px solid #e5e7eb"}}><div style={{display:"flex",alignItems:"center",gap:4}}>
-<input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)} style={{cursor:"pointer"}}/>
-<span style={{textDecoration:t.done?"line-through":"none",flex:1,fontWeight:600}}>{t.title}</span></div>
+{filteredTasks.filter(q.filter).map(t=>{
+const rc=ROLE_COLORS[t.role_level]||ROLE_COLORS.staff;
+const isOpen=openTaskId===t.id;
+const taskTodos=todos.filter(td=>td.task_id===t.id);
+const doneCount=taskTodos.filter(td=>td.done).length;
+return(<div key={t.id} style={{padding:6,borderRadius:8,background:"#fff",marginBottom:4,fontSize:11,border:"2px solid "+rc.border,cursor:"pointer"}} onClick={()=>setOpenTaskId(isOpen?null:t.id)}>
+<div style={{display:"flex",alignItems:"center",gap:4}}>
+<input type="checkbox" checked={t.done} onChange={e=>{e.stopPropagation();toggleTask(t.id,t.done)}} style={{cursor:"pointer"}}/>
+<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:rc.bg,color:rc.text,fontWeight:700}}>{rc.label.split(" ")[1]}</span>
+<span style={{textDecoration:t.done?"line-through":"none",flex:1,fontWeight:600}}>{t.title}</span>
+<button onClick={e=>{e.stopPropagation();deleteTask(t.id)}} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"2px"}}>✕</button>
+</div>
 <div style={{display:"flex",gap:6,marginTop:2,fontSize:10,color:"#6b7280"}}>
 <span>👤 {t.assignee||"未定"}</span>
-<span>📅 {t.due_date||"未定"}</span><span style={{padding:"0 4px",borderRadius:4,background:({operations:"#dbeafe",medical:"#dcfce7",hr:"#fef3c7",finance:"#f3e8ff"})[t.category]||"#f3f4f6",fontSize:9}}>{({operations:"運営",medical:"医療",hr:"人事",finance:"経理"})[t.category]||t.category}</span>
+<span>📅 {t.due_date||"未定"}</span>
+{taskTodos.length>0&&<span>📝 {doneCount}/{taskTodos.length}</span>}
+<span style={{fontSize:10}}>{isOpen?"▼":"▶"}</span>
 </div>
-<div style={{display:"flex",gap:4,marginTop:3}}>
+{isOpen&&<div onClick={e=>e.stopPropagation()} style={{marginTop:6,padding:6,background:"#f9fafb",borderRadius:6,border:"1px solid #e5e7eb"}}>
+<div style={{display:"flex",gap:4,marginBottom:4}}>
 <select value={t.assignee||""} onChange={e=>updateTask(t.id,"assignee",e.target.value)} style={{fontSize:9,padding:"1px 4px",borderRadius:4,border:"1px solid #d1d5db"}}>
 <option value="">担当未定</option>{staffList.map(s=>(<option key={s.id} value={s.name}>{s.name}</option>))}
 </select>
 <input type="date" value={t.due_date||""} onChange={e=>updateTask(t.id,"due_date",e.target.value)} style={{fontSize:9,padding:"1px 4px",borderRadius:4,border:"1px solid #d1d5db"}}/>
 </div>
-</div>))}
-</div>))}
-</div><div style={{marginTop:16}}>
-<h3 style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>👥 役職別表示</h3>
-{[...new Set(staffList.map(s=>s.role).filter(Boolean))].map(role=>(<div key={role} style={{marginBottom:12}}>
-<div style={{fontSize:13,fontWeight:700,color:C.pD,marginBottom:4}}>📌 {role}</div>{tasks.filter(t=>staffList.some(s=>s.name===t.assignee&&s.role===role)).map(t=>(<div key={t.id} style={{padding:4,fontSize:11,borderBottom:`1px solid ${C.g100}`,display:"flex",alignItems:"center",gap:4}}>
-<input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)}/>
-<span style={{textDecoration:t.done?"line-through":"none"}}>{t.title}</span>
-<span style={{fontSize:9,color:C.g400}}>({t.assignee})</span>
-</div>))}
+{taskTodos.length===0?<button onClick={()=>generateTodosForTask(t)} style={{padding:"4px 12px",borderRadius:6,border:"none",background:C.p,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer"}}>🔄 TODO自動生成</button>
+:<div>{taskTodos.map(td=>(<div key={td.id} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 0",borderBottom:"1px solid #f3f4f6"}}>
+<input type="checkbox" checked={td.done} onChange={()=>toggleTodo(td.id,td.done)} style={{cursor:"pointer"}}/>
+<span style={{flex:1,fontSize:11,textDecoration:td.done?"line-through":"none"}}>{td.title}</span>
+<select value={td.assignee||""} onChange={e=>updateTodo(td.id,"assignee",e.target.value)} style={{fontSize:9,padding:"1px 3px",borderRadius:3,border:"1px solid #d1d5db"}}>
+<option value="">担当</option>
+{staffList.map(s=>(<option key={s.id} value={s.name}>{s.name}</option>))}
+</select>
+<input type="date" value={td.due_date||""} onChange={e=>updateTodo(td.id,"due_date",e.target.value)} style={{fontSize:9,padding:"1px 3px",borderRadius:3,border:"1px solid #d1d5db",width:90}}/>
+<button onClick={()=>deleteTodo(td.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>✕</button>
+</div>))}</div>}
+{todoLd&&openTaskId===t.id&&<div style={{textAlign:"center",padding:8}}><span style={{fontSize:11,color:"#6b7280"}}>TODO生成中...</span></div>}
+</div>}
+</div>)})}
 </div>))}
 </div>
+</>)})()}
 </div>:taskView==="daily"?<div>
 <h3 style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>📅 日別タスク</h3>
 {(()=>{const grouped={};tasks.forEach(t=>{const m=minHist.find(x=>x.id===t.minute_id);const dateKey=m?new Date(m.created_at).toLocaleDateString("ja-JP"):"日付なし";if(!grouped[dateKey])grouped[dateKey]=[];grouped[dateKey].push(t)});return Object.entries(grouped).sort((a,b)=>b[0].localeCompare(a[0])).map(([date,tks])=>(<div key={date} style={{marginBottom:12}}>
@@ -1136,9 +1183,9 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:mob?"8px 10px":"10px 16px",background:`linear-gradient(135deg,${C.pD},${C.p})`,borderRadius:16,boxShadow:`0 4px 16px rgba(13,148,136,.15)`}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?12:14,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#86efac",fontWeight:600,background:"rgba(255,255,255,.1)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 3 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.7)",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
-{prog>0&&<div style={{width:"100%",height:4,background:"#d8ddd0",borderRadius:2,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#7ba83e,#6a9e3a)",borderRadius:2,transition:"width 0.5s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3,flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3,flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
