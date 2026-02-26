@@ -331,6 +331,7 @@ const[openMinId,setOpenMinId]=useState(null);
 const[manualMinText,setManualMinText]=useState("");
 const[manualMinTitle,setManualMinTitle]=useState("");
 const[manualMinMode,setManualMinMode]=useState("text");
+const[mergeLd,setMergeLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
@@ -506,6 +507,45 @@ sSt("タスク生成エラー: "+e.message);
 };
 const generateTasksFromSelected=async()=>{if(selMinutes.length===0)return;for(const id of selMinutes){const m=minHist.find(x=>x.id===id);if(m)await generateTasksFromMinute(m)}setSelMinutes([])};
 const analyzeSelectedMinutes=async()=>{if(selMinutes.length===0||!supabase)return;setTaskAnalLd(true);setTaskAnalysis("");try{const selected=selMinutes.map(id=>minHist.find(x=>x.id===id)).filter(Boolean).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));const combined=selected.map(m=>`【${new Date(m.created_at).toLocaleDateString("ja-JP")} ${m.title||"無題"}】\n${m.output_text||""}`).join("\n\n---\n\n");const prompt=`以下の複数の議事録を時系列で分析してください。\n\n${combined}\n\n以下の観点で分析：\n1. 各会議の要点サマリー\n2. 時系列での進捗・変化\n3. 繰り返し出ているテーマ・課題\n4. 未解決のアクションアイテム\n5. 次回会議への提言`;const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:prompt,mode:"gemini",prompt:"時系列分析してください。"})});const d=await r.json();if(d.summary)setTaskAnalysis(d.summary);else if(d.error)setTaskAnalysis("エラー: "+d.error)}catch(e){setTaskAnalysis("エラー: "+e.message)}finally{setTaskAnalLd(false)}};
+const mergeSelectedMinutes=async()=>{
+if(!supabase||selMinutes.length<2)return;
+setMergeLd(true);sSt("議事録をまとめ中...");setProg(10);
+try{
+const selected=minHist.filter(m=>selMinutes.includes(m.id)).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+const combined=selected.map(m=>`【${new Date(m.created_at).toLocaleDateString("ja-JP")} ${m.title||"無題"}】\n${m.output_text||""}`).join("\n\n---\n\n");
+const titles=selected.map(m=>m.title||"無題").join("、");
+const dates=selected.map(m=>new Date(m.created_at).toLocaleDateString("ja-JP"));
+const dateRange=dates[0]+"〜"+dates[dates.length-1];
+setProg(40);
+const r=await fetch("/api/summarize",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+text:combined,
+mode:"gemini",
+prompt:"以下の複数回分の議事録を1つの統合議事録にまとめてください。\n・各回の重要決定事項を漏れなく含める\n・重複する議題は統合する\n・時系列で整理する\n・アクションアイテムは担当者付きでまとめる\n・未解決事項は明記する\n皮膚科・美容皮膚科クリニックの経営・運営の観点で重要事項を優先してください。"
+})
+});
+const d=await r.json();
+setProg(80);
+if(d.error){sSt("まとめエラー: "+d.error);return}
+if(d.summary){
+const sourceIds=selected.map(m=>m.id);
+const mergedTitle="【まとめ】"+dateRange+" "+titles;
+await supabase.from("minutes").insert({
+title:mergedTitle,
+input_text:JSON.stringify({merged_from:sourceIds,source_titles:selected.map(m=>({id:m.id,title:m.title||"無題",date:new Date(m.created_at).toLocaleDateString("ja-JP")}))}),
+output_text:d.summary
+});
+if(d.model)setGeminiModel(d.model);
+await loadMinHist();
+setSelMinutes([]);
+sSt("✓ 議事録をまとめました");
+}
+}catch(e){
+sSt("まとめエラー: "+e.message);
+}finally{setMergeLd(false);setProg(0)}
+};
 const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);setProg(10);
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
@@ -868,16 +908,21 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
 {selMinutes.length>0&&<><button onClick={generateTasksFromSelected} style={{padding:"4px 10px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 選択({selMinutes.length})からタスク生成</button>
 <button onClick={analyzeSelectedMinutes} disabled={taskAnalLd} style={{padding:"4px 10px",borderRadius:8,border:"none",background:taskAnalLd?C.g200:`linear-gradient(135deg,#7c3aed,#a78bfa)`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{taskAnalLd?"⏳ 分析中...":"📊 時系列分析"}</button>
+{selMinutes.length>=2&&<button onClick={mergeSelectedMinutes} disabled={mergeLd} style={{padding:"4px 12px",borderRadius:8,border:"none",background:mergeLd?C.g200:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:C.w,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>{mergeLd?"⏳ まとめ中...":"🔗 選択分をまとめる("+selMinutes.length+"件)"}</button>}
 <button onClick={()=>setSelMinutes([])} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button></>}
 <button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🔄 更新</button></div></div>
+{mergeLd&&<div style={{textAlign:"center",padding:16}}><div style={{width:28,height:28,border:"3px solid #e5e7eb",borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:"#6b7280",fontSize:12}}>AIが議事録をまとめ中...</span></div>}
 {minHist.map(m=>{const sel=selMinutes.includes(m.id);return(<div key={m.id} style={{padding:10,borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,marginBottom:6,background:sel?C.pLL:C.g50}}>
 <div onClick={()=>setOpenMinId(openMinId===m.id?null:m.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,cursor:"pointer"}}>
 <div style={{display:"flex",alignItems:"center",gap:6}}>
 <input type="checkbox" checked={sel} onChange={(e)=>{e.stopPropagation();setSelMinutes(prev=>prev.includes(m.id)?prev.filter(x=>x!==m.id):[...prev,m.id])}} style={{cursor:"pointer",accentColor:C.p}}/>
-<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{m.title||"無題"}</span>
+{(m.title||"").startsWith("【まとめ】")&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#ede9fe",color:"#7c3aed",fontWeight:700,marginRight:2}}>統合</span>}<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{m.title||"無題"}</span>
 <span style={{fontSize:10,color:C.g400}}>{openMinId===m.id?"▼":"▶"}</span></div>
 <span style={{fontSize:10,color:C.g400}}>{new Date(m.created_at).toLocaleDateString("ja-JP")}</span></div>
-{openMinId===m.id?<div style={{marginBottom:4}}><div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button><button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button></div>:<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>}
+{openMinId===m.id?<div style={{marginBottom:4}}>{(()=>{try{const src=JSON.parse(m.input_text);if(src&&src.source_titles){return(<div style={{padding:6,borderRadius:6,background:"#f5f3ff",border:"1px solid #c4b5fd",marginBottom:6,fontSize:11}}>
+<span style={{fontWeight:700,color:"#7c3aed"}}>📎 まとめ元:</span>
+{src.source_titles.map((s,i)=>(<span key={i} style={{marginLeft:4,padding:"1px 6px",borderRadius:4,background:"#ede9fe",color:"#6d28d9"}}>{s.date} {s.title}</span>))}
+</div>)}}catch{}return null})()}<div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button><button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button></div>:<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>}
 </div>)})}
 {taskAnalysis&&<div style={{marginTop:12,padding:12,borderRadius:12,border:`2px solid #a78bfa`,background:"#f5f3ff"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
