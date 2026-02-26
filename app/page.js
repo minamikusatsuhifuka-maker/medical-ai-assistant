@@ -535,7 +535,7 @@ const renderPipSnippets=()=>{const d=pipRef.current;if(!d)return;const c=d.getEl
 renderPipSnippets();
 const renderPipShortcuts=()=>{const d=pipRef.current;if(!d)return;const c=d.getElementById("pip-shortcuts");if(!c)return;
 const topSCs=shortcuts.filter(s=>s.showOnTop&&s.enabled);
-let html="";topSCs.forEach(sc=>{html+=`<button data-sc-id="${sc.id}" style="padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#a0c96a;font-size:8px;font-weight:600;cursor:pointer">${sc.label.split(" ")[0]} ${sc.key}</button>`});
+let html="";topSCs.forEach(sc=>{html+=`<button data-sc-id="${sc.id}" style="padding:1px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#a0c96a;font-size:8px;font-weight:600;cursor:pointer" title="${sc.label}">${sc.label.replace(/^[^\s]+\s/,"")} <span style="background:rgba(255,255,255,.2);padding:0 3px;border-radius:3px;font-size:7px">${sc.key}</span></button>`});
 c.innerHTML=html;
 c.querySelectorAll("button").forEach(b=>{b.onclick=()=>{const id=b.getAttribute("data-sc-id");
 const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:()=>{stopSum()},clear:()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")},next:()=>{clr();const d2=pipRef.current;if(d2){const pi=d2.getElementById("pip-pid");if(pi)pi.value=""}},copy:()=>{if(iR.current)navigator.clipboard.writeText(iR.current)},pip:()=>{closePip()},doc:()=>setPage("doc"),counsel:()=>setPage("counsel"),undo:()=>undo(),room1:()=>sRid("r1"),room2:()=>sRid("r2"),room3:()=>sRid("r3"),room4:()=>sRid("r4"),room5:()=>sRid("r5"),room6:()=>sRid("r6"),room7:()=>sRid("r7")};
@@ -738,7 +738,7 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 {shortcuts.map((sc,i)=>(<div key={sc.id} style={{display:"flex",gap:6,alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${C.g100}`}}>
 <button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],showOnTop:!u[i].showOnTop};setShortcuts(u)}} style={{padding:"2px 5px",borderRadius:6,border:sc.showOnTop?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sc.showOnTop?C.pLL:C.w,fontSize:9,color:sc.showOnTop?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>{sc.showOnTop?"⭐":"☆"}</button>
 <span style={{width:mob?100:140,fontSize:12,fontWeight:600,color:C.g700,flexShrink:0}}>{sc.label}</span>
-<input value={sc.key} onChange={e=>{const u=[...shortcuts];u[i]={...u[i],key:e.target.value};setShortcuts(u)}} style={{width:80,padding:"3px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"monospace",fontWeight:700,color:C.pD,background:C.w,textAlign:"center",outline:"none"}}/>
+<input value={sc.key} readOnly onKeyDown={e=>{e.preventDefault();let k="";if(e.ctrlKey)k+="Ctrl+";if(e.altKey)k+="Alt+";if(e.shiftKey)k+="Shift+";if(e.metaKey)k+="Cmd+";const key=e.key;if(!["Control","Alt","Shift","Meta"].includes(key)){k+=key.length===1?key.toUpperCase():key;const u=[...shortcuts];u[i]={...u[i],key:k};setShortcuts(u)}}} style={{width:80,padding:"3px 8px",borderRadius:8,border:`1.5px solid ${C.p}`,fontSize:12,fontFamily:"monospace",fontWeight:700,color:C.pD,background:C.pLL,textAlign:"center",outline:"none",cursor:"pointer"}} placeholder="キーを押す"/>
 <button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],enabled:!u[i].enabled};setShortcuts(u)}} style={{padding:"3px 10px",borderRadius:6,border:"none",background:sc.enabled?C.rG:C.g200,color:sc.enabled?C.w:C.g500,fontSize:10,fontWeight:700,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>{sc.enabled?"ON":"OFF"}</button>
 </div>))}
 </div>
@@ -828,7 +828,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:()=>sum(),clear:()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")},next:()=>clr(),copy:()=>{if(out)cp(out)},pip:()=>{pipActive?closePip():openPip()},doc:()=>setPage("doc"),counsel:()=>setPage("counsel"),undo:()=>undo(),room1:()=>sRid("r1"),room2:()=>sRid("r2"),room3:()=>sRid("r3"),room4:()=>sRid("r4"),room5:()=>sRid("r5"),room6:()=>sRid("r6"),room7:()=>sRid("r7")};
 const fn=actions[sc.id];if(fn)fn();
 }} style={{padding:"3px 8px",borderRadius:8,border:`1px solid ${C.p}55`,background:C.w,fontSize:mob?10:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-<span>{sc.label.split(" ")[0]}</span>
+<span style={{fontSize:9,color:C.g500}}>{sc.label.replace(/^[^\s]+\s/,"")}</span>
 <span style={{fontSize:9,padding:"1px 4px",borderRadius:4,background:C.pD,color:C.w,fontFamily:"monospace",fontWeight:700}}>{sc.key}</span>
 </button>))}
 </div>}
