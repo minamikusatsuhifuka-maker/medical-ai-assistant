@@ -10,7 +10,7 @@ return{isMobile:w<640,isTablet:w>=640&&w<1024,w};
 }
 
 // === COLOR THEME (Mint) ===
-const C={p:"#7ba83e",pD:"#567d2a",pDD:"#3d5a1e",pL:"#d4e8b8",pLL:"#f3f9ea",acc:"#a0c96a",w:"#fff",g50:"#fafbf8",g100:"#f0f3ec",g200:"#d8ddd0",g300:"#b8c0ad",g400:"#7a846e",g500:"#555e4a",g700:"#333b28",g900:"#1a1f14",rG:"#6a9e3a",warn:"#e6a817",err:"#d94f4f"};
+const C={p:"#14b8a6",pD:"#0d9488",pDD:"#115e59",pL:"#5eead4",pLL:"#ccfbf1",w:"#ffffff",g50:"#f8fafc",g100:"#f1f5f9",g200:"#e2e8f0",g300:"#cbd5e1",g400:"#94a3b8",g500:"#64748b",g600:"#475569",g700:"#334155",g800:"#1e293b",g900:"#0f172a",err:"#f43f5e",warn:"#f59e0b",rG:"#10b981",pLL2:"#f0fdfa"};
 
 // === TEMPLATES ===
 const T=[
@@ -213,8 +213,8 @@ export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
 const btn=(bg,color,extra)=>({padding:mob?"6px 12px":"8px 18px",borderRadius:mob?10:14,border:"none",background:bg,color,fontSize:mob?12:14,fontWeight:600,fontFamily:"inherit",cursor:"pointer",WebkitTapHighlightColor:"transparent",...extra});
 const ib={padding:mob?"7px 10px":"8px 12px",borderRadius:mob?10:12,border:`1.5px solid ${C.g200}`,fontSize:mob?14:13,fontFamily:"inherit",outline:"none",background:C.w,color:C.g900,transition:"border-color 0.2s",WebkitAppearance:"none"};
-const card={background:C.w,borderRadius:mob?14:20,padding:mob?"14px":"20px",boxShadow:"0 2px 16px rgba(13,148,136,.08)"};
-const rb={width:mob?60:70,height:mob?60:70,borderRadius:"50%",border:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,fontFamily:"inherit",fontWeight:700,fontSize:mob?9:10,cursor:"pointer",WebkitTapHighlightColor:"transparent"};
+const card={borderRadius:20,border:"1px solid #e2e8f0",padding:mob?14:20,background:"#ffffff",marginBottom:mob?12:16,boxShadow:"0 1px 3px rgba(0,0,0,.04)"};
+const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("r1");
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState("");
@@ -774,7 +774,7 @@ const titleRow=()=>(<div style={{display:"flex",alignItems:"center",gap:8}}>{log
 
 // === SHORTCUTS PAGE ===
 if(page==="shortcuts")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:mob?16:18,fontWeight:700,color:C.pDD,margin:0}}>⌨️ ショートカット一覧</h2><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:mob?16:18,fontWeight:700,color:"#115e59",margin:0}}>⌨️ ショートカット一覧</h2><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:mob?12:13,color:C.g500,marginBottom:16}}>キーボードショートカットで素早く操作できます。⭐マークのショートカットはトップ画面に表示されます。</p>
 <div style={{display:"flex",flexDirection:"column",gap:6}}>
 {shortcuts.map((sc,i)=>(<div key={sc.id} style={{display:"flex",alignItems:"center",gap:8,padding:mob?"8px 10px":"10px 14px",borderRadius:12,background:sc.enabled?C.g50:"#fafafa",border:`1px solid ${sc.enabled?C.g200:"#eee"}`,opacity:sc.enabled?1:0.5}}>
@@ -798,7 +798,7 @@ if(page==="shortcuts")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto
 // === ROOM SELECT ===
 // === HELP PAGE ===
 if(page==="help")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📖 使い方ガイド</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>📖 使い方ガイド</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <div style={{fontSize:14,color:C.g700,lineHeight:2}}>
 <h3 style={{color:C.pD,fontSize:15}}>1. 部屋を選択</h3>
 <p>トップ画面で診察室・処置室などを選択します。部屋情報は履歴に保存されます。</p>
@@ -820,7 +820,7 @@ if(page==="help")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",pad
 
 // === ABOUT PAGE ===
 if(page==="about")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>ℹ️ 機能紹介</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>ℹ️ 機能紹介</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <div style={{fontSize:14,color:C.g700,lineHeight:2}}>
 <h3 style={{color:C.pD}}>🎙 リアルタイム音声書き起こし</h3><p>OpenAI Whisper APIによる高精度な日本語音声認識。5秒間隔で自動書き起こし。</p>
 <h3 style={{color:C.pD}}>🤖 AI要約</h3><p>Gemini 2.5 Flashでカルテ形式に自動要約。複数疾患の自動分離にも対応。</p>
@@ -834,7 +834,7 @@ if(page==="about")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",pa
 // === HISTORY ===
 if(page==="hist")return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-<h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📂 診療履歴</h2>
+<h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>📂 診療履歴</h2>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 患者名・ID・内容で検索..." style={{...ib,width:"100%",marginBottom:12,padding:"10px 14px",boxSizing:"border-box"}}/>
 {filteredHist.length===0?<p style={{color:C.g400,textAlign:"center",padding:40}}>該当する履歴がありません</p>:
@@ -854,9 +854,9 @@ filteredHist.map(h=>(<div key={h.id} style={{...card,marginBottom:10,padding:16,
 
 // === DOC GENERATION ===
 if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📄 説明資料の作成</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>📄 説明資料の作成</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>疾患名や施術名を入力すると、当院の診療履歴をAIが参照して患者向け説明資料を自動生成します。</p>
 <div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
 <input value={docDisease} onChange={e=>setDocDisease(e.target.value)} placeholder="疾患名・施術名を入力（例：アトピー性皮膚炎、ポテンツァ）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
@@ -877,9 +877,9 @@ if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padd
 
 // === MINUTES ===
 if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📝 議事録まとめ</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}><h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>📝 議事録まとめ</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>会議やミーティングを録音・書き起こしし、AIが議事録を自動作成します。</p>
 <input value={minTitle} onChange={e=>setMinTitle(e.target.value)} placeholder="議事録タイトル（例：2月定例ミーティング）" style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",marginBottom:12,boxSizing:"border-box"}}/>
@@ -924,7 +924,7 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {manualMinText&&<div style={{fontSize:11,color:C.g400,marginBottom:6}}>{manualMinText.length}文字</div>}
 <button onClick={saveManualMinute} disabled={!manualMinText.trim()} style={{padding:"8px 20px",borderRadius:10,border:"none",background:manualMinText.trim()?C.p:C.g200,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:manualMinText.trim()?"pointer":"default",opacity:manualMinText.trim()?1:0.5}}>💾 登録する</button>
 </div>
-{prog>0&&<div style={{width:"100%",height:8,background:"#e5e7eb",borderRadius:4,marginBottom:10,overflow:"hidden",border:"1px solid #d1d5db"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:4,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 {prog>0&&<div style={{textAlign:"center",fontSize:11,color:"#6b7280",marginBottom:8}}>{st}</div>}
 <div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴</span>
@@ -958,9 +958,9 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 
 // === COUNSELING ANALYSIS ===
 if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>🧠 カウンセリング分析</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>🧠 カウンセリング分析</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>カウンセリング内容をAIが多角的に分析。傾聴力・ニーズ把握・提案力の改善やトークスクリプト提案、年間計画を生成します。<br/><span style={{fontSize:12,color:C.pD,fontWeight:600}}>💬 カウンセリング履歴: {csCount}件保存済み（カウンセリング室の記録を自動蓄積）</span></p>
 <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
 {[{k:"full",l:"📊 総合分析"},{k:"listening",l:"👂 傾聴・共感"},{k:"needs",l:"🎯 ニーズ把握"},{k:"marketing",l:"💡 マーケティング"},{k:"plan",l:"📅 年間計画"}].map(m=>(<button key={m.k} onClick={()=>setCsMode(m.k)} style={{padding:"5px 12px",borderRadius:10,border:csMode===m.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:csMode===m.k?C.pLL:C.w,fontSize:12,fontWeight:csMode===m.k?700:500,color:csMode===m.k?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{m.l}</button>))}
@@ -982,9 +982,9 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 
 // === TASKS ===
 if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-<h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>✅ タスク管理</h2>
+<h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>✅ タスク管理</h2>
 <span style={{fontSize:10,color:C.g400}}>{geminiModel||"Gemini 3 Flash"}</span>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
@@ -1108,7 +1108,7 @@ return(<div key={t.id} style={{padding:6,borderRadius:8,background:"#fff",margin
 // === SETTINGS ===
 if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-<h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>⚙️ 設定</h2>
+<h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>⚙️ 設定</h2>
 <div style={{display:"flex",gap:8,alignItems:"center"}}>
 {savedMsg&&<span style={{fontSize:12,color:C.rG,fontWeight:600}}>{savedMsg}</span>}
 <button onClick={()=>{try{localStorage.setItem("mk_logo",logoUrl);localStorage.setItem("mk_logoSize",String(logoSize));localStorage.setItem("mk_dict",JSON.stringify(dict));localStorage.setItem("mk_snippets",JSON.stringify(snippets));localStorage.setItem("mk_pipSnippets",JSON.stringify(pipSnippets));localStorage.setItem("mk_audioSave",audioSave?"1":"0");localStorage.setItem("mk_dictEnabled",dictEnabled?"1":"0");localStorage.setItem("mk_shortcuts",JSON.stringify(shortcuts));setSavedMsg("✓ 保存しました");setTimeout(()=>setSavedMsg(""),3000)}catch(e){setSavedMsg("保存エラー")}}} style={{padding:"8px 20px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:`0 2px 8px rgba(0,0,0,.1)`}}>💾 保存</button>
@@ -1205,12 +1205,12 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 
 // === MAIN ===
 return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-<header style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:mob?"8px 10px":"10px 16px",background:`linear-gradient(135deg,${C.pD},${C.p})`,borderRadius:16,boxShadow:`0 4px 16px rgba(13,148,136,.15)`}}>
-<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?12:14,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>
+<header style={{background:"linear-gradient(135deg,#0f766e,#14b8a6)",padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:mob?0:"0 0 24px 24px",boxShadow:"0 2px 12px rgba(20,184,166,.15)"}}>
+<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:C.w,letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#86efac",fontWeight:600,background:"rgba(255,255,255,.1)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 3 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.7)",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
-{prog>0&&<div style={{width:"100%",height:6,background:"#e5e7eb",borderRadius:3,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:3,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"4px 7px":"5px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:C.pD,display:"flex",alignItems:"center",gap:3,flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e2e8f0",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#0d9488",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 2px rgba(0,0,0,.03)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
 <span style={{fontSize:12,color:C.g500,flexShrink:0}}>🎤</span>
@@ -1223,8 +1223,8 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <input value={pName} onChange={e=>sPName(e.target.value)} placeholder="👤 患者名" style={{...ib,flex:1}}/>
 <input value={pId} onChange={e=>sPId(e.target.value)} placeholder="🔢 患者ID" style={{...ib,width:120}}/>
 </div>
-<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{T.map(t=>(<button key={t.id} onClick={()=>sTid(t.id)} style={{padding:mob?"4px 10px":"5px 12px",borderRadius:20,fontSize:mob?11:12,fontFamily:"inherit",cursor:"pointer",border:tid===t.id?`2px solid ${C.p}`:"2px solid transparent",background:tid===t.id?C.pLL:C.g100,fontWeight:tid===t.id?700:500,color:tid===t.id?C.pD:C.g500,transition:"all 0.15s"}}>{t.name}</button>))}</div>
-{shortcuts.some(s=>s.showOnTop&&s.enabled)&&<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",padding:"6px 10px",borderRadius:12,background:C.pLL,border:`1px solid ${C.p}22`}}>
+<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{T.map(t=>(<button key={t.id} onClick={()=>sTid(t.id)} style={{padding:mob?"6px 14px":"7px 16px",borderRadius:24,fontSize:mob?11:12,fontFamily:"inherit",cursor:"pointer",border:tid===t.id?"2px solid #14b8a6":"2px solid transparent",background:tid===t.id?"#ccfbf1":"#f1f5f9",fontWeight:tid===t.id?700:500,color:tid===t.id?"#115e59":"#64748b",transition:"all 0.15s"}}>{t.name}</button>))}</div>
+{shortcuts.some(s=>s.showOnTop&&s.enabled)&&<div style={{display:"flex",gap:4,marginBottom:10,flexWrap:mob?"nowrap":"wrap",padding:"8px 12px",borderRadius:14,background:"#f0fdfa",border:"1px solid #ccfbf1",overflowX:mob?"auto":"visible"}}>
 <span style={{fontSize:10,color:C.pD,fontWeight:600,alignSelf:"center",marginRight:4}}>⌨️</span>
 {shortcuts.filter(s=>s.showOnTop&&s.enabled).map(sc=>(<button key={sc.id} onClick={()=>{
 const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:()=>sum(),clear:()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")},next:()=>clr(),copy:()=>{if(out)cp(out)},pip:()=>{pipActive?closePip():openPip()},doc:()=>setPage("doc"),counsel:()=>setPage("counsel"),undo:()=>undo(),room1:()=>sRid("r1"),room2:()=>sRid("r2"),room3:()=>sRid("r3"),room4:()=>sRid("r4"),room5:()=>sRid("r5"),room6:()=>sRid("r6"),room7:()=>sRid("r7")};
@@ -1235,7 +1235,7 @@ const fn=actions[sc.id];if(fn)fn();
 </button>))}
 </div>}
 <div style={{...card,position:"relative"}}>
-<button onClick={pipActive?closePip:openPip} style={{position:"absolute",top:16,right:16,width:50,height:50,borderRadius:"50%",border:"none",background:pipActive?C.rG:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,boxShadow:pipActive?`0 0 0 3px rgba(34,197,94,.3)`:`0 2px 8px rgba(13,148,136,.25)`}}>
+<button onClick={pipActive?closePip:openPip} style={{position:"absolute",top:16,right:16,width:48,height:48,borderRadius:"50%",border:"none",background:pipActive?"#10b981":"linear-gradient(135deg,#0d9488,#14b8a6)",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,boxShadow:pipActive?"0 0 0 3px rgba(16,185,129,.25)":"0 2px 10px rgba(20,184,166,.2)",transition:"all 0.2s"}}>
 <span style={{fontSize:18}}>🌟</span><span style={{fontSize:9}}>{pipActive?"OFF":"小窓"}</span></button>
 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:16}}>
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
@@ -1249,13 +1249,13 @@ const fn=actions[sc.id];if(fn)fn();
 {rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
 </div>
 <div style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><label style={{fontSize:13,fontWeight:700,color:C.g500}}>📝 書き起こし</label><span style={{fontSize:12,color:C.g400}}>{inp.length}文字</span></div>
-<textarea value={inp} onChange={e=>sInp(e.target.value)} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:mob?100:140,padding:mob?10:12,borderRadius:mob?10:14,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/></div>
+<textarea value={inp} onChange={e=>sInp(e.target.value)} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:mob?100:140,padding:mob?12:14,borderRadius:16,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:14,color:"#1e293b",fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box",transition:"border-color 0.2s",outline:"none"}}/></div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
-<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"10px 0",borderRadius:14,border:"none",background:ld?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?.45:1,boxShadow:!ld&&inp.trim()?`0 4px 12px rgba(13,148,136,.25)`:"none",minWidth:80,whiteSpace:"nowrap"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
+<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"12px 0",borderRadius:16,border:"none",background:ld?"#e2e8f0":"linear-gradient(135deg,#0d9488,#14b8a6)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 14px rgba(20,184,166,.2)":"none",transition:"all 0.2s",minWidth:80,whiteSpace:"nowrap"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
 <button onClick={()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")}} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap"}}>🗑</button>
 <button onClick={undo} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35,minWidth:44,whiteSpace:"nowrap"}} title="元に戻す (Ctrl+Z)">↩</button>
 <button onClick={clr} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer",minWidth:80,whiteSpace:"nowrap"}}>次へ ▶</button></div>
-{out&&<div style={{borderRadius:14,border:`2px solid ${C.pL}`,padding:16,background:`linear-gradient(135deg,${C.pLL},#f0fdf4)`}}>
+{out&&<div style={{borderRadius:20,border:"1.5px solid #5eead4",padding:mob?14:20,background:"linear-gradient(135deg,#f0fdfa,#ecfdf5)"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:13,fontWeight:700,color:C.pD}}>{ct.name} 要約結果</span><button onClick={()=>cp(out)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 <textarea value={out} onChange={e=>sOut(e.target.value)} style={{width:"100%",height:mob?140:180,padding:mob?10:12,borderRadius:mob?10:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/>
 {snippets.length>0&&<div style={{marginTop:8}}>
