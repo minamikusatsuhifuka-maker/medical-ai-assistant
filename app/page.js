@@ -333,6 +333,9 @@ const[manualMinTitle,setManualMinTitle]=useState("");
 const[manualMinMode,setManualMinMode]=useState("text");
 const[mergeLd,setMergeLd]=useState(false);
 const[openTaskId,setOpenTaskId]=useState(null);
+const[selRoles,setSelRoles]=useState(["director","manager","leader","staff"]);
+const[matrixHistOpen,setMatrixHistOpen]=useState(true);
+const[selMatrixDate,setSelMatrixDate]=useState(null);
 const[todos,setTodos]=useState([]);
 const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
@@ -921,6 +924,8 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {manualMinText&&<div style={{fontSize:11,color:C.g400,marginBottom:6}}>{manualMinText.length}文字</div>}
 <button onClick={saveManualMinute} disabled={!manualMinText.trim()} style={{padding:"8px 20px",borderRadius:10,border:"none",background:manualMinText.trim()?C.p:C.g200,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:manualMinText.trim()?"pointer":"default",opacity:manualMinText.trim()?1:0.5}}>💾 登録する</button>
 </div>
+{prog>0&&<div style={{width:"100%",height:8,background:"#e5e7eb",borderRadius:4,marginBottom:10,overflow:"hidden",border:"1px solid #d1d5db"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#0d9488,#22c55e)",borderRadius:4,transition:"width 0.3s ease"}}/></div>}
+{prog>0&&<div style={{textAlign:"center",fontSize:11,color:"#6b7280",marginBottom:8}}>{st}</div>}
 <div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴</span>
 <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
@@ -988,12 +993,32 @@ if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?
 </div>
 {taskView.startsWith("matrix")?<div>
 {(()=>{const ROLE_COLORS={director:{bg:"#fef2f2",border:"#fca5a5",text:"#dc2626",label:"👨‍⚕️ 院長"},manager:{bg:"#eff6ff",border:"#93c5fd",text:"#2563eb",label:"📊 マネジャー"},leader:{bg:"#f0fdf4",border:"#86efac",text:"#16a34a",label:"👤 リーダー"},staff:{bg:"#fffbeb",border:"#fcd34d",text:"#ca8a04",label:"🏥 スタッフ"}};
-const roleFilter=taskView.replace("matrix_","");
-const filteredTasks=taskView==="matrix"?tasks:tasks.filter(t=>(t.role_level||"staff")===roleFilter);
 return(<>
-<div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
-{Object.entries(ROLE_COLORS).map(([key,rc])=>(<button key={key} onClick={()=>setTaskView("matrix_"+key)} style={{padding:"4px 10px",borderRadius:8,border:taskView==="matrix_"+key?"2px solid "+rc.border:"1px solid #e5e7eb",background:taskView==="matrix_"+key?rc.bg:"#fff",fontSize:11,fontWeight:600,color:rc.text,fontFamily:"inherit",cursor:"pointer"}}>{rc.label}</button>))}
-<button onClick={()=>setTaskView("matrix")} style={{padding:"4px 10px",borderRadius:8,border:taskView==="matrix"?"2px solid #6b7280":"1px solid #e5e7eb",background:taskView==="matrix"?"#f3f4f6":"#fff",fontSize:11,fontWeight:600,color:"#374151",fontFamily:"inherit",cursor:"pointer"}}>📋 全体</button>
+<div style={{marginBottom:12,padding:10,borderRadius:10,border:"1px solid #e5e7eb",background:"#f9fafb"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,cursor:"pointer"}} onClick={()=>setMatrixHistOpen(!matrixHistOpen)}>
+<span style={{fontSize:13,fontWeight:700,color:"#1f2937"}}>📅 タスク生成履歴</span>
+<span style={{fontSize:11,color:"#9ca3af"}}>{matrixHistOpen?"▼":"▶"}</span>
+</div>
+{matrixHistOpen&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
+{selMatrixDate&&<button onClick={()=>setSelMatrixDate(null)} style={{padding:"3px 10px",borderRadius:6,border:"2px solid #6b7280",background:"#f3f4f6",fontSize:11,fontWeight:700,color:"#374151",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-start",marginBottom:4}}>🔄 全タスク表示に戻す</button>}
+{[...new Set(tasks.map(t=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP"):"手動作成"}).filter(Boolean))].sort().reverse().map(date=>{
+const dateTasks=tasks.filter(t=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===date:date==="手動作成"});
+const doneCount=dateTasks.filter(t=>t.done).length;
+const minTitle2=minHist.find(h=>{const d=new Date(h.created_at).toLocaleDateString("ja-JP");return d===date});
+return(<div key={date} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:6,border:selMatrixDate===date?"2px solid #0d9488":"1px solid #e5e7eb",background:selMatrixDate===date?"#f0fdfa":"#fff",cursor:"pointer"}} onClick={()=>setSelMatrixDate(selMatrixDate===date?null:date)}>
+<span style={{fontSize:12,fontWeight:600,color:"#0d9488",flex:1}}>📅 {date} {minTitle2?" - "+minTitle2.title:""}</span>
+<span style={{fontSize:10,color:"#6b7280"}}>{doneCount}/{dateTasks.length}完了</span>
+<button onClick={e=>{e.stopPropagation();if(window.confirm(date+"のタスク("+dateTasks.length+"件)を全て削除しますか？")){dateTasks.forEach(t=>supabase.from("tasks").delete().eq("id",t.id));setTimeout(()=>{loadTasks();loadTodos()},500)}}} style={{fontSize:9,color:"#ef4444",background:"none",border:"1px solid #fca5a5",borderRadius:4,padding:"1px 6px",cursor:"pointer"}}>🗑 削除</button>
+</div>)})}
+</div>}
+</div>
+<div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+<span style={{fontSize:12,fontWeight:700,color:"#374151"}}>役職:</span>
+{Object.entries(ROLE_COLORS).map(([key,rc])=>(<label key={key} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:6,border:selRoles.includes(key)?"2px solid "+rc.border:"1px solid #e5e7eb",background:selRoles.includes(key)?rc.bg:"#fff",fontSize:11,fontWeight:600,color:rc.text,cursor:"pointer"}}>
+<input type="checkbox" checked={selRoles.includes(key)} onChange={()=>setSelRoles(p=>p.includes(key)?p.filter(r=>r!==key):[...p,key])} style={{cursor:"pointer"}}/>
+{rc.label}
+</label>))}
+<button onClick={()=>setSelRoles(["director","manager","leader","staff"])} style={{padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#fff",fontSize:10,color:"#6b7280",cursor:"pointer",fontFamily:"inherit"}}>全選択</button>
 </div>
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
 {[{label:"🔴 緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3,bg:"#fef2f2",border:"#fca5a5"},
@@ -1002,7 +1027,7 @@ return(<>
 {label:"🟢 非緊急×非重要",filter:t=>t.urgency<3&&t.importance<3,bg:"#f0fdf4",border:"#86efac"}
 ].map((q,qi)=>(<div key={qi} style={{padding:10,borderRadius:12,border:`2px solid ${q.border}`,background:q.bg,minHeight:120}}>
 <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{q.label}</div>
-{filteredTasks.filter(q.filter).map(t=>{
+{tasks.filter(t=>q.filter(t)&&selRoles.includes(t.role_level||"staff")&&(!selMatrixDate||(()=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===selMatrixDate:selMatrixDate==="手動作成"})())).map(t=>{
 const rc=ROLE_COLORS[t.role_level]||ROLE_COLORS.staff;
 const isOpen=openTaskId===t.id;
 const taskTodos=todos.filter(td=>td.task_id===t.id);
