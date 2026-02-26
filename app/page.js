@@ -12,6 +12,113 @@ return{isMobile:w<640,isTablet:w>=640&&w<1024,w};
 // === COLOR THEME (Mint) ===
 const C={p:"#14b8a6",pD:"#0d9488",pDD:"#115e59",pL:"#5eead4",pLL:"#ccfbf1",w:"#ffffff",g50:"#f8fafc",g100:"#f1f5f9",g200:"#e2e8f0",g300:"#cbd5e1",g400:"#94a3b8",g500:"#64748b",g600:"#475569",g700:"#334155",g800:"#1e293b",g900:"#0f172a",err:"#f43f5e",warn:"#f59e0b",rG:"#10b981",pLL2:"#f0fdfa"};
 
+const exportToExcel=async(tasks,todos,minHist,title)=>{
+const XLSX=await import("xlsx");
+const wb=XLSX.utils.book_new();
+const quadrants=[
+{name:"緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3},
+{name:"非緊急×重要",filter:t=>t.urgency<3&&t.importance>=3},
+{name:"緊急×非重要",filter:t=>t.urgency>=3&&t.importance<3},
+{name:"非緊急×非重要",filter:t=>t.urgency<3&&t.importance<3}
+];
+const roleLabels={director:"院長",manager:"マネジャー",leader:"リーダー",staff:"スタッフ"};
+const catLabels={operations:"運営",medical:"医療",hr:"人事",finance:"経理"};
+const allData=[];
+quadrants.forEach(q=>{
+const filtered=tasks.filter(q.filter);
+filtered.forEach(t=>{
+const taskTodos=todos.filter(td=>td.task_id===t.id);
+const m=minHist.find(h=>h.id===t.minute_id);
+allData.push({象限:q.name,タスク:t.title,役職:roleLabels[t.role_level]||"スタッフ",カテゴリ:catLabels[t.category]||t.category,担当:t.assignee||"未定",期限:t.due_date||"未定",完了:t.done?"✓":"",TODO数:taskTodos.length,TODO完了:taskTodos.filter(td=>td.done).length,議事録日:m?new Date(m.created_at).toLocaleDateString("ja-JP"):""});
+if(taskTodos.length>0){taskTodos.forEach(td=>{allData.push({象限:"",タスク:"  → "+td.title,役職:"",カテゴリ:"",担当:td.assignee||"",期限:td.due_date||"",完了:td.done?"✓":"",TODO数:"",TODO完了:"",議事録日:""})})}
+})});
+const ws=XLSX.utils.json_to_sheet(allData);
+ws["!cols"]=[{wch:14},{wch:40},{wch:12},{wch:8},{wch:10},{wch:12},{wch:4},{wch:6},{wch:6},{wch:12}];
+XLSX.utils.book_append_sheet(wb,ws,"四象限マトリクス");
+quadrants.forEach(q=>{
+const filtered=tasks.filter(q.filter);
+if(filtered.length>0){
+const data=filtered.map(t=>({タスク:t.title,役職:roleLabels[t.role_level]||"スタッフ",カテゴリ:catLabels[t.category]||t.category,担当:t.assignee||"未定",期限:t.due_date||"未定",完了:t.done?"✓":""}));
+const s=XLSX.utils.json_to_sheet(data);
+s["!cols"]=[{wch:40},{wch:12},{wch:8},{wch:10},{wch:12},{wch:4}];
+XLSX.utils.book_append_sheet(wb,s,q.name);
+}});
+XLSX.writeFile(wb,(title||"四象限マトリクス")+".xlsx");
+};
+
+const exportToPDF=async(tasks,todos,minHist,title)=>{
+const{default:jsPDF}=await import("jspdf");
+await import("jspdf-autotable");
+const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+const roleLabels={director:"院長",manager:"マネジャー",leader:"リーダー",staff:"スタッフ"};
+const catLabels={operations:"運営",medical:"医療",hr:"人事",finance:"経理"};
+doc.setFont("helvetica","bold");
+doc.setFontSize(16);
+doc.text(title||"Task Matrix",14,15);
+doc.setFontSize(10);
+doc.setFont("helvetica","normal");
+doc.text(new Date().toLocaleDateString("ja-JP"),14,22);
+const quadrants=[
+{name:"Urgent x Important",filter:t=>t.urgency>=3&&t.importance>=3},
+{name:"Not Urgent x Important",filter:t=>t.urgency<3&&t.importance>=3},
+{name:"Urgent x Not Important",filter:t=>t.urgency>=3&&t.importance<3},
+{name:"Not Urgent x Not Important",filter:t=>t.urgency<3&&t.importance<3}
+];
+let yPos=28;
+quadrants.forEach(q=>{
+const filtered=tasks.filter(q.filter);
+if(filtered.length===0)return;
+if(yPos>170){doc.addPage();yPos=15}
+doc.setFont("helvetica","bold");
+doc.setFontSize(12);
+doc.text(q.name+" ("+filtered.length+")",14,yPos);
+yPos+=4;
+const rows=filtered.map(t=>{
+const taskTodos=todos.filter(td=>td.task_id===t.id);
+const doneCount=taskTodos.filter(td=>td.done).length;
+return[t.title,roleLabels[t.role_level]||"Staff",catLabels[t.category]||t.category,t.assignee||"-",t.due_date||"-",t.done?"Done":"",doneCount+"/"+taskTodos.length]});
+doc.autoTable({startY:yPos,head:[["Task","Role","Category","Assignee","Due","Status","TODOs"]],body:rows,styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[13,148,136]},margin:{left:14,right:14}});
+yPos=doc.lastAutoTable.finalY+8;
+});
+doc.save((title||"task_matrix")+".pdf");
+};
+
+const exportToWord=async(tasks,todos,minHist,title)=>{
+const roleLabels={director:"院長",manager:"マネジャー",leader:"リーダー",staff:"スタッフ"};
+const catLabels={operations:"運営",medical:"医療",hr:"人事",finance:"経理"};
+const quadrants=[
+{name:"🔴 緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3,color:"#fecaca"},
+{name:"🟡 非緊急×重要",filter:t=>t.urgency<3&&t.importance>=3,color:"#fef08a"},
+{name:"🟠 緊急×非重要",filter:t=>t.urgency>=3&&t.importance<3,color:"#fed7aa"},
+{name:"🟢 非緊急×非重要",filter:t=>t.urgency<3&&t.importance<3,color:"#bbf7d0"}
+];
+let html='<html><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px}h1{color:#115e59}h2{color:#0d9488;border-bottom:2px solid #14b8a6;padding-bottom:4px}table{border-collapse:collapse;width:100%;margin-bottom:20px}th,td{border:1px solid #e2e8f0;padding:6px 10px;font-size:12px;text-align:left}th{background:#f0fdfa;font-weight:bold;color:#115e59}.done{text-decoration:line-through;color:#94a3b8}.todo{color:#475569;padding-left:20px;font-size:11px}</style></head><body>';
+html+="<h1>"+(title||"四象限マトリクス")+"</h1>";
+html+="<p>"+new Date().toLocaleDateString("ja-JP")+" 作成</p>";
+quadrants.forEach(q=>{
+const filtered=tasks.filter(q.filter);
+if(filtered.length===0)return;
+html+='<h2 style="background:'+q.color+';padding:6px 12px;border-radius:6px">'+q.name+" ("+filtered.length+"件)</h2>";
+html+="<table><tr><th>タスク</th><th>役職</th><th>カテゴリ</th><th>担当</th><th>期限</th><th>状態</th></tr>";
+filtered.forEach(t=>{
+const cls=t.done?' class="done"':"";
+html+="<tr"+cls+"><td>"+t.title+"</td><td>"+(roleLabels[t.role_level]||"スタッフ")+"</td><td>"+(catLabels[t.category]||t.category)+"</td><td>"+(t.assignee||"未定")+"</td><td>"+(t.due_date||"未定")+"</td><td>"+(t.done?"✓完了":"未完了")+"</td></tr>";
+const taskTodos=todos.filter(td=>td.task_id===t.id);
+taskTodos.forEach(td=>{
+html+='<tr class="todo"><td colspan="4" style="padding-left:30px">'+(td.done?"✓ ":"☐ ")+td.title+"</td><td>"+(td.assignee||"")+"</td><td>"+(td.due_date||"")+"</td></tr>";
+})});
+html+="</table>";
+});
+html+="</body></html>";
+const blob=new Blob([html],{type:"application/msword;charset=utf-8"});
+const url=URL.createObjectURL(blob);
+const a=document.createElement("a");
+a.href=url;
+a.download=(title||"四象限マトリクス")+".doc";
+a.click();
+URL.revokeObjectURL(url);
+};
+
 // === TEMPLATES ===
 const T=[
 {id:"soap",name:"📋 ASOP",prompt:`あなたは皮膚科専門の医療秘書です。以下の書き起こしテキストをカルテ形式で要約してください。
@@ -985,6 +1092,11 @@ if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?
 {prog>0&&<div style={{width:"100%",height:5,background:"#e2e8f0",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#14b8a6,#10b981)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
 <h2 style={{fontSize:18,fontWeight:700,color:"#115e59",margin:0}}>✅ タスク管理</h2>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>{const et=selMatrixDate?tasks.filter(t=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===selMatrixDate:selMatrixDate==="手動作成"}):tasks;exportToExcel(et,todos,minHist,selMatrixDate?"タスク_"+selMatrixDate:"四象限マトリクス");sSt("✓ Excelを出力しました")}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:10,fontWeight:600,color:"#16a34a",fontFamily:"inherit",cursor:"pointer"}}>📊 Excel</button>
+<button onClick={()=>{const et=selMatrixDate?tasks.filter(t=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===selMatrixDate:selMatrixDate==="手動作成"}):tasks;exportToPDF(et,todos,minHist,selMatrixDate?"Tasks_"+selMatrixDate:"Task_Matrix");sSt("✓ PDFを出力しました")}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:10,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>📕 PDF</button>
+<button onClick={()=>{const et=selMatrixDate?tasks.filter(t=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===selMatrixDate:selMatrixDate==="手動作成"}):tasks;exportToWord(et,todos,minHist,selMatrixDate?"タスク_"+selMatrixDate:"四象限マトリクス");sSt("✓ Wordを出力しました")}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:10,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>📝 Word</button>
+</div>
 <span style={{fontSize:10,color:C.g400}}>{geminiModel||"Gemini 3 Flash"}</span>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
