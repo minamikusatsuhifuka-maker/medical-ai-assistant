@@ -323,7 +323,10 @@ const[minTitle,setMinTitle]=useState("");
 const[minHist,setMinHist]=useState([]);
 const[tasks,setTasks]=useState([]);
 const[staffList,setStaffList]=useState([]);
-const[taskPage,setTaskPage]=useState(false);
+const[selMinutes,setSelMinutes]=useState([]);
+const[taskView,setTaskView]=useState("matrix");
+const[taskAnalysis,setTaskAnalysis]=useState("");
+const[taskAnalLd,setTaskAnalLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
@@ -379,6 +382,9 @@ const loadTasks=async()=>{if(!supabase)return;try{const{data}=await supabase.fro
 const loadStaff=async()=>{if(!supabase)return;try{const{data}=await supabase.from("staff").select("*").order("name");if(data)setStaffList(data)}catch{}};
 const toggleTask=async(id,done)=>{if(!supabase)return;await supabase.from("tasks").update({done:!done}).eq("id",id);loadTasks()};
 const updateTask=async(id,field,value)=>{if(!supabase)return;await supabase.from("tasks").update({[field]:value}).eq("id",id);loadTasks()};
+const generateTasksFromMinute=async(minute)=>{if(!supabase||!minute?.output_text)return;setProg(10);try{const taskPrompt="以下の議事録からタスクとTODOを抽出し、JSON配列で返してください。各タスクは{title,assignee,due_date,urgency(1-4),importance(1-4),category}の形式で。categoryはoperations(運営),medical(医療),hr(人事),finance(経理)のいずれか。urgencyとimportanceは1=低,4=高。\n\n"+minute.output_text;setProg(40);const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:taskPrompt,mode:"gemini",prompt:"JSONのみ返してください。説明不要。"})});const d=await r.json();setProg(80);if(d.summary){try{const parsed=JSON.parse(d.summary.replace(/```json?|```/g,"").trim());if(Array.isArray(parsed)){for(const t of parsed){await supabase.from("tasks").insert({title:t.title||"",assignee:t.assignee||"",due_date:t.due_date||null,urgency:t.urgency||2,importance:t.importance||2,category:t.category||"operations",minute_id:minute.id,done:false})}}}catch{}}loadTasks()}catch{}finally{setProg(0)}};
+const generateTasksFromSelected=async()=>{if(selMinutes.length===0)return;for(const id of selMinutes){const m=minHist.find(x=>x.id===id);if(m)await generateTasksFromMinute(m)}setSelMinutes([])};
+const analyzeSelectedMinutes=async()=>{if(selMinutes.length===0||!supabase)return;setTaskAnalLd(true);setTaskAnalysis("");try{const selected=selMinutes.map(id=>minHist.find(x=>x.id===id)).filter(Boolean).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));const combined=selected.map(m=>`【${new Date(m.created_at).toLocaleDateString("ja-JP")} ${m.title||"無題"}】\n${m.output_text||""}`).join("\n\n---\n\n");const prompt=`以下の複数の議事録を時系列で分析してください。\n\n${combined}\n\n以下の観点で分析：\n1. 各会議の要点サマリー\n2. 時系列での進捗・変化\n3. 繰り返し出ているテーマ・課題\n4. 未解決のアクションアイテム\n5. 次回会議への提言`;const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:prompt,mode:"gemini",prompt:"時系列分析してください。"})});const d=await r.json();if(d.summary)setTaskAnalysis(d.summary);else if(d.error)setTaskAnalysis("エラー: "+d.error)}catch(e){setTaskAnalysis("エラー: "+e.message)}finally{setTaskAnalLd(false)}};
 const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);setProg(10);
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
@@ -697,10 +703,29 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={()=>{navigator.clipboard.writeText(minOut)}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 <textarea value={minOut} onChange={e=>setMinOut(e.target.value)} style={{width:"100%",height:300,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
 </div>}
-<div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴</span><button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🔄 更新</button></div>{minHist.map(m=>(<div key={m.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,marginBottom:6,background:C.g50}}>
-<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:700,color:C.pD}}>{m.title||"無題"}</span><span style={{fontSize:10,color:C.g400}}>{new Date(m.created_at).toLocaleDateString("ja-JP")}</span></div>
-<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden"}}>{(m.output_text||"").substring(0,100)}...</div>
-</div>))}</div>
+<div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+<span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴</span>
+<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+{selMinutes.length>0&&<><button onClick={generateTasksFromSelected} style={{padding:"4px 10px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 選択({selMinutes.length})からタスク生成</button>
+<button onClick={analyzeSelectedMinutes} disabled={taskAnalLd} style={{padding:"4px 10px",borderRadius:8,border:"none",background:taskAnalLd?C.g200:`linear-gradient(135deg,#7c3aed,#a78bfa)`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{taskAnalLd?"⏳ 分析中...":"📊 時系列分析"}</button>
+<button onClick={()=>setSelMinutes([])} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button></>}
+<button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🔄 更新</button></div></div>
+{minHist.map(m=>{const sel=selMinutes.includes(m.id);return(<div key={m.id} style={{padding:10,borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,marginBottom:6,background:sel?C.pLL:C.g50}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+<div style={{display:"flex",alignItems:"center",gap:6}}>
+<input type="checkbox" checked={sel} onChange={()=>setSelMinutes(prev=>prev.includes(m.id)?prev.filter(x=>x!==m.id):[...prev,m.id])} style={{cursor:"pointer",accentColor:C.p}}/>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{m.title||"無題"}</span></div>
+<span style={{fontSize:10,color:C.g400}}>{new Date(m.created_at).toLocaleDateString("ja-JP")}</span></div>
+<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>
+<button onClick={()=>generateTasksFromMinute(m)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button>
+</div>)})}
+{taskAnalysis&&<div style={{marginTop:12,padding:12,borderRadius:12,border:`2px solid #a78bfa`,background:"#f5f3ff"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:700,color:"#7c3aed"}}>📊 時系列分析結果</span>
+<button onClick={()=>navigator.clipboard.writeText(taskAnalysis)} style={{padding:"3px 10px",borderRadius:8,border:`1px solid #a78bfa`,background:C.w,fontSize:11,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
+<div style={{fontSize:13,color:C.g700,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{taskAnalysis}</div>
+</div>}
+</div>
 </div></div>);
 
 // === COUNSELING ANALYSIS ===
@@ -731,9 +756,9 @@ if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?
 <h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>✅ タスク管理</h2>
 <span style={{fontSize:10,color:C.g400}}>{geminiModel||"Gemini 3 Flash"}</span>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div><div style={{marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}>
-<button onClick={()=>setTaskPage(false)} style={{padding:"4px 12px",borderRadius:8,border:!taskPage?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:!taskPage?C.pLL:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📊 四象限マトリクス</button><button onClick={()=>setTaskPage(true)} style={{padding:"4px 12px",borderRadius:8,border:taskPage?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:taskPage?C.pLL:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>⚙️ スタッフ管理</button>
+{[{k:"matrix",l:"📊 四象限マトリクス"},{k:"daily",l:"📅 日別タスク"},{k:"timeline",l:"📊 タイムライン"},{k:"staff",l:"⚙️ スタッフ管理"}].map(v=>(<button key={v.k} onClick={()=>setTaskView(v.k)} style={{padding:"4px 12px",borderRadius:8,border:taskView===v.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:taskView===v.k?C.pLL:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{v.l}</button>))}
 </div>
-{!taskPage?<div>
+{taskView==="matrix"?<div>
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
 {[{label:"🔴 緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3,bg:"#fef2f2",border:"#fca5a5"},
 {label:"🟡 非緊急×重要",filter:t=>t.urgency<3&&t.importance>=3,bg:"#fffbeb",border:"#fcd34d"},
@@ -766,6 +791,30 @@ if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?
 </div>))}
 </div>))}
 </div>
+</div>:taskView==="daily"?<div>
+<h3 style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>📅 日別タスク</h3>
+{(()=>{const grouped={};tasks.forEach(t=>{const m=minHist.find(x=>x.id===t.minute_id);const dateKey=m?new Date(m.created_at).toLocaleDateString("ja-JP"):"日付なし";if(!grouped[dateKey])grouped[dateKey]=[];grouped[dateKey].push(t)});return Object.entries(grouped).sort((a,b)=>b[0].localeCompare(a[0])).map(([date,tks])=>(<div key={date} style={{marginBottom:12}}>
+<div style={{fontSize:13,fontWeight:700,color:C.pD,marginBottom:6,padding:"4px 10px",borderRadius:8,background:C.pLL,display:"inline-block"}}>📅 {date}（{tks.length}件）</div>
+{tks.map(t=>(<div key={t.id} style={{padding:6,borderRadius:8,background:C.w,marginBottom:4,fontSize:11,border:`1px solid ${C.g200}`}}>
+<div style={{display:"flex",alignItems:"center",gap:4}}>
+<input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)} style={{cursor:"pointer"}}/>
+<span style={{textDecoration:t.done?"line-through":"none",flex:1,fontWeight:600}}>{t.title}</span>
+<span style={{fontSize:9,color:C.g400}}>👤 {t.assignee||"未定"}</span></div>
+</div>))}
+</div>))})()}
+</div>:taskView==="timeline"?<div>
+<h3 style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>📊 タイムライン</h3>
+{(()=>{const sorted=[...tasks].sort((a,b)=>{if(!a.due_date&&!b.due_date)return 0;if(!a.due_date)return 1;if(!b.due_date)return -1;return a.due_date.localeCompare(b.due_date)});const today=new Date().toISOString().split("T")[0];return sorted.map(t=>{const overdue=t.due_date&&t.due_date<today&&!t.done;const done=t.done;return(<div key={t.id} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:8}}>
+<div style={{width:3,minHeight:40,borderRadius:2,background:done?"#22c55e":overdue?"#ef4444":C.g200,flexShrink:0,marginTop:4}}/>
+<div style={{flex:1,padding:8,borderRadius:10,border:`1px solid ${done?"#bbf7d0":overdue?"#fecaca":C.g200}`,background:done?"#f0fdf4":overdue?"#fef2f2":C.w}}>
+<div style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
+<input type="checkbox" checked={t.done} onChange={()=>toggleTask(t.id,t.done)} style={{cursor:"pointer"}}/>
+<span style={{fontSize:12,fontWeight:600,textDecoration:done?"line-through":"none",color:done?C.g400:C.g700}}>{t.title}</span></div>
+<div style={{display:"flex",gap:8,fontSize:10,color:C.g400}}>
+<span>👤 {t.assignee||"未定"}</span>
+<span style={{color:overdue?"#ef4444":C.g400,fontWeight:overdue?700:400}}>📅 {t.due_date||"期限なし"}{overdue?" ⚠️ 期限超過":""}</span>
+<span style={{padding:"0 4px",borderRadius:4,background:({operations:"#dbeafe",medical:"#dcfce7",hr:"#fef3c7",finance:"#f3e8ff"})[t.category]||"#f3f4f6",fontSize:9}}>{({operations:"運営",medical:"医療",hr:"人事",finance:"経理"})[t.category]||t.category}</span>
+</div></div></div>)})})()}
 </div>:<div>
 <h3 style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>👥 スタッフ登録</h3>
 <div style={{display:"flex",gap:6,marginBottom:12}}>
