@@ -31,7 +31,30 @@ export async function POST(request) {
     }
 
     const data = await res.json();
-    return NextResponse.json({ text: data.text || "" });
+    const transcribedText = data.text || "";
+    const HALLUCINATION_PATTERNS = [
+      /ご視聴ありがとうございました/,
+      /ご覧いただ/,
+      /最後までご視聴/,
+      /チャンネル登録/,
+      /高評価/,
+      /グッドボタン/,
+      /良い1日を/,
+      /本日はご覧/,
+      /ご清聴ありがとう/,
+      /お疲れ様でした/,
+      /それではまた/,
+      /バイバイ/,
+      /See you/i,
+      /Thank you for watching/i,
+      /Thanks for watching/i,
+      /Please subscribe/i,
+      /ぶひろ/,
+      /びらん.*ありがとう/,
+      /いただれ/,
+    ];
+    const filteredText = HALLUCINATION_PATTERNS.some(p => p.test(transcribedText)) ? "" : transcribedText;
+    return NextResponse.json({ text: filteredText });
   } catch (e) {
     console.error("Transcribe error:", e);
     return NextResponse.json({ error: "サーバーエラー" }, { status: 500 });
