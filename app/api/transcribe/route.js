@@ -113,8 +113,34 @@ export async function POST(request) {
       /お知らせがあります/,
       /字幕.*設定/,
       /翻訳.*字幕/,
+      /視聴.*ありがとう/,
+      /ご覧.*ありがとう/,
+      /ありがとうございました$/,
+      /お願いします$/,
+      /登録/,
+      /びらん/,
+      /ビラン/,
+      /本当にありがとう/,
+      /最後まで/,
+      /次回も/,
+      /また会いましょう/,
+      /お楽しみに/,
+      /よろしくお願い/,
+      /お元気で/,
+      /さようなら/,
+      /おやすみなさい/,
+      /こんにちは[。、！]?$/,
+      /どうもありがとう/,
     ];
-    const filteredText = HALLUCINATION_PATTERNS.some(p => p.test(transcribedText)) ? "" : transcribedText;
+    let filteredText = HALLUCINATION_PATTERNS.some(p => p.test(transcribedText)) ? "" : transcribedText;
+    // 短すぎるテキスト（5文字以下）もフィルタ
+    if(filteredText.length <= 5) filteredText = "";
+    // 同じ短いフレーズが繰り返される場合もフィルタ（Whisperの幻聴パターン）
+    const words = filteredText.split(/[。、\s]+/).filter(w => w.length > 0);
+    if(words.length >= 3) {
+      const unique = new Set(words);
+      if(unique.size <= Math.ceil(words.length * 0.3)) filteredText = "";
+    }
     return NextResponse.json({ text: filteredText });
   } catch (e) {
     console.error("Transcribe error:", e);
