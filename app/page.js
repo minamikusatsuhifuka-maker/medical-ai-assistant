@@ -328,7 +328,7 @@ const card={borderRadius:20,border:"1px solid #e7e5e4",padding:mob?14:20,backgro
 const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap"),[rid,sRid]=useState("r1");
-const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState("");
+const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
@@ -961,7 +961,14 @@ filteredHist.map(h=>(<div key={h.id} style={{...card,marginBottom:10,padding:16,
 <button onClick={()=>{sInp(h.input_text);sOut(h.output_text);sPName(h.patient_name||"");sPId(h.patient_id||"");setPage("main")}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontFamily:"inherit",cursor:"pointer"}}>📂 開く</button>
 <button onClick={()=>cp(h.output_text)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
 <button onClick={()=>delRecord(h.id)} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:C.w,fontSize:11,fontFamily:"inherit",cursor:"pointer",color:C.err}}>🗑</button></div></div>
-<div style={{fontSize:13,color:C.g700,lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:80,overflow:"hidden"}}>{h.output_text}</div></div>))}
+<div style={{display:"flex",gap:4,marginBottom:4}}>
+<button onClick={()=>setHistTab(p=>({...p,[h.id]:"summary"}))} style={{padding:"2px 8px",borderRadius:6,border:(histTab[h.id]||"summary")==="summary"?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:(histTab[h.id]||"summary")==="summary"?C.pLL:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 要約</button>
+<button onClick={()=>setHistTab(p=>({...p,[h.id]:"transcript"}))} style={{padding:"2px 8px",borderRadius:6,border:histTab[h.id]==="transcript"?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:histTab[h.id]==="transcript"?C.pLL:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🎙 書き起こし</button>
+<button onClick={()=>{const text=(histTab[h.id]||"summary")==="summary"?h.output_text:h.input_text;if(text)navigator.clipboard.writeText(text);sSt("コピーしました ✓")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginLeft:"auto"}}>📋 コピー</button></div>
+{(histTab[h.id]||"summary")==="summary"
+?<div style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",lineHeight:1.6,maxHeight:80,overflow:"hidden"}}>{h.output_text||"要約なし"}</div>
+:<div style={{fontSize:13,color:C.g600,whiteSpace:"pre-wrap",lineHeight:1.6,background:C.g50,padding:10,borderRadius:10,maxHeight:80,overflow:"hidden"}}>{h.input_text||"書き起こしデータなし"}</div>
+}</div>))}
 </div>);
 
 // === DOC GENERATION ===
