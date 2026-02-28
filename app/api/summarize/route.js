@@ -8,9 +8,9 @@ async function callGemini(text, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
   const models = [
-    "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-2.5-pro",
+    "gemini-2.0-flash",
   ];
   let lastError = null;
   for (const model of models) {
@@ -34,6 +34,12 @@ async function callGemini(text, prompt) {
       if (data.candidates?.[0]?.content?.parts) {
         const summary = data.candidates[0].content.parts.map(p => p.text || "").join("");
         if (summary.trim()) {
+          // 入力の10%未満の長さなら不完全と判断して次のモデルへ
+          if (summary.trim().length < Math.min(text.length * 0.1, 30)) {
+            console.log("Response too short, trying next model:", model, "len:", summary.length);
+            lastError = `${model}: response too short (${summary.length} chars)`;
+            continue;
+          }
           return { summary, model };
         }
         lastError = `${model}: empty response`;
