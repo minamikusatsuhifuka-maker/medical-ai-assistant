@@ -881,7 +881,7 @@ pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;s
 }catch(e){console.error("PiP error:",e);sSt("小窓を開けませんでした")}
 },[rid,pId,pipSnippets,snippets,shortcuts]);
 const closePip=useCallback(()=>{if(pipWin){pipWin.close()}pipRef.current=null;setPipWin(null);setPipActive(false)},[pipWin]);
-startRef.current=go;stopRef.current=stop;sumRef.current=sum;clrRef.current=clr;undoFnRef.current=undo;pipFnRef.current=openPip;
+startRef.current=go;stopRef.current=stop;sumRef.current=sum;clrRef.current=clr;undoFnRef.current=undo;pipFnRef.current=pipActive?closePip:openPip;
 
 // Helpers
 const fmD=(d)=>{const dt=new Date(d);return `${dt.getMonth()+1}/${dt.getDate()} ${dt.getHours()}:${String(dt.getMinutes()).padStart(2,"0")}`};
