@@ -880,7 +880,7 @@ const btnLoop=setInterval(()=>{if(!pipRef.current){clearInterval(btnLoop);return
 pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;setPipWin(null);setPipActive(false)});
 }catch(e){console.error("PiP error:",e);sSt("小窓を開けませんでした")}
 },[rid,pId,pipSnippets,snippets,shortcuts]);
-const closePip=useCallback(()=>{if(pipWin){pipWin.close()}pipRef.current=null;setPipWin(null);setPipActive(false)},[pipWin]);
+const closePip=useCallback(()=>{try{if(window.documentPictureInPicture&&window.documentPictureInPicture.window){window.documentPictureInPicture.window.close()}}catch(e){console.error("closePip:",e)}pipRef.current=null;setPipWin(null);setPipActive(false)},[]);
 startRef.current=go;stopRef.current=stop;sumRef.current=sum;clrRef.current=clr;undoFnRef.current=undo;pipFnRef.current=pipActive?closePip:openPip;
 
 // Helpers
