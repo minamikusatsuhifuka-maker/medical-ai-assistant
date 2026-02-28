@@ -25,7 +25,7 @@ async function callGemini(text, prompt) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ parts: [{ text }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192, topP: 0.95 },
         }),
       });
 
@@ -62,7 +62,7 @@ async function streamGemini(text, prompt) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ parts: [{ text }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192, topP: 0.95 },
         }),
       });
 
