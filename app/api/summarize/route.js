@@ -18,7 +18,7 @@ async function callGemini(text, prompt) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ parts: [{ text }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+          generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
         }),
       });
       if (!res.ok) {
@@ -27,7 +27,36 @@ async function callGemini(text, prompt) {
       }
       const data = await res.json();
       if (data.candidates?.[0]?.content?.parts) {
-        const summary = data.candidates[0].content.parts.map(p => p.text || "").join("");
+        const candidate = data.candidates[0];
+        const finishReason = candidate.finishReason;
+        let summary = candidate.content.parts.map(p => p.text || "").join("");
+
+        // MAX_TOKENSで切れた場合、続きを取得
+        if(finishReason === "MAX_TOKENS") {
+          try {
+            const contRes = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: prompt }] },
+                contents: [
+                  { role: "user", parts: [{ text }] },
+                  { role: "model", parts: [{ text: summary }] },
+                  { role: "user", parts: [{ text: "続きを出力してください。途中で切らずに最後まで完成させてください。" }] }
+                ],
+                generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+              }),
+            });
+            if(contRes.ok) {
+              const contData = await contRes.json();
+              if(contData.candidates?.[0]?.content?.parts) {
+                summary += contData.candidates[0].content.parts.map(p => p.text || "").join("");
+              }
+            }
+          } catch(e) {
+            console.error("Continue fetch error:", e);
+          }
+        }
         return { summary, model };
       }
       lastError = `${model}: ${JSON.stringify(data?.error || data)}`;
@@ -58,6 +87,7 @@ async function callClaude(text, prompt) {
   if (data.content?.[0]?.text) return data.content[0].text;
   throw new Error("Claude応答エラー: " + JSON.stringify(data));
 }
+export const maxDuration = 30;
 export async function POST(request) {
   try {
     const { text, mode, prompt } = await request.json();
