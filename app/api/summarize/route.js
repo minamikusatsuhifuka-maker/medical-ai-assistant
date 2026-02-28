@@ -4,22 +4,17 @@ import { NextResponse } from "next/server";
 
 const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書です。以下の音声書き起こしテキストを簡潔に要約してください。`;
 
-function getModels(textLength) {
-  if (textLength <= 500) {
-    return ["gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"];
-  } else if (textLength <= 3000) {
-    return ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.0-flash-lite"];
-  } else {
-    return ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
-  }
-}
+const models = [
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+];
 
 async function callGemini(text, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
 
-  const models = getModels(text.length);
-
+  
   let lastError = null;
   for (const model of models) {
     try {
@@ -56,8 +51,7 @@ async function streamGemini(text, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
 
-  const models = getModels(text.length);
-
+  
   let lastError = null;
   for (const model of models) {
     try {
