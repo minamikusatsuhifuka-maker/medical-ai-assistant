@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
+
+export const maxDuration = 30;
+
 const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書です。以下の音声書き起こしテキストを簡潔に要約してください。`;
+
 async function callGemini(text, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
@@ -16,7 +20,8 @@ async function callGemini(text, prompt) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt + "\n\n---\n\n以下が書き起こしテキストです:\n\n" + text }] }],
+          system_instruction: { parts: [{ text: prompt }] },
+          contents: [{ parts: [{ text }] }],
           generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
         }),
       });
@@ -25,46 +30,23 @@ async function callGemini(text, prompt) {
         continue;
       }
       const data = await res.json();
-      console.log("Gemini response:", model, "finishReason:", data.candidates?.[0]?.finishReason, "parts:", data.candidates?.[0]?.content?.parts?.length, "textLength:", data.candidates?.[0]?.content?.parts?.map(p => (p.text || "").length).join(","));
+      console.log("Gemini response:", model, "status:", res.status, "finishReason:", data.candidates?.[0]?.finishReason, "textLen:", data.candidates?.[0]?.content?.parts?.map(p => (p.text || "").length));
       if (data.candidates?.[0]?.content?.parts) {
-        const candidate = data.candidates[0];
-        const finishReason = candidate.finishReason;
-        let summary = candidate.content.parts.map(p => p.text || "").join("");
-
-        // MAX_TOKENSで切れた場合、続きを取得
-        if(finishReason === "MAX_TOKENS") {
-          try {
-            const contRes = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [
-                  { role: "user", parts: [{ text: prompt + "\n\n---\n\n以下が書き起こしテキストです:\n\n" + text }] },
-                  { role: "model", parts: [{ text: summary }] },
-                  { role: "user", parts: [{ text: "続きを出力してください。途中で切らずに最後まで完成させてください。" }] }
-                ],
-                generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-              }),
-            });
-            if(contRes.ok) {
-              const contData = await contRes.json();
-              if(contData.candidates?.[0]?.content?.parts) {
-                summary += contData.candidates[0].content.parts.map(p => p.text || "").join("");
-              }
-            }
-          } catch(e) {
-            console.error("Continue fetch error:", e);
-          }
+        const summary = data.candidates[0].content.parts.map(p => p.text || "").join("");
+        if (summary.trim()) {
+          return { summary, model };
         }
-        return { summary, model };
+        lastError = `${model}: empty response`;
+      } else {
+        lastError = `${model}: ${JSON.stringify(data?.error || data)}`;
       }
-      lastError = `${model}: ${JSON.stringify(data?.error || data)}`;
     } catch (e) {
       lastError = `${model}: ${e.message}`;
     }
   }
   throw new Error("Gemini全モデル失敗: " + lastError);
 }
+
 async function callClaude(text, prompt) {
   const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) throw new Error("CLAUDE_API_KEY が設定されていません");
@@ -86,7 +68,7 @@ async function callClaude(text, prompt) {
   if (data.content?.[0]?.text) return data.content[0].text;
   throw new Error("Claude応答エラー: " + JSON.stringify(data));
 }
-export const maxDuration = 30;
+
 export async function POST(request) {
   try {
     const { text, mode, prompt } = await request.json();
