@@ -16,8 +16,7 @@ async function callGemini(text, prompt) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: prompt }] },
-          contents: [{ parts: [{ text }] }],
+          contents: [{ parts: [{ text: prompt + "\n\n---\n\n以下が書き起こしテキストです:\n\n" + text }] }],
           generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
         }),
       });
@@ -26,6 +25,7 @@ async function callGemini(text, prompt) {
         continue;
       }
       const data = await res.json();
+      console.log("Gemini response:", model, "finishReason:", data.candidates?.[0]?.finishReason, "parts:", data.candidates?.[0]?.content?.parts?.length, "textLength:", data.candidates?.[0]?.content?.parts?.map(p => (p.text || "").length).join(","));
       if (data.candidates?.[0]?.content?.parts) {
         const candidate = data.candidates[0];
         const finishReason = candidate.finishReason;
@@ -38,9 +38,8 @@ async function callGemini(text, prompt) {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                system_instruction: { parts: [{ text: prompt }] },
                 contents: [
-                  { role: "user", parts: [{ text }] },
+                  { role: "user", parts: [{ text: prompt + "\n\n---\n\n以下が書き起こしテキストです:\n\n" + text }] },
                   { role: "model", parts: [{ text: summary }] },
                   { role: "user", parts: [{ text: "続きを出力してください。途中で切らずに最後まで完成させてください。" }] }
                 ],
