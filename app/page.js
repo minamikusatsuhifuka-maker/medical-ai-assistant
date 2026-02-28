@@ -915,26 +915,126 @@ if(page==="shortcuts")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto
 
 // === ROOM SELECT ===
 // === HELP PAGE ===
-if(page==="help")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#3f6212",margin:0}}>📖 使い方ガイド</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
-<div style={{fontSize:14,color:C.g700,lineHeight:2}}>
-<h3 style={{color:C.pD,fontSize:15}}>1. 部屋を選択</h3>
-<p>トップ画面で診察室・処置室などを選択します。部屋情報は履歴に保存されます。</p>
-<h3 style={{color:C.pD,fontSize:15}}>2. 患者情報を入力</h3>
-<p>患者名・患者IDを入力欄に記入します。履歴検索に使えます。</p>
-<h3 style={{color:C.pD,fontSize:15}}>3. テンプレートを選択</h3>
-<p>ASOP・疾患名・美容・処置・経過・フリーの6種類から選べます。用途に合わせて切り替えてください。</p>
-<h3 style={{color:C.pD,fontSize:15}}>4. 録音開始</h3>
-<p>🎙ボタンをタップすると録音が始まります。5秒ごとに自動で書き起こしされます。</p>
-<h3 style={{color:C.pD,fontSize:15}}>5. 要約</h3>
-<p>✓要約ボタンで録音を停止し、AIがカルテ形式で要約します。結果は自動でクリップボードにコピーされます。</p>
-<h3 style={{color:C.pD,fontSize:15}}>6. 小窓（PiP）</h3>
-<p>🌟ボタンで最前面に固定される小窓を表示。電子カルテを操作しながら録音・要約ができます。</p>
-<h3 style={{color:C.pD,fontSize:15}}>7. 履歴</h3>
-<p>過去の要約は自動保存されます。📂履歴ボタンから検索・復元・削除が可能です。</p>
-<h3 style={{color:C.pD,fontSize:15}}>8. 設定</h3>
-<p>⚙️から誤字脱字修正辞書の管理ができます。皮膚科の薬剤名・施術名が事前登録されています。</p>
-</div></div></div>);
+if(page==="help")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"12px 8px":"24px 16px",fontFamily:"inherit"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+<h2 style={{fontSize:20,fontWeight:800,color:C.pDD,margin:0}}>📖 使い方ガイド</h2>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+
+{/* イントロ */}
+<div style={{padding:16,borderRadius:14,background:`linear-gradient(135deg,${C.pLL},#f0fdf4)`,border:`2px solid ${C.pL}`,marginBottom:16}}>
+<p style={{fontSize:14,color:C.pDD,margin:0,lineHeight:1.7}}>
+<strong>南草津皮フ科AIカルテ要約</strong>は、診察中の会話を録音・書き起こし、AIが自動でカルテ形式に要約するアプリです。<br/>
+<span style={{fontSize:12,color:C.g500}}>Gemini 2.5 Flash + Whisper で動作しています。</span>
+</p></div>
+
+{/* 基本の流れ */}
+<div style={{marginBottom:20}}>
+<h3 style={{fontSize:16,fontWeight:700,color:C.pDD,marginBottom:10}}>🎯 基本の使い方（3ステップ）</h3>
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr 1fr",gap:10}}>
+
+<div style={{padding:14,borderRadius:12,border:`2px solid ${C.p}`,background:"#fff",textAlign:"center"}}>
+<div style={{fontSize:32,marginBottom:6}}>🎙️</div>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:4}}>① 録音開始</div>
+<div style={{fontSize:12,color:C.g600,lineHeight:1.5}}>録音ボタンを押すか<br/><kbd style={{padding:"1px 6px",borderRadius:4,border:"1px solid #d1d5db",background:"#f3f4f6",fontSize:11}}>↓</kbd> キーを押す<br/>会話がリアルタイムで書き起こされます</div>
+</div>
+
+<div style={{padding:14,borderRadius:12,border:`2px solid ${C.p}`,background:"#fff",textAlign:"center"}}>
+<div style={{fontSize:32,marginBottom:6}}>⚡</div>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:4}}>② 要約</div>
+<div style={{fontSize:12,color:C.g600,lineHeight:1.5}}>要約ボタンか<br/><kbd style={{padding:"1px 6px",borderRadius:4,border:"1px solid #d1d5db",background:"#f3f4f6",fontSize:11}}>↑</kbd> キーを押す<br/>AIがカルテ形式に要約します</div>
+</div>
+
+<div style={{padding:14,borderRadius:12,border:`2px solid ${C.p}`,background:"#fff",textAlign:"center"}}>
+<div style={{fontSize:32,marginBottom:6}}>📋</div>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:4}}>③ コピー＆次へ</div>
+<div style={{fontSize:12,color:C.g600,lineHeight:1.5}}>要約は自動コピーされます<br/><kbd style={{padding:"1px 6px",borderRadius:4,border:"1px solid #d1d5db",background:"#f3f4f6",fontSize:11}}>→</kbd> で次の患者へ<br/>電カルにペーストするだけ</div>
+</div>
+
+</div></div>
+
+{/* テンプレート */}
+<div style={{marginBottom:20}}>
+<h3 style={{fontSize:16,fontWeight:700,color:C.pDD,marginBottom:10}}>📋 テンプレート一覧</h3>
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
+{[
+{icon:"📋",name:"ASOP",desc:"標準カルテ形式。S)主訴 O)所見 P)計画 に自動分類。複数疾患は自動で分離"},
+{icon:"🏥",name:"疾患名",desc:"疾患名・部位・重症度・鑑別診断を抽出。俗称は正式名称に変換"},
+{icon:"✨",name:"美容",desc:"美容施術の記録。施術名・部位・パラメータ・注意事項をまとめる"},
+{icon:"🔧",name:"処置",desc:"処置記録。麻酔・処置内容・検体提出・術後指示を時系列で整理"},
+{icon:"🔄",name:"経過",desc:"経過観察。前回比較・治療効果判定（改善/不変/悪化）を明確に"},
+{icon:"📝",name:"フリー",desc:"自由形式。テンプレートに縛られず簡潔に要約"}
+].map((t,i)=>(<div key={i} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,background:"#fff",display:"flex",gap:8,alignItems:"flex-start"}}>
+<span style={{fontSize:20}}>{t.icon}</span>
+<div><div style={{fontSize:13,fontWeight:700,color:C.pD}}>{t.name}</div>
+<div style={{fontSize:11,color:C.g600,lineHeight:1.5}}>{t.desc}</div></div>
+</div>))}
+</div></div>
+
+{/* キーボードショートカット */}
+<div style={{marginBottom:20}}>
+<h3 style={{fontSize:16,fontWeight:700,color:C.pDD,marginBottom:10}}>⌨️ キーボードショートカット</h3>
+<div style={{padding:12,borderRadius:12,border:`1.5px solid ${C.g200}`,background:"#fff"}}>
+<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+<tbody>
+{[
+["↓ ArrowDown","録音開始 / 停止"],
+["↑ ArrowUp","要約実行"],
+["→ ArrowRight","次の患者（クリア）"],
+["F6","小窓（PiP）on/off"],
+["設定で追加","カスタムショートカット登録可能"]
+].map(([key,desc],i)=>(<tr key={i} style={{borderBottom:i<4?`1px solid ${C.g100}`:"none"}}>
+<td style={{padding:"8px 10px",fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}><kbd style={{padding:"2px 8px",borderRadius:5,border:"1px solid #d1d5db",background:"#f9fafb",fontSize:11}}>{key}</kbd></td>
+<td style={{padding:"8px 10px",color:C.g600}}>{desc}</td>
+</tr>))}
+</tbody></table>
+</div></div>
+
+{/* 小窓モード */}
+<div style={{marginBottom:20}}>
+<h3 style={{fontSize:16,fontWeight:700,color:C.pDD,marginBottom:10}}>⭐ 小窓（PiP）モード</h3>
+<div style={{padding:14,borderRadius:12,border:`2px solid #fbbf24`,background:"#fffbeb"}}>
+<p style={{fontSize:12,color:"#92400e",margin:"0 0 8px 0",lineHeight:1.6}}>
+画面右上の <strong>⭐小窓</strong> ボタンまたは <kbd style={{padding:"1px 5px",borderRadius:4,border:"1px solid #d1d5db",background:"#fff",fontSize:11}}>F6</kbd> で起動。<br/>
+電子カルテの上に小さなウィンドウが常に表示され、録音・要約・次の患者への切り替えがすべて小窓から操作できます。
+</p>
+<div style={{fontSize:11,color:"#78350f",lineHeight:1.6}}>
+<strong>小窓でできること:</strong> 録音開始/停止、一時停止/再開、要約（自動コピー）、次の患者へ、スニペット追記、カスタムショートカット実行
+</div>
+</div></div>
+
+{/* その他の機能 */}
+<div style={{marginBottom:20}}>
+<h3 style={{fontSize:16,fontWeight:700,color:C.pDD,marginBottom:10}}>🧩 その他の機能</h3>
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
+{[
+{icon:"📂",name:"履歴",desc:"過去の要約を一覧・検索。再利用やコピーが可能"},
+{icon:"⚙️",name:"設定",desc:"辞書登録・スニペット・ショートカットのカスタマイズ"},
+{icon:"📄",name:"資料作成",desc:"疾患名を入力するとAIが患者説明資料を自動生成"},
+{icon:"📝",name:"議事録",desc:"会議を録音→議事録を自動作成。タスク抽出も可能"},
+{icon:"🧠",name:"分析",desc:"カウンセリング内容をAIが分析・構造化"},
+{icon:"✅",name:"タスク",desc:"議事録から自動抽出したタスクを四象限マトリクスで管理"}
+].map((t,i)=>(<div key={i} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,background:"#fff",display:"flex",gap:8,alignItems:"flex-start"}}>
+<span style={{fontSize:18}}>{t.icon}</span>
+<div><div style={{fontSize:13,fontWeight:700,color:C.pD}}>{t.name}</div>
+<div style={{fontSize:11,color:C.g600,lineHeight:1.4}}>{t.desc}</div></div>
+</div>))}
+</div></div>
+
+{/* Tips */}
+<div style={{padding:14,borderRadius:12,background:"#f0fdf4",border:`1.5px solid ${C.pL}`,marginBottom:20}}>
+<h3 style={{fontSize:14,fontWeight:700,color:C.pDD,margin:"0 0 8px 0"}}>💡 コツ</h3>
+<div style={{fontSize:12,color:C.g700,lineHeight:1.8}}>
+• マイクは患者と医師の間に置くと認識精度が上がります<br/>
+• 複数の疾患がある場合、ASOPテンプレートが自動で分けて要約します<br/>
+• スニペット（追記ボタン）を活用すると定型文の追加が素早くできます<br/>
+• 辞書登録で薬品名や略語の認識精度を向上できます（設定→辞書）<br/>
+• 診察室ごとにタブを切り替えると、患者情報が混ざりません
+</div></div>
+
+<div style={{textAlign:"center",padding:"10px 0",fontSize:11,color:C.g400}}>
+南草津皮フ科AIカルテ要約 v48 — Gemini 2.5 Flash + Whisper
+</div>
+</div>);
 
 // === ABOUT PAGE ===
 if(page==="about")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
