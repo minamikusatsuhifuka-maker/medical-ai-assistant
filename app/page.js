@@ -436,7 +436,7 @@ const DEFAULT_SNIPPETS=[
 {title:"イソトレチノイン",text:"イソトレチノイン内服開始　mg/日\n注意：避妊必須（女性：前1M〜後1M）、献血不可、定期血液検査（肝機能・脂質）、保湿（唇・皮膚・眼の乾燥対策）\n次回血液検査：4w後",cat:"その他"},
 {title:"帯状疱疹ワクチン",text:"帯状疱疹ワクチン（シングリックス）説明：\n・不活化ワクチン、2回接種（2ヶ月間隔）\n・予防効果90%以上、50歳以上対象\n・接種部位の痛み腫れは数日で改善",cat:"その他"},
 ];
-const[snippets,setSnippets]=useState(DEFAULT_SNIPPETS),[newSnTitle,setNewSnTitle]=useState(""),[newSnText,setNewSnText]=useState(""),[pipSnippets,setPipSnippets]=useState([0,1,2,3,4]),[openCats,setOpenCats]=useState([]);
+const[snippets,setSnippets]=useState(DEFAULT_SNIPPETS),[newSnTitle,setNewSnTitle]=useState(""),[newSnText,setNewSnText]=useState(""),[pipSnippets,setPipSnippets]=useState([0,1,2,3,4]);
 const[docDisease,setDocDisease]=useState(""),[docOut,setDocOut]=useState(""),[docLd,setDocLd]=useState(false),[docFreePrompt,setDocFreePrompt]=useState("");
 const[suggestLd,setSuggestLd]=useState(false),[suggestedSnippets,setSuggestedSnippets]=useState([]);
 const[pastInput,setPastInput]=useState(""),[pastDisease,setPastDisease]=useState(""),[pastSource,setPastSource]=useState(""),[pastLd,setPastLd]=useState(false),[pastCount,setPastCount]=useState(0),[pastMsg,setPastMsg]=useState("");
@@ -945,11 +945,11 @@ if(page==="shortcuts")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:mob?16:18,fontWeight:700,color:"#3f6212",margin:0}}>⌨️ ショートカット一覧</h2><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:mob?12:13,color:C.g500,marginBottom:16}}>キーボードショートカットで素早く操作できます。⭐マークのショートカットはトップ画面に表示されます。</p>
 <div style={{display:"flex",flexDirection:"column",gap:6}}>
-{shortcuts.map((sc,i)=>(<div key={sc.id} style={{display:"flex",alignItems:"center",gap:8,padding:mob?"8px 10px":"10px 14px",borderRadius:12,background:sc.enabled?C.g50:"#fafafa",border:`1px solid ${sc.enabled?C.g200:"#eee"}`,opacity:sc.enabled?1:0.5}}>
-<button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],showOnTop:!u[i].showOnTop};setShortcuts(u)}} style={{padding:"2px 6px",borderRadius:6,border:sc.showOnTop?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sc.showOnTop?C.pLL:C.w,fontSize:11,color:sc.showOnTop?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer",flexShrink:0}} title="トップ画面に表示">{sc.showOnTop?"⭐":"☆"}</button>
-<span style={{flex:1,fontSize:mob?13:14,fontWeight:600,color:C.g700}}>{sc.label}</span>
-<span style={{padding:"4px 12px",borderRadius:8,background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:mob?11:12,fontWeight:700,fontFamily:"monospace",letterSpacing:0.5,minWidth:50,textAlign:"center"}}>{sc.key}</span>
-<button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],enabled:!u[i].enabled};setShortcuts(u)}} style={{padding:"4px 10px",borderRadius:8,border:"none",background:sc.enabled?C.rG:C.g200,color:sc.enabled?C.w:C.g500,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>{sc.enabled?"ON":"OFF"}</button>
+{shortcuts.map((sc,i)=>(<div key={sc.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:10,background:sc.enabled?C.g50:"#fafafa",border:`1px solid ${sc.enabled?C.g200:"#eee"}`,opacity:sc.enabled?1:0.5,marginBottom:4}}>
+<button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],showOnTop:!u[i].showOnTop};setShortcuts(u)}} style={{padding:"2px 5px",borderRadius:5,border:sc.showOnTop?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sc.showOnTop?C.pLL:C.w,fontSize:10,color:sc.showOnTop?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>{sc.showOnTop?"⭐":"☆"}</button>
+<span style={{fontSize:12,fontWeight:600,color:C.pDD,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sc.label}</span>
+<input value={sc.key} onChange={e=>{const u=[...shortcuts];u[i]={...u[i],key:e.target.value};setShortcuts(u)}} onKeyDown={e=>{if(["Tab","Shift","Control","Alt","Meta"].includes(e.key))return;e.preventDefault();let k="";if(e.ctrlKey||e.metaKey)k+="Ctrl+";if(e.shiftKey)k+="Shift+";if(e.altKey)k+="Alt+";if(e.key==="ArrowUp")k+="ArrowUp";else if(e.key==="ArrowDown")k+="ArrowDown";else if(e.key==="ArrowLeft")k+="ArrowLeft";else if(e.key==="ArrowRight")k+="ArrowRight";else if(e.key===" ")k+="Space";else if(e.key.startsWith("F")&&/^F\d+$/.test(e.key))k+=e.key;else k+=e.key.toUpperCase();const u=[...shortcuts];u[i]={...u[i],key:k};setShortcuts(u)}} style={{width:100,padding:"3px 6px",borderRadius:6,border:`1.5px solid ${C.p}`,background:C.w,fontSize:11,fontWeight:700,color:C.pD,fontFamily:"inherit",textAlign:"center",cursor:"pointer",flexShrink:0}} title="クリックしてキーを押すと変更" placeholder="キーを押す"/>
+<button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],enabled:!u[i].enabled};setShortcuts(u)}} style={{padding:"3px 8px",borderRadius:6,border:"none",background:sc.enabled?C.rG:C.g200,color:sc.enabled?C.w:C.g500,fontSize:10,fontWeight:700,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>{sc.enabled?"ON":"OFF"}</button>
 </div>))}
 </div>
 <div style={{marginTop:16,padding:12,borderRadius:10,background:C.pLL,border:`1px solid ${C.p}33`}}>
@@ -1555,11 +1555,16 @@ const fn=actions[sc.id];if(fn)fn();
 <textarea value={out} onChange={e=>sOut(e.target.value)} style={{width:"100%",height:mob?140:180,padding:mob?10:12,borderRadius:mob?10:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/>
 </div>}
 {snippets.length>0&&<div style={{marginTop:8}}>
-<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>{snippets.map((sn,i)=>(pipSnippets.includes(i)?<button key={i} onClick={()=>{sOut(o=>o+(o?"\n":"")+sn.text);navigator.clipboard.writeText(sn.text).catch(()=>{});sSt("📋 "+sn.title+" をコピーしました")}} style={{padding:"4px 10px",borderRadius:10,border:`1.5px solid ${C.p}`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>⭐{sn.title}</button>:null))}</div>
-{[...new Set(snippets.map(s=>s.cat||"その他"))].map(cat=>{const items=snippets.map((s,i)=>({...s,idx:i})).filter(s=>(s.cat||"その他")===cat&&!pipSnippets.includes(s.idx));if(!items.length)return null;const isOpen=openCats.includes(cat);return(<div key={cat} style={{marginBottom:2}}>
-<button onClick={()=>setOpenCats(o=>o.includes(cat)?o.filter(c=>c!==cat):[...o,cat])} style={{width:"100%",padding:"3px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:isOpen?C.pLL:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{cat}（{items.length}）</span><span>{isOpen?"▼":"▶"}</span></button>
-{isOpen&&<div style={{display:"flex",gap:4,flexWrap:"wrap",padding:"4px 0"}}>{items.map(sn=>(<button key={sn.idx} onClick={()=>{sOut(o=>o+(o?"\n":"")+sn.text);navigator.clipboard.writeText(sn.text).catch(()=>{});sSt("📋 "+sn.title+" をコピーしました")}} style={{padding:"3px 8px",borderRadius:8,border:`1px solid ${C.p}33`,background:C.w,fontSize:11,fontWeight:500,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{sn.title}</button>))}</div>}
-</div>)})}
+<div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 0"}}>
+{[...new Set(snippets.map(s=>s.cat||"その他"))].map(cat=>(
+<div key={cat} style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center"}}>
+<span style={{fontSize:9,color:C.g400,fontWeight:600,padding:"0 2px"}}>{cat}:</span>
+{snippets.filter(s=>(s.cat||"その他")===cat).map((sn,j)=>(
+<button key={j} onClick={()=>{sOut(o=>o+(o?"\n":"")+sn.text);navigator.clipboard.writeText(sn.text).catch(()=>{});sSt("📋 "+sn.title+" をコピー")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>{sn.title}</button>
+))}
+</div>
+))}
+</div>
 </div>}
 {ld&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが要約を作成中...</span></div>}
 </div></div>);}
