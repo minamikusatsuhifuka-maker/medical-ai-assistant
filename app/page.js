@@ -451,7 +451,10 @@ const startRef=useRef(null),stopRef=useRef(null),sumRef=useRef(null),clrRef=useR
 useEffect(()=>{
 const handler=(e)=>{
 const tag=document.activeElement?.tagName;
-if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
+if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
+if(e.key==="ArrowDown"||e.key==="ArrowUp"||e.key==="ArrowLeft"||e.key==="ArrowRight")e.preventDefault();
+return;
+}
 const key=e.key;const ctrl=e.ctrlKey||e.metaKey;
 const findSC=(id)=>shortcutsRef.current.find(s=>s.id===id);
 const matchKey=(sc)=>{
