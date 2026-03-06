@@ -450,7 +450,8 @@ useEffect(()=>{loadCsCount()},[]);
 const startRef=useRef(null),stopRef=useRef(null),sumRef=useRef(null),clrRef=useRef(null),undoFnRef=useRef(null),pipFnRef=useRef(null);
 useEffect(()=>{
 const handler=(e)=>{
-if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT")return;
+const tag=document.activeElement?.tagName;
+if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
 const key=e.key;const ctrl=e.ctrlKey||e.metaKey;
 const findSC=(id)=>shortcutsRef.current.find(s=>s.id===id);
 const matchKey=(sc)=>{
