@@ -1518,16 +1518,16 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 {[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-<div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
-<span style={{fontSize:13,flexShrink:0}}>🔢</span>
-<input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value}} placeholder="患者ID" style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}/>
-</div>
 <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-<span style={{fontSize:11,color:C.g400}}>🎙</span>
-<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{padding:"4px 6px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:10,color:C.g500,fontFamily:"inherit",maxWidth:140,background:C.w}}>
+<span style={{fontSize:13}}>🔢</span>
+<input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value}} placeholder="患者ID" style={{width:80,padding:"6px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",boxShadow:"0 1px 3px rgba(0,0,0,.06)",textAlign:"center"}} maxLength={6}/>
+</div>
+<div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+<span style={{fontSize:13}}>🎙</span>
+<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:12,color:C.g700,fontFamily:"inherit",background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
 {micDevices.length===0?<option value="">マイクが見つかりません</option>:micDevices.map((d,i)=>(<option key={d.deviceId} value={d.deviceId}>{d.label||`マイク ${i+1}`}</option>))}
 </select>
-<button onClick={loadMics} style={{padding:"3px 6px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,cursor:"pointer"}}>🔄</button>
+<button onClick={loadMics} style={{padding:"5px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>🔄</button>
 </div>
 </div>
 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{(()=>{const vis=tplVisible||DEFAULT_VISIBLE_TPLS;const ordered=tplOrder?tplOrder.map(id=>T.find(t=>t.id===id)).filter(Boolean):T;return ordered.filter(t=>vis.includes(t.id))})().map((t,idx)=>(<button key={t.id}
