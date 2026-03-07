@@ -1517,18 +1517,12 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>{rm.l}</button>))}</div>
-<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-<div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-<span style={{fontSize:13}}>🔢</span>
-<input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value}} placeholder="患者ID" style={{width:80,padding:"6px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",boxShadow:"0 1px 3px rgba(0,0,0,.06)",textAlign:"center"}} maxLength={6}/>
-</div>
-<div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
-<span style={{fontSize:13}}>🎙</span>
-<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:12,color:C.g700,fontFamily:"inherit",background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+<span style={{fontSize:10,color:C.g400}}>🎙</span>
+<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"3px 6px",borderRadius:6,border:`1px solid ${C.g200}`,fontSize:9,color:C.g500,fontFamily:"inherit",background:C.w,maxWidth:200}}>
 {micDevices.length===0?<option value="">マイクが見つかりません</option>:micDevices.map((d,i)=>(<option key={d.deviceId} value={d.deviceId}>{d.label||`マイク ${i+1}`}</option>))}
 </select>
-<button onClick={loadMics} style={{padding:"5px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>🔄</button>
-</div>
+<button onClick={loadMics} style={{padding:"2px 5px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.w,fontSize:9,cursor:"pointer"}}>🔄</button>
 </div>
 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{(()=>{const vis=tplVisible||DEFAULT_VISIBLE_TPLS;const ordered=tplOrder?tplOrder.map(id=>T.find(t=>t.id===id)).filter(Boolean):T;return ordered.filter(t=>vis.includes(t.id))})().map((t,idx)=>(<button key={t.id}
 draggable
@@ -1551,19 +1545,24 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{...card,position:"relative"}}>
 <button onClick={pipActive?closePip:openPip} style={{position:"absolute",top:16,right:16,width:60,height:60,borderRadius:"50%",border:"none",background:pipActive?"#22c55e":"linear-gradient(135deg,#3f6212,#65a30d)",color:"#fff",fontSize:15,fontWeight:700,fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,boxShadow:pipActive?"0 0 0 3px rgba(16,185,129,.25)":"0 2px 10px rgba(20,184,166,.2)",transition:"all 0.2s"}}>
 <span style={{fontSize:18}}>🌟</span><span style={{fontSize:9}}>{pipActive?"OFF":"小窓"}</span></button>
+<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+<span style={{fontSize:13}}>🔢</span>
+<input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value}} placeholder="患者ID" style={{width:80,padding:"6px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",textAlign:"center",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}} maxLength={6}/>
+<button onClick={()=>{loadHist();setPage("hist")}} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>📂 履歴</button>
+</div>
 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:16}}>
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:C.g200,overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${C.rG},${C.p})`,borderRadius:3,transition:"width 0.1s"}}/></div>}
 <div style={{display:"flex",gap:12,alignItems:"center",minHeight:mob?80:94}}>
 {rs==="inactive"?(<button onClick={go} style={{...rb,width:mob?76:90,height:mob?76:90,background:"linear-gradient(135deg,#3f6212,#65a30d)",color:C.w,boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:30}}>🎙</span><span style={{fontSize:12}}>録音開始</span></button>):(<>
 {rs==="recording"?(<button onClick={pause} style={{...rb,width:60,height:60,background:C.warn,color:"#78350f"}}><span style={{fontSize:22}}>⏸</span></button>):(<button onClick={resume} style={{...rb,width:60,height:60,background:C.rG,color:C.w}}><span style={{fontSize:22}}>▶</span></button>)}
-<button onClick={stopSum} style={{...rb,width:80,height:80,background:"linear-gradient(135deg,#365314,#3f6212)",color:C.w,boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:20}}>✓</span><span style={{fontSize:12}}>要約</span></button>
+<button onClick={stopSum} style={{...rb,width:64,height:64,background:"linear-gradient(135deg,#365314,#3f6212)",color:C.w,boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:16}}>✓</span><span style={{fontSize:10}}>要約</span></button>
 <button onClick={stop} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button></>)}
 </div>
 {rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
-<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"12px 0",borderRadius:16,border:"none",background:ld?"#e7e5e4":"linear-gradient(135deg,#65a30d,#84cc16)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:80,whiteSpace:"nowrap"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
+<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"6px 0",borderRadius:12,border:"none",background:ld?"#e7e5e4":"linear-gradient(135deg,#65a30d,#84cc16)",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
 <button onClick={()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")}} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap"}}>🗑</button>
 <button onClick={undo} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35,minWidth:44,whiteSpace:"nowrap"}} title="元に戻す (Ctrl+Z)">↩</button>
 <button onClick={clr} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer",minWidth:80,whiteSpace:"nowrap",boxShadow:"0 3px 10px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.1)"}}>次へ ▶</button></div>
