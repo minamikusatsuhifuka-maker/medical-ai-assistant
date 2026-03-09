@@ -860,7 +860,8 @@ setPastMsg(`✓ ${total}件のカルテを保存しました`);setPastInput("");
 const importPastFile=async(file)=>{if(!file)return;setPastLd(true);setPastMsg("ファイル読み込み中...");try{const text=await file.text();setPastInput(text);setPastMsg(`ファイル読み込み完了（${Math.round(text.length/1024)}KB）- 内容を確認して「保存」を押してください`)}catch(e){setPastMsg("ファイル読み込みエラー: "+e.message)}finally{setPastLd(false)}};
 useEffect(()=>{loadPastCount()},[]);
 
-const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(50);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
+const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(200);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
+const searchHist=async(query)=>{if(!supabase||!query.trim())return;try{const{data}=await supabase.from("records").select("*").or(`output_text.ilike.%${query}%,input_text.ilike.%${query}%,patient_id.ilike.%${query}%`).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}catch(e){console.error("Search error:",e)}};
 const delRecord=async(id)=>{if(!supabase)return;try{await supabase.from("records").delete().eq("id",id);sHist(h=>h.filter(r=>r.id!==id))}catch(e){console.error("Delete error:",e)}};
 const filteredHist=hist.filter(h=>{if(!search.trim())return true;const s=search.toLowerCase();return(h.patient_name||"").toLowerCase().includes(s)||(h.patient_id||"").toLowerCase().includes(s)||(h.output_text||"").toLowerCase().includes(s)});
 
@@ -1113,7 +1114,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
 <h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📂 履歴</h2>
 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 検索" style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",width:150}}/>
+<input value={search||""} onChange={e=>{const v=e.target.value;setSearch(v);if(v.trim().length>=2){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}else if(!v.trim()){loadHist()}}} placeholder="🔍 検索（全件から）" style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",width:160,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}/>
 <span style={{fontSize:12,color:C.g400}}>{filteredHist.length}件</span>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div></div>
