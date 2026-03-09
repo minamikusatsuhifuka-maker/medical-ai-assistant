@@ -380,6 +380,7 @@ const[tplOrder,setTplOrder]=useState(null);
 const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
+const[histPopup,setHistPopup]=useState(null);
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
@@ -1121,21 +1122,32 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";
 const preview=(r.output_text||"").replace(/\n/g," ").substring(0,30);
 const pid=r.patient_id||"";
-return(<div key={r.id||i} style={{position:"relative",padding:"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,.05)",transition:"all 0.15s ease",overflow:"visible"}}
-onMouseEnter={e=>{const el=e.currentTarget;el.style.boxShadow="0 4px 12px rgba(0,0,0,.15)";el.style.borderColor=C.p;const tip=el.querySelector("[data-tip]");if(tip)tip.style.display="block"}}
-onMouseLeave={e=>{const el=e.currentTarget;el.style.boxShadow="0 1px 2px rgba(0,0,0,.05)";el.style.borderColor=C.g200;const tip=el.querySelector("[data-tip]");if(tip)tip.style.display="none"}}
-onClick={()=>{navigator.clipboard.writeText(r.output_text||"").catch(()=>{});sSt("📋 コピーしました")}}>
+return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)"}}>
 <div style={{fontSize:9,color:C.g400,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
-<div style={{fontSize:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview||"（内容なし）"}</div>
-<div data-tip="1" style={{display:"none",position:"absolute",top:"100%",left:0,right:0,zIndex:999,marginTop:4,padding:10,borderRadius:10,background:"#1f2937",color:"#e5e7eb",fontSize:11,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:300,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.3)",minWidth:200}}>
-<div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-<span style={{fontWeight:700,color:"#86efac",fontSize:10}}>{date} {pid}</span>
-<button onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(r.output_text||"").catch(()=>{});sSt("📋 コピーしました")}} style={{padding:"2px 8px",borderRadius:5,border:"1px solid rgba(255,255,255,.3)",background:"rgba(255,255,255,.15)",color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer"}}>📋</button>
-</div>
-{r.output_text||"（内容なし）"}
+<div style={{fontSize:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
+<div style={{display:"flex",gap:3}}>
+<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
+<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
 </div>
 </div>)})}
 </div>
+{histPopup&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setHistPopup(null)}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<div>
+<span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{histPopup.title}</span>
+<span style={{fontSize:11,color:C.g400,marginLeft:8}}>{histPopup.date} {histPopup.pid}</span>
+</div>
+<div style={{display:"flex",gap:6}}>
+<button onClick={()=>{navigator.clipboard.writeText(histPopup.content).catch(()=>{});sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>setHistPopup(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{histPopup.content}</pre>
+</div>
+</div>
+</div>}
 </div>);
 
 // === DOC GENERATION ===
