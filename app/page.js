@@ -1124,7 +1124,7 @@ const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month
 const preview=(r.output_text||"").replace(/\n/g," ").substring(0,30);
 const pid=r.patient_id||"";
 return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)"}}>
-<div style={{fontSize:9,color:C.g400,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
+<div style={{fontSize:11,color:"#111",fontWeight:600,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
 <div style={{fontSize:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
 <button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
