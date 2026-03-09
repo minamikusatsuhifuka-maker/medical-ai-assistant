@@ -1114,7 +1114,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
 <h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📂 履歴</h2>
 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-<input value={search||""} onChange={e=>{const v=e.target.value;setSearch(v);const fullDate=v.trim().match(/^(\d{1,2})\/(\d{1,2})(\s+(\d{2}))?$/);if(fullDate&&v.trim().length>=3){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}else if(v.trim().length>=2&&!v.trim().match(/^(\d{1,2})\//)){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}else if(!v.trim()){loadHist()}}} placeholder="🔍 検索（3/9 11 等）" style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",width:160,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}/>
+<input value={search||""} onChange={e=>{const v=e.target.value;setSearch(v);if(!v.trim()){loadHist()}else if(v.trim().length>=2&&!v.trim().match(/^\d{1,2}\//)){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}}} placeholder="🔍 検索（3/9 11 等）" style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",width:160,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}/>
 <span style={{fontSize:12,color:C.g400}}>{filteredHist.length}件</span>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div></div>
