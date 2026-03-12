@@ -375,7 +375,7 @@ const ib={padding:mob?"7px 10px":"8px 12px",borderRadius:mob?10:12,border:`1.5px
 const card={borderRadius:20,border:"1px solid #e7e5e4",padding:mob?14:20,background:"linear-gradient(180deg,#ffffff,#fafaf9)",marginBottom:mob?12:16,boxShadow:"0 1px 4px rgba(0,0,0,.03)"};
 const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-min"),[rid,sRid]=useState("r1");
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
 const[tplOrder,setTplOrder]=useState(null);
 const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
@@ -385,7 +385,7 @@ const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{}},[]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
 useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
@@ -513,18 +513,20 @@ useEffect(()=>{audioSaveRef.current=audioSave},[audioSave]);
 const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef(""),oR=useRef(""),sumDoneRef=useRef(false);
 const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef(""),snippetsRef=useRef(DEFAULT_SNIPPETS),pipSnippetsRef=useRef([0,1,2,3,4]);
+const tidRef=useRef("soap-std");
 useEffect(()=>{iR.current=inp},[inp]);
 useEffect(()=>{oR.current=out},[out]);
 useEffect(()=>{elRef.current=el},[el]);
 useEffect(()=>{lvRef.current=lv},[lv]);
 useEffect(()=>{rsRef.current=rs},[rs]);
+useEffect(()=>{tidRef.current=tid},[tid]);
 useEffect(()=>{pNameRef.current=pName},[pName]);
 useEffect(()=>{pIdRef.current=pId},[pId]);
 useEffect(()=>{snippetsRef.current=snippets},[snippets]);
 useEffect(()=>{shortcutsRef.current=shortcuts},[shortcuts]);
 useEffect(()=>{pipSnippetsRef.current=pipSnippets},[pipSnippets]);
 useEffect(()=>{if(rs==="recording"){tR.current=setInterval(()=>sEl(t=>t+1),1000)}else{clearInterval(tR.current);if(rs==="inactive")sEl(0)}return()=>clearInterval(tR.current)},[rs]);
-useEffect(()=>{let lastSnHash="";const id=setInterval(()=>{if(!pipRef.current)return;const d=pipRef.current;const t=d.getElementById("pip-timer"),l=d.getElementById("pip-level"),s=d.getElementById("pip-status"),tr=d.getElementById("pip-transcript");if(t){const e=elRef.current;t.textContent=`${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`}if(l)l.style.width=`${lvRef.current}%`;if(s){const r=rsRef.current;s.textContent=r==="recording"?"録音中":r==="paused"?"一時停止":"停止";s.style.color=r==="recording"?C.rG:r==="paused"?C.warn:C.g400}if(tr){const txt=iR.current;if(txt){const lines=txt.split("\n");tr.textContent=lines[lines.length-1]}else{tr.textContent=""}}const c=d.getElementById("pip-snippets");if(c){const sn=snippetsRef.current;const ids=pipSnippetsRef.current;const hash=ids.join(",")+"|"+sn.length;if(hash!==lastSnHash){lastSnHash=hash;let html="";ids.forEach(idx=>{if(idx<sn.length){html+=`<button data-sn-idx="${idx}" style="padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;cursor:pointer">${sn[idx].title}</button>`}});c.innerHTML=html;c.querySelectorAll("button").forEach(b=>{b.onclick=()=>{const idx=parseInt(b.getAttribute("data-sn-idx"));const t2=snippetsRef.current[idx];if(t2)sOut(o=>o+(o?"\n":"")+t2.text)}})}}},500);return()=>clearInterval(id)},[]);
+useEffect(()=>{let lastSnHash="";const id=setInterval(()=>{if(!pipRef.current)return;const d=pipRef.current;const t=d.getElementById("pip-timer"),l=d.getElementById("pip-level"),s=d.getElementById("pip-status"),tr=d.getElementById("pip-transcript");if(t){const e=elRef.current;t.textContent=`${String(Math.floor(e/60)).padStart(2,"0")}:${String(e%60).padStart(2,"0")}`}if(l)l.style.width=`${lvRef.current}%`;if(s){const r=rsRef.current;s.textContent=r==="recording"?"録音中":r==="paused"?"一時停止":"停止";s.style.color=r==="recording"?C.rG:r==="paused"?C.warn:C.g400}if(tr){const txt=iR.current;if(txt){const lines=txt.split("\n");tr.textContent=lines[lines.length-1]}else{tr.textContent=""}}const c=d.getElementById("pip-snippets");if(c){const sn=snippetsRef.current;const ids=pipSnippetsRef.current;const hash=ids.join(",")+"|"+sn.length;if(hash!==lastSnHash){lastSnHash=hash;let html="";ids.forEach(idx=>{if(idx<sn.length){html+=`<button data-sn-idx="${idx}" style="padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;cursor:pointer">${sn[idx].title}</button>`}});c.innerHTML=html;c.querySelectorAll("button").forEach(b=>{b.onclick=()=>{const idx=parseInt(b.getAttribute("data-sn-idx"));const t2=snippetsRef.current[idx];if(t2)sOut(o=>o+(o?"\n":"")+t2.text)}})}}const stdB2=d.getElementById("pip-tpl-std");const minB2=d.getElementById("pip-tpl-min");if(stdB2&&minB2){const curId=tidRef.current;const isStd=curId==="soap-std";stdB2.style.border=isStd?"2px solid #22c55e":"1px solid rgba(255,255,255,.4)";stdB2.style.background=isStd?"rgba(34,197,94,.3)":"rgba(255,255,255,.15)";stdB2.style.fontWeight=isStd?"700":"600";minB2.style.border=!isStd?"2px solid #22c55e":"1px solid rgba(255,255,255,.4)";minB2.style.background=!isStd?"rgba(34,197,94,.3)":"rgba(255,255,255,.15)";minB2.style.fontWeight=!isStd?"700":"600"}},500);return()=>clearInterval(id)},[]);
 
 const fm=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const ct=T.find(t=>t.id===tid)||T[0],cr=R.find(r=>r.id===rid);
@@ -888,7 +890,7 @@ const d=await r.json();if(d.error){sOut("エラー: "+d.error)}else{sOut(d.summa
 const stopSum=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const ft=iR.current+(iR.current?"\n":"")+applyDict(d.text.trim());sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;xAM();sRS("inactive")};
 const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:pId}};
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
-const clr=()=>{saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("")};
+const clr=()=>{saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 
 // PiP
@@ -903,6 +905,10 @@ pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear
 <div style="display:flex;align-items:center;gap:6px"><div id="pip-timer" style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">00:00</div>
 <div style="flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden"><div id="pip-level" style="width:0%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.15s"></div></div></div>
 <div id="pip-transcript" style="height:18px;overflow:hidden;border-radius:4px;background:rgba(0,0,0,.2);padding:1px 6px;font-size:9px;color:#a0c96a;white-space:nowrap;text-overflow:ellipsis"></div>
+<div id="pip-tpl" style="display:flex;gap:3px;justify-content:center;margin-bottom:2px">
+<button id="pip-tpl-std" style="padding:2px 10px;border-radius:6px;border:2px solid #22c55e;background:rgba(34,197,94,.3);color:#fff;font-size:10px;font-weight:700;cursor:pointer">標準</button>
+<button id="pip-tpl-min" style="padding:2px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:10px;font-weight:600;cursor:pointer">簡潔</button>
+</div>
 <div style="display:flex;gap:4px;justify-content:center">
 <button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:2px solid #fff;background:rgba(255,255,255,.15);color:#fff;font-size:13px;font-weight:700;cursor:pointer">開始</button>
 <button id="pip-resume" style="padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(34,197,94,.3);color:#fff;font-size:10px;font-weight:700;cursor:pointer;display:none">▶再開</button>
@@ -915,6 +921,10 @@ pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear
 pw.document.head.innerHTML=`<style>::placeholder{color:rgba(255,255,255,.35)}</style>`;
 const pipPiEl=pw.document.getElementById("pip-pid");if(pipPiEl){pipPiEl.value=pId;pipPiEl.addEventListener("input",e=>{sPId(e.target.value)})}
 const pipBtnUpdate=()=>{const d=pipRef.current;if(!d)return;const r=rsRef.current;const rb=d.getElementById("pip-rec"),pb=d.getElementById("pip-pause"),sb=d.getElementById("pip-stop"),smb=d.getElementById("pip-sum");if(!rb)return;rb.style.display=r==="inactive"?"inline-block":"none";pb.style.display=r!=="inactive"?"inline-block":"none";if(r==="recording"){pb.textContent="一時停止";pb.style.background="#fbbf24";pb.style.color="#78350f"}else if(r==="paused"){pb.textContent="再開";pb.style.background="#22c55e";pb.style.color="#fff"}sb.style.display=r!=="inactive"?"inline-block":"none";smb.style.display=r!=="inactive"?"inline-block":"none";const resumeBtn=d.getElementById("pip-resume");if(resumeBtn){if(r==="recording"){resumeBtn.style.display="none"}else if(iR.current&&iR.current.trim()){resumeBtn.style.display="inline-block"}else{resumeBtn.style.display="none"}}};
+const pipTplUpdate=()=>{const d2=pipRef.current;if(!d2)return;const stdB=d2.getElementById("pip-tpl-std");const minB=d2.getElementById("pip-tpl-min");if(!stdB||!minB)return;const isstd=tidRef.current==="soap-std";stdB.style.border=isstd?"2px solid #22c55e":"1px solid rgba(255,255,255,.4)";stdB.style.background=isstd?"rgba(34,197,94,.3)":"rgba(255,255,255,.15)";stdB.style.fontWeight=isstd?"700":"600";minB.style.border=!isstd?"2px solid #22c55e":"1px solid rgba(255,255,255,.4)";minB.style.background=!isstd?"rgba(34,197,94,.3)":"rgba(255,255,255,.15)";minB.style.fontWeight=!isstd?"700":"600"};
+pw.document.getElementById("pip-tpl-std").onclick=()=>{sTid("soap-std");setTimeout(pipTplUpdate,100)};
+pw.document.getElementById("pip-tpl-min").onclick=()=>{sTid("soap-min");setTimeout(pipTplUpdate,100)};
+pipTplUpdate();
 pw.document.getElementById("pip-rec").onclick=()=>{if(iR.current&&iR.current.trim()){const d=pipRef.current;if(d){try{const old=d.getElementById("pip-alert");if(old)old.remove()}catch{}const div=d.createElement("div");div.id="pip-alert";div.style.cssText="position:fixed;top:6px;left:50%;transform:translateX(-50%);width:90%;background:#f59e0b;color:#fff;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:700;z-index:9999;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3)";div.textContent="⚠️ 前のカルテが残っています → 次へで消去";d.body.appendChild(div)}return}go();setTimeout(pipBtnUpdate,500)};
 pw.document.getElementById("pip-pause").onclick=()=>{if(rsRef.current==="recording"){pause()}else{resume()}setTimeout(pipBtnUpdate,300)};
 pw.document.getElementById("pip-resume").onclick=()=>{go();setTimeout(pipBtnUpdate,500)};
@@ -1467,6 +1477,16 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 </button>)})}
 </div>
 <button onClick={()=>{setTplVisible(null);try{localStorage.removeItem("mk_tplVisible")}catch{};sSt("テンプレート表示をリセットしました")}} style={{marginTop:8,padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>🔄 デフォルトに戻す（標準・簡潔のみ）</button>
+</div>
+<div style={{marginTop:16}}>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 デフォルトテンプレート</span>
+<p style={{fontSize:11,color:C.g500,margin:"4px 0 8px"}}>アプリ起動時・次へ押下時に選択されるテンプレート</p>
+<div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+{T.map(t=>{const isDef=tid===t.id;return(
+<button key={t.id} onClick={()=>{sTid(t.id);try{localStorage.setItem("mk_defaultTpl",t.id)}catch{};sSt("デフォルトを「"+t.name+"」に設定")}} style={{padding:"4px 12px",borderRadius:8,border:isDef?`2px solid ${C.p}`:`1.5px solid ${C.g200}`,background:isDef?C.pLL:C.w,fontSize:12,fontWeight:isDef?700:400,color:isDef?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>
+{isDef?"✅":"○"} {t.name}
+</button>)})}
+</div>
 </div>
 </div>
 <div style={{...card,marginBottom:16}}>
