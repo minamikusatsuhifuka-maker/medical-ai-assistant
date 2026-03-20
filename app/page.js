@@ -522,11 +522,18 @@ const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minO
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
+const[favEditModal,setFavEditModal]=useState(null),[favEditTitle,setFavEditTitle]=useState(""),[favEditGroup,setFavEditGroup]=useState(""),[favEditContent,setFavEditContent]=useState("");
+const[favGenModal,setFavGenModal]=useState(null),[favGenPurpose,setFavGenPurpose]=useState("患者向け説明文"),[favGenResult,setFavGenResult]=useState(""),[favGenLoading,setFavGenLoading]=useState(false);
 const FAV_GROUPS=["保険","美容","カウンセリング","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast("⭐ 保存しました");setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
 const deleteFavorite=async(id)=>{if(!supabase||!confirm("削除しますか？"))return;try{await supabase.from("favorites").delete().eq("id",id);loadFavorites()}catch(e){console.error(e)}};
 const moveFavorite=async(id,newGroup)=>{if(!supabase)return;try{await supabase.from("favorites").update({group_name:newGroup}).eq("id",id);setFavMoveModal(null);loadFavorites()}catch(e){console.error(e)}};
+const openEditModal=(f)=>{setFavEditTitle(f.title||"");setFavEditGroup(f.group_name||"その他");setFavEditContent(f.content||"");setFavEditModal(f)};
+const updateFavorite=async()=>{if(!supabase||!favEditModal)return;try{await supabase.from("favorites").update({title:favEditTitle,group_name:favEditGroup,content:favEditContent}).eq("id",favEditModal.id);setFavEditModal(null);setFavToast("✏️ 更新しました");setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav update error:",e)}};
+const openGenModal=(f)=>{setFavGenResult("");setFavGenPurpose("患者向け説明文");setFavGenModal(f)};
+const generateMaterial=async()=>{if(!favGenModal)return;setFavGenLoading(true);setFavGenResult("");try{const res=await fetch("/api/generate-material",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({purpose:favGenPurpose,content:favGenModal.content||""})});const data=await res.json();if(data.error)throw new Error(data.error);setFavGenResult(data.result||"")}catch(e){setFavGenResult("エラー: "+e.message)}finally{setFavGenLoading(false)}};
+const saveGenResultAsFavorite=async()=>{if(!supabase||!favGenModal||!favGenResult)return;const group=favGenModal.group_name||"その他";const title=`[${favGenPurpose}] ${(favGenModal.title||"無題").substring(0,30)}`;await saveFavorite(group,title,favGenResult,"");setFavToast("⭐ 生成結果を保存しました");setTimeout(()=>setFavToast(""),2500)};
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
 const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
@@ -1200,8 +1207,10 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 {gFavs.map(f=><div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
 <div style={{fontSize:12,fontWeight:700,color:C.pDD,marginBottom:4,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{f.title||"無題"}</div>
 <div style={{fontSize:11,color:C.g600,marginBottom:6,lineHeight:1.3,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
-<div style={{display:"flex",gap:4}}>
+<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
 <button onClick={()=>{navigator.clipboard.writeText(f.content||"");sSt("📋 コピーしました")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
+<button onClick={()=>openEditModal(f)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️</button>
+<button onClick={()=>openGenModal(f)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:10,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>📄資料生成</button>
 <button onClick={()=>setFavMoveModal(f)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📁移動</button>
 <button onClick={()=>deleteFavorite(f.id)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fca5a5",background:"#fef2f2",fontSize:10,fontWeight:600,color:"#ef4444",fontFamily:"inherit",cursor:"pointer"}}>🗑️</button>
 </div></div>)}
@@ -1224,6 +1233,63 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 <div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:12}}>📁 グループ移動</div>
 {FAV_GROUPS.filter(g=>g!==favMoveModal.group_name).map(g=><button key={g} onClick={()=>moveFavorite(favMoveModal.id,g)} style={{display:"block",width:"100%",padding:"8px 12px",marginBottom:6,borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:13,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
 <button onClick={()=>setFavMoveModal(null)} style={{width:"100%",padding:"6px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
+</div></div>}
+{/* 編集モーダル */}
+{favEditModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavEditModal(null)}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:560,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:C.pDD}}>✏️ お気に入り編集</span>
+<button onClick={()=>setFavEditModal(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,fontWeight:600,color:C.g600,display:"block",marginBottom:4}}>タイトル</label>
+<input value={favEditTitle} onChange={e=>setFavEditTitle(e.target.value)} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,boxSizing:"border-box"}}/>
+</div>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,fontWeight:600,color:C.g600,display:"block",marginBottom:4}}>グループ</label>
+<select value={favEditGroup} onChange={e=>setFavEditGroup(e.target.value)} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,boxSizing:"border-box"}}>
+{FAV_GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
+</select>
+</div>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,fontWeight:600,color:C.g600,display:"block",marginBottom:4}}>内容</label>
+<textarea value={favEditContent} onChange={e=>setFavEditContent(e.target.value)} rows={10} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+</div>
+<button onClick={updateFavorite} style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+</div>
+</div></div>}
+{/* 資料生成モーダル */}
+{favGenModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!favGenLoading)setFavGenModal(null)}}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>📄 資料自動生成</span>
+<button onClick={()=>{if(!favGenLoading)setFavGenModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,fontWeight:600,color:C.g600,display:"block",marginBottom:4}}>元データ: {favGenModal.title||"無題"}</label>
+<div style={{fontSize:11,color:C.g500,background:C.g50,padding:8,borderRadius:8,maxHeight:60,overflow:"auto",lineHeight:1.4}}>{(favGenModal.content||"").substring(0,200)}{(favGenModal.content||"").length>200?"...":""}</div>
+</div>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,fontWeight:600,color:C.g600,display:"block",marginBottom:6}}>用途選択</label>
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{["患者向け説明文","スタッフ向けマニュアル","院内掲示用"].map(p=><button key={p} onClick={()=>setFavGenPurpose(p)} style={{padding:"6px 14px",borderRadius:8,border:`1.5px solid ${favGenPurpose===p?"#2563eb":C.g200}`,background:favGenPurpose===p?"#eff6ff":C.w,fontSize:12,fontWeight:favGenPurpose===p?700:500,color:favGenPurpose===p?"#2563eb":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{p}</button>)}
+</div>
+</div>
+<button onClick={generateMaterial} disabled={favGenLoading} style={{width:"100%",padding:"10px",borderRadius:10,border:"none",background:favGenLoading?C.g200:"linear-gradient(135deg,#3b82f6,#2563eb)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:favGenLoading?"not-allowed":"pointer",marginBottom:12}}>{favGenLoading?"⏳ 生成中...":"✨ 生成する"}</button>
+{favGenLoading&&<div style={{textAlign:"center",padding:16}}><div style={{width:28,height:28,border:`3px solid ${C.g200}`,borderTop:"3px solid #3b82f6",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:C.g500,fontSize:12}}>Claude AIが文書を生成中...</span></div>}
+{favGenResult&&!favGenLoading&&<div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+<span style={{fontSize:12,fontWeight:700,color:"#2563eb"}}>生成結果</span>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>{navigator.clipboard.writeText(favGenResult);sSt("📋 コピーしました")}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:11,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={saveGenResultAsFavorite} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+</div>
+</div>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit",background:C.g50,padding:12,borderRadius:10,maxHeight:300,overflow:"auto"}}>{favGenResult}</pre>
+</div>}
+</div>
 </div></div>}
 </div>)}
 // === DOC GENERATION ===
