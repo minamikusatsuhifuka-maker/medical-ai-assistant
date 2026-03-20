@@ -64,8 +64,9 @@ async function callClaude(text, prompt) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
-      max_tokens: 4096,
+      model: "claude-sonnet-4-6-20250627",
+      max_tokens: 8192,
+      temperature: 0.3,
       system: prompt,
       messages: [{ role: "user", content: text }],
     }),
@@ -77,16 +78,17 @@ async function callClaude(text, prompt) {
 
 export async function POST(request) {
   try {
-    const { text, mode, prompt } = await request.json();
+    const { text, mode, prompt, model_preference } = await request.json();
     if (!text || text.trim() === "") {
       return NextResponse.json({ error: "テキストが必要です" }, { status: 400 });
     }
     const systemPrompt = prompt || DEFAULT_PROMPT;
     let summary;
     let model = null;
-    if (mode === "claude") {
+    const useClaude = model_preference === "claude" || mode === "claude";
+    if (useClaude) {
       summary = await callClaude(text, systemPrompt);
-      model = "claude-sonnet";
+      model = "Claude Sonnet 4.6";
     } else {
       const result = await callGemini(text, systemPrompt);
       summary = result.summary;
