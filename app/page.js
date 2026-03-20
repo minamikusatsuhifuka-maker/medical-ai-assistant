@@ -912,6 +912,14 @@ const filteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const dat
 // Dict
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(from&&to&&from!==to){r=r.split(from).join(to)}}return r};
 
+// AI校正
+const[typoModal,setTypoModal]=useState(null);
+const[typoLd,setTypoLd]=useState(false);
+const[typoSelections,setTypoSelections]=useState({});
+const runTypoCheck=async()=>{const t=iR.current;if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}setTypoLd(true);sSt("🔍 AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})});const d=await r.json();if(d.error){sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const sel={};d.corrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoModal(d.corrections);sSt("校正候補が見つかりました")}catch(e){sSt("校正エラー")}finally{setTypoLd(false)}};
+const applyTypoCorrection=(idx,candidateIdx)=>{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates[candidateIdx];if(!candidate)return;sInp(prev=>prev.split(c.from).join(candidate.to));const newDict=[[c.from,candidate.to],...dict];setDict(newDict);try{localStorage.setItem("mk_dict",JSON.stringify(newDict))}catch{}};
+const applyAllTypos=()=>{if(!typoModal)return;let t=iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoSelections[i]!==undefined){const candidate=c.candidates[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});sInp(t);if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);try{localStorage.setItem("mk_dict",JSON.stringify(newDict))}catch{}}setTypoModal(null);sSt(`✓ ${applied.length}件の修正を登録しました`)};
+
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
@@ -1986,7 +1994,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pDD}}>📝 書き起こし</span>
-<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>
+<div style={{display:"flex",gap:6,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} style={{padding:"2px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"校正中...":"🔍 AI校正"}</button><span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span></div>
 </div>
 <textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
@@ -2022,4 +2030,24 @@ const fn=actions[sc.id];if(fn)fn();
 </div></div>}
 {/* お気に入り保存トースト */}
 {favToast&&<div style={{position:"fixed",bottom:30,left:"50%",transform:"translateX(-50%)",background:"#92400e",color:"#fff",padding:"8px 20px",borderRadius:12,fontSize:13,fontWeight:700,zIndex:10001,boxShadow:"0 4px 16px rgba(0,0,0,.3)"}}>{favToast}</div>}
+{/* AI校正モーダル */}
+{typoModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setTypoModal(null)}>
+<div style={{background:C.w,borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🔍 AI校正候補（{typoModal.length}件）</div>
+<button onClick={()=>setTypoModal(null)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+</div>
+{typoModal.map((c,i)=>(<div key={i} style={{marginBottom:14,padding:14,borderRadius:12,border:`1.5px solid ${typoSelections[i]!==undefined?C.p+"66":C.g200}`,background:typoSelections[i]!==undefined?"#f7fee7":C.g50}}>
+<div style={{fontSize:13,fontWeight:600,color:"#dc2626",marginBottom:8}}>（誤）{c.from}</div>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:typoSelections[i]!==undefined?8:0}}>
+{c.candidates.map((cand,j)=>(<button key={j} onClick={()=>setTypoSelections(prev=>({...prev,[i]:prev[i]===j?undefined:j}))} style={{padding:"6px 14px",borderRadius:10,border:typoSelections[i]===j?`2px solid ${C.rG}`:`1.5px solid ${C.g300}`,background:typoSelections[i]===j?"#dcfce7":C.w,fontSize:13,fontWeight:typoSelections[i]===j?700:500,color:typoSelections[i]===j?"#166534":C.g700,fontFamily:"inherit",cursor:"pointer",transition:"all 0.15s"}}>{cand.to}</button>))}
+</div>
+{typoSelections[i]!==undefined&&c.candidates[typoSelections[i]]&&<div style={{fontSize:11,color:C.g500,marginBottom:8,paddingLeft:4}}>💡 {c.candidates[typoSelections[i]].reason}</div>}
+{typoSelections[i]!==undefined&&<button onClick={()=>{applyTypoCorrection(i,typoSelections[i]);setTypoModal(prev=>{const n=[...prev];n.splice(i,1);return n.length?n:null});sSt("✓ 修正+辞書登録しました")}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ これで登録</button>}
+</div>))}
+{typoModal.length>1&&<div style={{marginTop:10,display:"flex",gap:8}}>
+<button onClick={applyAllTypos} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:C.p,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 選択済みをすべて登録（{Object.keys(typoSelections).filter(k=>typoSelections[k]!==undefined).length}/{typoModal.length}件）</button>
+<button onClick={()=>setTypoModal(null)} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>閉じる</button>
+</div>}
+</div></div>}
 </div></div>);}
