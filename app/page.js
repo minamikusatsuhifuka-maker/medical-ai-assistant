@@ -1970,6 +1970,10 @@ const fn=actions[sc.id];if(fn)fn();
 </div>
 {rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
 <button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
+<div style={{display:"flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.g200}`}}>
+<button onClick={()=>{setSummaryModel("gemini");try{localStorage.setItem("mk_summaryModel","gemini")}catch{}}} style={{padding:"4px 10px",border:"none",background:summaryModel!=="claude"?C.rG:C.g50,color:summaryModel!=="claude"?C.w:C.g400,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>⚡Gemini</button>
+<button onClick={()=>{setSummaryModel("claude");try{localStorage.setItem("mk_summaryModel","claude")}catch{}}} style={{padding:"4px 10px",border:"none",borderLeft:`1px solid ${C.g200}`,background:summaryModel==="claude"?C.rG:C.g50,color:summaryModel==="claude"?C.w:C.g400,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>🤖Claude</button>
+</div>
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
 <button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"#e7e5e4":"linear-gradient(135deg,#65a30d,#84cc16)",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap"}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
