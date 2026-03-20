@@ -22,7 +22,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 1500,
         temperature: 0.5,
         system: "あなたはクリニックの接遇コンサルタントです。診察の書き起こしをもとに、スタッフの対応品質を評価してください。良かった点・改善点・具体的なアドバイスを含めてください。",

@@ -22,7 +22,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2000,
         temperature: 0.3,
         system: "あなたはクリニック経営コンサルタントです。診療・カウンセリング記録から患者の関心・不安・満足度のポイントを分析してください。改善提案も含めてください。必ず以下の3セクションに分けて回答してください：\n\n## 患者の関心TOP5\n## 不安・懸念TOP5\n## 改善提案",

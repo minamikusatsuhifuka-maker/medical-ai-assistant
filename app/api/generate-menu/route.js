@@ -22,7 +22,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2000,
         temperature: 0.7,
         system: "あなたは美容皮膚科クリニックのマーケティング担当者です。施術記録をもとにホームページ・院内POP用の施術メニュー説明文を作成してください。患者が安心・魅力を感じる表現にしてください。",

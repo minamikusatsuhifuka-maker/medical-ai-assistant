@@ -22,7 +22,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2000,
         temperature: 0.8,
         system: "あなたは皮膚科クリニックの患者役です。スタッフが適切な対応を練習できるよう、リアルな患者の問いかけや状況を生成してください。",

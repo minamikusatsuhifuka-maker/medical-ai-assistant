@@ -22,7 +22,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2000,
         temperature: 0.5,
         system: "あなたは皮膚科の指導医です。診療記録をもとに研修スタッフ向けの症例解説を作成してください。疾患の特徴・診察のポイント・患者への説明方法・注意点を含めてください。",

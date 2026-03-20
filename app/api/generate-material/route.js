@@ -25,7 +25,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2000,
         temperature: 0.7,
         system: "あなたは皮膚科クリニックの医療事務スタッフです。与えられた診療記録をもとに、指定された用途の文書を作成してください。",
