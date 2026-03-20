@@ -399,6 +399,7 @@ const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
 const[fontSize,setFontSize]=useState("medium");
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs)}catch{}},[]);
+useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}})()},[]);
 useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.documentElement.style.fontSize=sizes[fontSize]||"14px";localStorage.setItem("mk_fontSize",fontSize)},[fontSize]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
@@ -911,14 +912,19 @@ const filteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const dat
 
 // Dict
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(from&&to&&from!==to){r=r.split(from).join(to)}}return r};
+const saveDictLocal=(d)=>{try{localStorage.setItem("mk_dict",JSON.stringify(d))}catch{}};
+const dictAddSupabase=async(from,to)=>{if(!supabase)return;try{await supabase.from("dictionary").insert({from_text:from,to_text:to})}catch(e){console.error("dict insert error:",e)}};
+const dictDelSupabase=async(from)=>{if(!supabase)return;try{await supabase.from("dictionary").delete().eq("from_text",from)}catch(e){console.error("dict delete error:",e)}};
+const dictAddEntry=(from,to)=>{const nd=[[from,to],...dict];setDict(nd);saveDictLocal(nd);dictAddSupabase(from,to)};
+const dictDelEntry=(idx)=>{const entry=dict[idx];const nd=dict.filter((_,j)=>j!==idx);setDict(nd);saveDictLocal(nd);if(entry)dictDelSupabase(entry[0])};
 
 // AI校正
 const[typoModal,setTypoModal]=useState(null);
 const[typoLd,setTypoLd]=useState(false);
 const[typoSelections,setTypoSelections]=useState({});
 const runTypoCheck=async()=>{const t=iR.current;if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}setTypoLd(true);sSt("🔍 AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})});const d=await r.json();if(d.error){sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const sel={};d.corrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoModal(d.corrections);sSt("校正候補が見つかりました")}catch(e){sSt("校正エラー")}finally{setTypoLd(false)}};
-const applyTypoCorrection=(idx,candidateIdx)=>{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates[candidateIdx];if(!candidate)return;sInp(prev=>prev.split(c.from).join(candidate.to));const newDict=[[c.from,candidate.to],...dict];setDict(newDict);try{localStorage.setItem("mk_dict",JSON.stringify(newDict))}catch{}};
-const applyAllTypos=()=>{if(!typoModal)return;let t=iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoSelections[i]!==undefined){const candidate=c.candidates[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});sInp(t);if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);try{localStorage.setItem("mk_dict",JSON.stringify(newDict))}catch{}}setTypoModal(null);sSt(`✓ ${applied.length}件の修正を登録しました`)};
+const applyTypoCorrection=(idx,candidateIdx)=>{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates[candidateIdx];if(!candidate)return;sInp(prev=>prev.split(c.from).join(candidate.to));dictAddEntry(c.from,candidate.to)};
+const applyAllTypos=()=>{if(!typoModal)return;let t=iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoSelections[i]!==undefined){const candidate=c.candidates[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});sInp(t);if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);saveDictLocal(newDict);applied.forEach(([f,to])=>dictAddSupabase(f,to))}setTypoModal(null);sSt(`✓ ${applied.length}件の修正を登録しました`)};
 
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
@@ -1918,13 +1924,13 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <input value={newFrom} onChange={e=>setNewFrom(e.target.value)} placeholder="変換前" style={{...ib,flex:1}}/>
 <span style={{alignSelf:"center",color:C.g400}}>→</span>
 <input value={newTo} onChange={e=>setNewTo(e.target.value)} placeholder="変換後" style={{...ib,flex:1}}/>
-<button onClick={()=>{if(newFrom.trim()&&newTo.trim()){setDict([[newFrom.trim(),newTo.trim()],...dict]);setNewFrom("");setNewTo("")}}} style={btn(C.p,C.pDD,{padding:"6px 14px",fontSize:13})}>追加</button></div>
+<button onClick={()=>{if(newFrom.trim()&&newTo.trim()){dictAddEntry(newFrom.trim(),newTo.trim());setNewFrom("");setNewTo("")}}} style={btn(C.p,C.pDD,{padding:"6px 14px",fontSize:13})}>追加</button></div>
 <div style={{maxHeight:400,overflow:"auto"}}>
 {dict.map((d,i)=>(<div key={i} style={{display:"flex",gap:6,alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${C.g100}`}}>
 <span style={{flex:1,fontSize:12,color:C.g500}}>{d[0]}</span>
 <span style={{color:C.g400,fontSize:11}}>→</span>
 <span style={{flex:1,fontSize:12,color:C.g900,fontWeight:600}}>{d[1]}</span>
-<button onClick={()=>setDict(dict.filter((_,j)=>j!==i))} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>✕</button></div>))}</div></div>
+<button onClick={()=>dictDelEntry(i)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>✕</button></div>))}</div></div>
 </div>);
 
 // === MAIN ===
