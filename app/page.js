@@ -1988,7 +1988,7 @@ const fn=actions[sc.id];if(fn)fn();
 {/* 右カラム: 要約結果 */}
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{ct.name} 要約結果</span>{geminiModel&&<span style={{fontSize:10,color:C.g400,marginLeft:6}}>✨ {geminiModel} で要約</span>}
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{summaryModel==="claude"?"Claude Sonnet 4.6":ct.name} 要約結果</span>{geminiModel&&<span style={{fontSize:10,color:C.g400,marginLeft:6}}>✨ {geminiModel} で要約</span>}
 {out&&<><button onClick={()=>cp(out)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>setFavModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),content:out,recordId:""})} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り</button></>}
 </div>
