@@ -397,7 +397,7 @@ const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh))}catch{}},[]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
 useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
@@ -527,6 +527,10 @@ const[favGenModal,setFavGenModal]=useState(null),[favGenPurpose,setFavGenPurpose
 const[caseSearch,setCaseSearch]=useState(""),[caseStudyModal,setCaseStudyModal]=useState(null),[caseStudyResult,setCaseStudyResult]=useState(""),[caseStudyLoading,setCaseStudyLoading]=useState(false);
 const[qcModal,setQcModal]=useState(null),[qcResult,setQcResult]=useState(""),[qcLoading,setQcLoading]=useState(false);
 const[rpInput,setRpInput]=useState(""),[rpResult,setRpResult]=useState(""),[rpLoading,setRpLoading]=useState(false),[rpHistory,setRpHistory]=useState([]);
+const[faqResult,setFaqResult]=useState(""),[faqLoading,setFaqLoading]=useState(false),[faqModal,setFaqModal]=useState(false);
+const[menuResult,setMenuResult]=useState(""),[menuLoading,setMenuLoading]=useState(false),[menuModal,setMenuModal]=useState(false);
+const[snsInput,setSnsInput]=useState(""),[snsPlatform,setSnsPlatform]=useState("Instagram"),[snsResult,setSnsResult]=useState(""),[snsLoading,setSnsLoading]=useState(false),[snsHistory,setSnsHistory]=useState([]);
+const[satResult,setSatResult]=useState(""),[satLoading,setSatLoading]=useState(false);
 const FAV_GROUPS=["保険","美容","カウンセリング","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast("⭐ 保存しました");setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
@@ -540,6 +544,10 @@ const saveGenResultAsFavorite=async()=>{if(!supabase||!favGenModal||!favGenResul
 const generateCaseStudy=async(f)=>{setCaseStudyModal(f);setCaseStudyResult("");setCaseStudyLoading(true);try{const res=await fetch("/api/case-study",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:f.content||""})});const data=await res.json();if(data.error)throw new Error(data.error);setCaseStudyResult(data.result||"")}catch(e){setCaseStudyResult("エラー: "+e.message)}finally{setCaseStudyLoading(false)}};
 const runQualityCheck=async(r)=>{setQcModal(r);setQcResult("");setQcLoading(true);try{const res=await fetch("/api/quality-check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:r.input_text||""})});const data=await res.json();if(data.error)throw new Error(data.error);setQcResult(data.result||"")}catch(e){setQcResult("エラー: "+e.message)}finally{setQcLoading(false)}};
 const generateRoleplay=async()=>{if(!rpInput.trim())return;setRpLoading(true);setRpResult("");try{const res=await fetch("/api/roleplay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({situation:rpInput})});const data=await res.json();if(data.error)throw new Error(data.error);setRpResult(data.result||"");const entry={id:Date.now(),situation:rpInput,result:data.result||"",date:new Date().toLocaleDateString("ja-JP")};try{const prev=JSON.parse(localStorage.getItem("mk_rpHistory")||"[]");const updated=[entry,...prev].slice(0,10);localStorage.setItem("mk_rpHistory",JSON.stringify(updated));setRpHistory(updated)}catch{}}catch(e){setRpResult("エラー: "+e.message)}finally{setRpLoading(false)}};
+const generateFaq=async(group,favs)=>{setFaqLoading(true);setFaqResult("");setFaqModal(true);try{const content=favs.map(f=>`【${f.title||"無題"}】\n${f.content||""}`).join("\n---\n");const res=await fetch("/api/generate-faq",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});const data=await res.json();if(data.error)throw new Error(data.error);setFaqResult(data.result||"")}catch(e){setFaqResult("エラー: "+e.message)}finally{setFaqLoading(false)}};
+const generateMenu=async(favs)=>{setMenuLoading(true);setMenuResult("");setMenuModal(true);try{const content=favs.map(f=>`【${f.title||"無題"}】\n${f.content||""}`).join("\n---\n");const res=await fetch("/api/generate-menu",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});const data=await res.json();if(data.error)throw new Error(data.error);setMenuResult(data.result||"")}catch(e){setMenuResult("エラー: "+e.message)}finally{setMenuLoading(false)}};
+const generateSns=async()=>{if(!snsInput.trim())return;setSnsLoading(true);setSnsResult("");try{const res=await fetch("/api/generate-sns",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:snsPlatform,theme:snsInput})});const data=await res.json();if(data.error)throw new Error(data.error);setSnsResult(data.result||"");const entry={id:Date.now(),platform:snsPlatform,theme:snsInput,result:data.result||"",date:new Date().toLocaleDateString("ja-JP")};try{const prev=JSON.parse(localStorage.getItem("mk_snsHistory")||"[]");const updated=[entry,...prev].slice(0,10);localStorage.setItem("mk_snsHistory",JSON.stringify(updated));setSnsHistory(updated)}catch{}}catch(e){setSnsResult("エラー: "+e.message)}finally{setSnsLoading(false)}};
+const runSatisfactionAnalysis=async()=>{if(!supabase)return;setSatLoading(true);setSatResult("");try{const[{data:records},{data:counseling}]=await Promise.all([supabase.from("records").select("output_text,input_text").order("created_at",{ascending:false}).limit(30),supabase.from("counseling_records").select("transcription,summary").order("created_at",{ascending:false}).limit(30)]);let content="【診療記録】\n";if(records)content+=records.map(r=>r.output_text||r.input_text||"").filter(Boolean).join("\n---\n");content+="\n\n【カウンセリング記録】\n";if(counseling)content+=counseling.map(r=>r.summary||r.transcription||"").filter(Boolean).join("\n---\n");if(content.trim().length<20){setSatResult("分析に必要なデータが不足しています");setSatLoading(false);return}const res=await fetch("/api/satisfaction-analysis",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});const data=await res.json();if(data.error)throw new Error(data.error);setSatResult(data.result||"")}catch(e){setSatResult("エラー: "+e.message)}finally{setSatLoading(false)}};
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
 const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
@@ -1223,8 +1231,12 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 <button onClick={()=>{loadHist();setPage("hist")}} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div></div>
-<div style={{display:"flex",gap:4,marginBottom:12}}>
+<div style={{display:"flex",gap:4,marginBottom:8}}>
 {FAV_GROUPS.map(g=><button key={g} onClick={()=>setFavGroup(g)} style={{flex:1,padding:"6px 0",borderRadius:8,border:`1.5px solid ${favGroup===g?"#f59e0b":C.g200}`,background:favGroup===g?"#fffbeb":C.w,fontSize:12,fontWeight:favGroup===g?700:500,color:favGroup===g?"#92400e":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{g}</button>)}
+</div>
+<div style={{display:"flex",gap:6,marginBottom:12}}>
+<button onClick={()=>{const gf=favorites.filter(f=>f.group_name===favGroup);if(gf.length===0){setFavToast("データがありません");setTimeout(()=>setFavToast(""),2500);return}generateFaq(favGroup,gf)}} disabled={faqLoading} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:"pointer"}}>{faqLoading?"⏳ 生成中...":"❓ FAQ自動生成"}</button>
+{favGroup==="美容"&&<button onClick={()=>{const gf=favorites.filter(f=>f.group_name==="美容");if(gf.length===0){setFavToast("美容データがありません");setTimeout(()=>setFavToast(""),2500);return}generateMenu(gf)}} disabled={menuLoading} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>{menuLoading?"⏳ 生成中...":"📝 メニュー説明文生成"}</button>}
 </div>
 {gFavs.length===0?<div style={{textAlign:"center",padding:40,color:C.g400,fontSize:13}}>このグループにはお気に入りがありません</div>:
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(2,1fr)",gap:8}}>
@@ -1312,6 +1324,42 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div>
 </div>
 <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit",background:C.g50,padding:12,borderRadius:10,maxHeight:300,overflow:"auto"}}>{favGenResult}</pre>
+</div>}
+</div>
+</div></div>}
+{/* FAQ生成モーダル */}
+{faqModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!faqLoading)setFaqModal(false)}}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:"#7c3aed"}}>❓ FAQ自動生成（{favGroup}）</span>
+<button onClick={()=>{if(!faqLoading)setFaqModal(false)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{faqLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:28,height:28,border:`3px solid ${C.g200}`,borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:C.g500,fontSize:12}}>FAQ生成中...</span></div>}
+{faqResult&&!faqLoading&&<div>
+<div style={{display:"flex",justifyContent:"flex-end",marginBottom:8,gap:4}}>
+<button onClick={()=>{navigator.clipboard.writeText(faqResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite(favGroup,"[FAQ] "+favGroup,faqResult,"")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+</div>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{faqResult}</pre>
+</div>}
+</div>
+</div></div>}
+{/* メニュー説明文モーダル */}
+{menuModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!menuLoading)setMenuModal(false)}}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:"#92400e"}}>📝 施術メニュー説明文</span>
+<button onClick={()=>{if(!menuLoading)setMenuModal(false)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{menuLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:28,height:28,border:`3px solid ${C.g200}`,borderTop:"3px solid #f59e0b",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:C.g500,fontSize:12}}>メニュー説明文を生成中...</span></div>}
+{menuResult&&!menuLoading&&<div>
+<div style={{display:"flex",justifyContent:"flex-end",marginBottom:8,gap:4}}>
+<button onClick={()=>{navigator.clipboard.writeText(menuResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite("美容","[メニュー説明] 美容施術",menuResult,"")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+</div>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{menuResult}</pre>
 </div>}
 </div>
 </div></div>}
@@ -1407,6 +1455,69 @@ if(page==="roleplay")return(<div style={{maxWidth:800,margin:"0 auto",padding:mo
 </div>)}
 </div>
 </div>}
+</div>)
+
+// === SNS PAGE ===
+if(page==="sns")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#0891b2",margin:0}}>📣 SNS投稿文生成</h2>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div>
+<div style={card}>
+<p style={{fontSize:13,color:C.g500,marginBottom:12}}>季節や疾患テーマを入力すると、各SNSに最適化された投稿文をAIが生成します。</p>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,fontWeight:600,color:C.g600,display:"block",marginBottom:6}}>投稿先</label>
+<div style={{display:"flex",gap:6}}>
+{["Instagram","X","LINE"].map(p=><button key={p} onClick={()=>setSnsPlatform(p)} style={{padding:"6px 16px",borderRadius:8,border:`1.5px solid ${snsPlatform===p?"#0891b2":C.g200}`,background:snsPlatform===p?"#ecfeff":C.w,fontSize:12,fontWeight:snsPlatform===p?700:500,color:snsPlatform===p?"#0891b2":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{p}</button>)}
+</div>
+</div>
+<div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
+<input value={snsInput} onChange={e=>setSnsInput(e.target.value)} placeholder="季節・疾患テーマを入力（例：夏の紫外線対策）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
+<button onClick={generateSns} disabled={snsLoading||!snsInput.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:snsLoading?C.g200:"linear-gradient(135deg,#0891b2,#06b6d4)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!snsInput.trim()?.45:1}}>{snsLoading?"⏳ 生成中...":"📣 投稿文を生成"}</button>
+</div>
+<div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+{["夏の紫外線対策","冬の乾燥肌ケア","花粉症シーズンの肌荒れ","ニキビ予防","シミ・そばかす対策","美容施術のご案内","新メニュー紹介","年末年始の診療案内"].map(s=>(<button key={s} onClick={()=>setSnsInput(s)} style={{padding:"3px 10px",borderRadius:8,border:"1px solid #67e8f9",background:"#ecfeff",fontSize:11,fontWeight:500,color:"#0891b2",fontFamily:"inherit",cursor:"pointer"}}>{s}</button>))}
+</div>
+{snsLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #0891b2",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>投稿文を作成中...</span></div>}
+{snsResult&&!snsLoading&&<div style={{marginTop:8}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:700,color:"#0891b2"}}>📣 {snsPlatform} 投稿文</span>
+<button onClick={()=>{navigator.clipboard.writeText(snsResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #67e8f9",background:"#ecfeff",fontSize:12,fontWeight:600,color:"#0891b2",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+</div>
+<pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{snsResult}</pre>
+</div>}
+</div>
+{snsHistory.length>0&&<div style={{marginTop:16}}>
+<h3 style={{fontSize:14,fontWeight:700,color:C.g600,marginBottom:8}}>📝 過去の生成履歴</h3>
+<div style={{display:"grid",gap:8}}>
+{snsHistory.map(h=><div key={h.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)",cursor:"pointer"}} onClick={()=>{setSnsInput(h.theme);setSnsPlatform(h.platform);setSnsResult(h.result)}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:12,fontWeight:700,color:C.pDD}}>[{h.platform}] {h.theme}</span>
+<span style={{fontSize:10,color:C.g400}}>{h.date}</span>
+</div>
+<div style={{fontSize:11,color:C.g500,marginTop:4,lineHeight:1.3}}>{(h.result||"").substring(0,80)}...</div>
+</div>)}
+</div>
+</div>}
+</div>)
+
+// === SATISFACTION ANALYSIS PAGE ===
+if(page==="satisfaction")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#c026d3",margin:0}}>📊 患者満足度分析</h2>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div>
+<div style={card}>
+<p style={{fontSize:13,color:C.g500,marginBottom:12}}>診療記録とカウンセリング記録（直近30件ずつ）をAIが分析し、患者の関心・不安・改善ポイントを可視化します。</p>
+<button onClick={runSatisfactionAnalysis} disabled={satLoading} style={{width:"100%",padding:"12px",borderRadius:14,border:"none",background:satLoading?C.g200:"linear-gradient(135deg,#c026d3,#d946ef)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:satLoading?"not-allowed":"pointer",marginBottom:12}}>{satLoading?"⏳ 分析中...":"📊 満足度分析を実行"}</button>
+{satLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #c026d3",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが記録を分析中...</span></div>}
+{satResult&&!satLoading&&<div>
+<div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+<button onClick={()=>{navigator.clipboard.writeText(satResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+</div>
+<pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{satResult}</pre>
+</div>}
+</div>
 </div>)
 
 // === DOC GENERATION ===
@@ -1799,7 +1910,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#86efac",fontWeight:600,background:"rgba(255,255,255,.1)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 2.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.7)",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
 {prog>0&&<div style={{width:"100%",height:5,background:"#e7e5e4",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#84cc16,#22c55e)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"caselib",i:"📚",t:"症例ライブラリ",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"caselib",i:"📚",t:"症例ライブラリ",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ"},{p:"sns",i:"📣",t:"SNS"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
 <span style={{fontSize:10,color:C.g400}}>🎙</span>
