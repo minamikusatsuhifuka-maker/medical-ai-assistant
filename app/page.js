@@ -397,7 +397,7 @@ const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph))}catch{}},[]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
 useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
@@ -524,6 +524,9 @@ const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
 const[favEditModal,setFavEditModal]=useState(null),[favEditTitle,setFavEditTitle]=useState(""),[favEditGroup,setFavEditGroup]=useState(""),[favEditContent,setFavEditContent]=useState("");
 const[favGenModal,setFavGenModal]=useState(null),[favGenPurpose,setFavGenPurpose]=useState("患者向け説明文"),[favGenResult,setFavGenResult]=useState(""),[favGenLoading,setFavGenLoading]=useState(false);
+const[caseSearch,setCaseSearch]=useState(""),[caseStudyModal,setCaseStudyModal]=useState(null),[caseStudyResult,setCaseStudyResult]=useState(""),[caseStudyLoading,setCaseStudyLoading]=useState(false);
+const[qcModal,setQcModal]=useState(null),[qcResult,setQcResult]=useState(""),[qcLoading,setQcLoading]=useState(false);
+const[rpInput,setRpInput]=useState(""),[rpResult,setRpResult]=useState(""),[rpLoading,setRpLoading]=useState(false),[rpHistory,setRpHistory]=useState([]);
 const FAV_GROUPS=["保険","美容","カウンセリング","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast("⭐ 保存しました");setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
@@ -534,6 +537,9 @@ const updateFavorite=async()=>{if(!supabase||!favEditModal)return;try{await supa
 const openGenModal=(f)=>{setFavGenResult("");setFavGenPurpose("患者向け説明文");setFavGenModal(f)};
 const generateMaterial=async()=>{if(!favGenModal)return;setFavGenLoading(true);setFavGenResult("");try{const res=await fetch("/api/generate-material",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({purpose:favGenPurpose,content:favGenModal.content||""})});const data=await res.json();if(data.error)throw new Error(data.error);setFavGenResult(data.result||"")}catch(e){setFavGenResult("エラー: "+e.message)}finally{setFavGenLoading(false)}};
 const saveGenResultAsFavorite=async()=>{if(!supabase||!favGenModal||!favGenResult)return;const group=favGenModal.group_name||"その他";const title=`[${favGenPurpose}] ${(favGenModal.title||"無題").substring(0,30)}`;await saveFavorite(group,title,favGenResult,"");setFavToast("⭐ 生成結果を保存しました");setTimeout(()=>setFavToast(""),2500)};
+const generateCaseStudy=async(f)=>{setCaseStudyModal(f);setCaseStudyResult("");setCaseStudyLoading(true);try{const res=await fetch("/api/case-study",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:f.content||""})});const data=await res.json();if(data.error)throw new Error(data.error);setCaseStudyResult(data.result||"")}catch(e){setCaseStudyResult("エラー: "+e.message)}finally{setCaseStudyLoading(false)}};
+const runQualityCheck=async(r)=>{setQcModal(r);setQcResult("");setQcLoading(true);try{const res=await fetch("/api/quality-check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:r.input_text||""})});const data=await res.json();if(data.error)throw new Error(data.error);setQcResult(data.result||"")}catch(e){setQcResult("エラー: "+e.message)}finally{setQcLoading(false)}};
+const generateRoleplay=async()=>{if(!rpInput.trim())return;setRpLoading(true);setRpResult("");try{const res=await fetch("/api/roleplay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({situation:rpInput})});const data=await res.json();if(data.error)throw new Error(data.error);setRpResult(data.result||"");const entry={id:Date.now(),situation:rpInput,result:data.result||"",date:new Date().toLocaleDateString("ja-JP")};try{const prev=JSON.parse(localStorage.getItem("mk_rpHistory")||"[]");const updated=[entry,...prev].slice(0,10);localStorage.setItem("mk_rpHistory",JSON.stringify(updated));setRpHistory(updated)}catch{}}catch(e){setRpResult("エラー: "+e.message)}finally{setRpLoading(false)}};
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
 const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
@@ -1169,6 +1175,7 @@ return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px s
 <button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
 <button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
 <button onClick={()=>setFavModal({title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||"",recordId:r.id})} style={{padding:"2px 6px",borderRadius:5,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:9,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
+{r.input_text&&<button onClick={()=>runQualityCheck(r)} style={{padding:"2px 6px",borderRadius:5,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:9,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
 </div>
 </div>)})}
 </div>
@@ -1189,6 +1196,23 @@ return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px s
 </div>
 </div>
 </div>}
+{/* 品質チェックモーダル */}
+{qcModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!qcLoading)setQcModal(null)}}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>🔍 対応品質チェック</span>
+<button onClick={()=>{if(!qcLoading)setQcModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{qcLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:28,height:28,border:`3px solid ${C.g200}`,borderTop:"3px solid #3b82f6",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:C.g500,fontSize:12}}>🔍 分析中...</span></div>}
+{qcResult&&!qcLoading&&<div>
+<div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+<button onClick={()=>{navigator.clipboard.writeText(qcResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+</div>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{qcResult}</pre>
+</div>}
+</div>
+</div></div>}
 </div>);
 
 // === FAVORITES PAGE ===
@@ -1292,6 +1316,99 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div>
 </div></div>}
 </div>)}
+// === CASE LIBRARY ===
+if(page==="caselib"){const caseFiltered=caseSearch.trim()?favorites.filter(f=>(f.title||"").includes(caseSearch)||(f.content||"").includes(caseSearch)):favorites;const caseGroups=[...new Set(caseFiltered.map(f=>f.group_name||"その他"))];return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#7c3aed",margin:0}}>📚 症例ライブラリ</h2>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div>
+<input value={caseSearch} onChange={e=>setCaseSearch(e.target.value)} placeholder="🔍 疾患名で検索..." style={{...ib,width:"100%",padding:"10px 14px",fontSize:14,marginBottom:12,boxSizing:"border-box"}}/>
+{caseGroups.length===0?<div style={{textAlign:"center",padding:40,color:C.g400,fontSize:13}}>お気に入りに症例データがありません</div>:
+caseGroups.map(g=><div key={g} style={{marginBottom:16}}>
+<h3 style={{fontSize:14,fontWeight:700,color:"#7c3aed",marginBottom:8,padding:"4px 10px",background:"#f5f3ff",borderRadius:8,display:"inline-block"}}>{g}</h3>
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(2,1fr)",gap:8}}>
+{caseFiltered.filter(f=>(f.group_name||"その他")===g).map(f=><div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+<div style={{fontSize:12,fontWeight:700,color:C.pDD,marginBottom:4}}>{f.title||"無題"}</div>
+<div style={{fontSize:11,color:C.g600,marginBottom:6,lineHeight:1.3}}>{(f.content||"").substring(0,50)}{(f.content||"").length>50?"...":""}</div>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>setFavDetailModal(f)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📖 全文</button>
+<button onClick={()=>generateCaseStudy(f)} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:10,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:"pointer"}}>📖 学習する</button>
+<button onClick={()=>{navigator.clipboard.writeText(f.content||"");sSt("📋 コピーしました")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
+</div>
+</div>)}
+</div>
+</div>)}
+{/* 症例解説モーダル */}
+{caseStudyModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!caseStudyLoading)setCaseStudyModal(null)}}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:"#7c3aed"}}>📖 症例解説: {(caseStudyModal.title||"無題").substring(0,30)}</span>
+<button onClick={()=>{if(!caseStudyLoading)setCaseStudyModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{caseStudyLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:28,height:28,border:`3px solid ${C.g200}`,borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:C.g500,fontSize:12}}>AIが症例を解説中...</span></div>}
+{caseStudyResult&&!caseStudyLoading&&<div>
+<div style={{display:"flex",justifyContent:"flex-end",marginBottom:8,gap:4}}>
+<button onClick={()=>{navigator.clipboard.writeText(caseStudyResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite(caseStudyModal.group_name||"その他","[症例解説] "+(caseStudyModal.title||"無題").substring(0,30),caseStudyResult,"")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+</div>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{caseStudyResult}</pre>
+</div>}
+</div>
+</div></div>}
+{/* お気に入り全文モーダル(症例ライブラリ用) */}
+{favDetailModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavDetailModal(null)}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{favDetailModal.title}</span>
+<button onClick={()=>setFavDetailModal(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{favDetailModal.content}</pre>
+</div></div></div>}
+</div>)}
+
+// === ROLEPLAY ===
+if(page==="roleplay")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#dc2626",margin:0}}>🎭 ロールプレイ練習</h2>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div>
+<div style={card}>
+<p style={{fontSize:13,color:C.g500,marginBottom:12}}>疾患名や状況を入力すると、AIが患者との会話練習シナリオと模範応答を生成します。</p>
+<div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
+<input value={rpInput} onChange={e=>setRpInput(e.target.value)} placeholder="疾患名または状況を入力（例：アトピーの患者が不安を訴えている）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
+<button onClick={generateRoleplay} disabled={rpLoading||!rpInput.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:rpLoading?C.g200:"linear-gradient(135deg,#dc2626,#ef4444)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!rpInput.trim()?.45:1}}>{rpLoading?"⏳ 生成中...":"🎭 練習問題を生成"}</button>
+</div>
+<div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+{["アトピー性皮膚炎の患者が治療に不安","ニキビ治療の効果が出ないと訴える患者","帯状疱疹の痛みを訴える高齢患者","美容施術の費用について質問する患者","待ち時間が長いとクレームする患者","薬の副作用を心配する患者"].map(s=>(<button key={s} onClick={()=>setRpInput(s)} style={{padding:"3px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fef2f2",fontSize:11,fontWeight:500,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>{s}</button>))}
+</div>
+{rpLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #dc2626",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIがシナリオを作成中...</span></div>}
+{rpResult&&!rpLoading&&<div style={{marginTop:8}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>🎭 生成結果</span>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>{navigator.clipboard.writeText(rpResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite("その他","[ロールプレイ] "+rpInput.substring(0,30),rpResult,"")}} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>💾 お気に入り保存</button>
+</div>
+</div>
+<pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{rpResult}</pre>
+</div>}
+</div>
+{rpHistory.length>0&&<div style={{marginTop:16}}>
+<h3 style={{fontSize:14,fontWeight:700,color:C.g600,marginBottom:8}}>📝 過去の練習問題</h3>
+<div style={{display:"grid",gap:8}}>
+{rpHistory.map(h=><div key={h.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)",cursor:"pointer"}} onClick={()=>{setRpInput(h.situation);setRpResult(h.result)}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:12,fontWeight:700,color:C.pDD}}>{h.situation}</span>
+<span style={{fontSize:10,color:C.g400}}>{h.date}</span>
+</div>
+<div style={{fontSize:11,color:C.g500,marginTop:4,lineHeight:1.3}}>{(h.result||"").substring(0,80)}...</div>
+</div>)}
+</div>
+</div>}
+</div>)
+
 // === DOC GENERATION ===
 if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 {prog>0&&<div style={{width:"100%",height:5,background:"#e7e5e4",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#84cc16,#22c55e)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
@@ -1682,7 +1799,7 @@ return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#86efac",fontWeight:600,background:"rgba(255,255,255,.1)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 2.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#86efac":"rgba(255,255,255,.7)",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
 {prog>0&&<div style={{width:"100%",height:5,background:"#e7e5e4",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#84cc16,#22c55e)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録"},{p:"counsel",i:"🧠",t:"分析"},{p:"caselib",i:"📚",t:"症例ライブラリ",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"help",i:"❓",t:"ヘルプ"}].map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>{rm.l}</button>))}</div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
 <span style={{fontSize:10,color:C.g400}}>🎙</span>
