@@ -40,9 +40,23 @@ export async function POST(request) {
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       jsonStr = jsonMatch[1].trim();
+    } else {
+      const objMatch = content.match(/\{[\s\S]*"corrections"[\s\S]*\}/);
+      if (objMatch) {
+        jsonStr = objMatch[0];
+      }
     }
 
-    const parsed = JSON.parse(jsonStr);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      console.error("fix-typos JSON parse error:", parseErr, "raw:", content);
+      return NextResponse.json({ corrections: [], error: "AIレスポンスの解析に失敗しました" });
+    }
+    if (!parsed.corrections || !Array.isArray(parsed.corrections)) {
+      return NextResponse.json({ corrections: [] });
+    }
     return NextResponse.json(parsed);
   } catch (e) {
     console.error("fix-typos error:", e);
