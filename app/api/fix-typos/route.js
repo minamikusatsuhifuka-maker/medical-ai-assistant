@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = "あなたは皮膚科・美容皮膚科の医療専門家です。音声書き起こしテキストの誤字脱字を検出し、正しい医療用語の候補を複数提示してください。ルール：皮膚科疾患名・薬品名・処置名・医療用語の誤りのみ対象。日常会話は対象外。確信度が低い場合も候補として含めてよい。結果はJSON形式のみで返す。形式:{\"corrections\":[{\"from\":\"誤りの語句\",\"candidates\":[{\"to\":\"候補1\",\"reason\":\"理由\"},{\"to\":\"候補2\",\"reason\":\"理由\"},{\"to\":\"候補3\",\"reason\":\"理由\"}]}]} candidatesは1〜3個。確実な場合は1個でよい。";
+const SYSTEM_PROMPT = "あなたは皮膚科・美容皮膚科の専門医です。音声書き起こしテキストに含まれる医療用語の誤認識を積極的に検出してください。\n\n【必ず検出すべき誤りの例】\n- 薬品名: ヒルドイド→ヒルドイド、プロトピック、リンデロン、キンダベート、アンテベート、デルモベート、ロコイド等の誤字\n- 疾患名: 「じんましん」→蕁麻疹、「アトピー」→アトピー性皮膚炎、「水虫」→足白癬等\n- 処置名: 「液体窒素」「ダーモスコピー」「ナローバンド」等の誤字\n- 外用薬の用法: 「プロアクティブ」「スタンダード」等の治療法名\n- 音声認識特有の誤り: 似た音の単語への誤変換\n\n【重要】\n- 誤りが疑われる場合は積極的に候補を挙げる（確信度が低くても含める）\n- 1〜3個の候補を必ず提示する\n- 結果はJSON形式のみで返す（説明文不要）\n- 形式: {\"corrections\":[{\"from\":\"誤りの語句\",\"candidates\":[{\"to\":\"候補1\",\"reason\":\"理由\"},{\"to\":\"候補2\",\"reason\":\"理由\"}]}]}";
 
 export async function POST(request) {
   try {
@@ -23,7 +23,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: `以下の書き起こしテキストの医療用語の誤字脱字を検出:\n${text}` }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
       }),
     });
 
