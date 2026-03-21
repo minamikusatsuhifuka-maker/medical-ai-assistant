@@ -11,7 +11,7 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&family=M+PLUS+Rounded+1c:wght@400;500;700&family=BIZ+UDGothic:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@400;500;700&display=swap" rel="stylesheet" />
       </head>
-      <body style={{ margin: 0, fontFamily: "'Zen Maru Gothic', sans-serif", background: "#f8fafc" }}>
+      <body style={{ margin: 0, fontFamily: "'Zen Maru Gothic', sans-serif", background: "linear-gradient(135deg, #e8f8e0 0%, #d8f4c8 30%, #c8f0b0 60%, #d8f4a8 100%)", minHeight: "100vh" }}>
         {children}
       </body>
     </html>
