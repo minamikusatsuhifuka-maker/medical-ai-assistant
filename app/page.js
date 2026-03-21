@@ -394,7 +394,7 @@ const[dragTpl,setDragTpl]=useState(null);
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
 const[histPopup,setHistPopup]=useState(null);
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
-const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true);
+const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true),[dictModal,setDictModal]=useState(false);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
 const[fontSize,setFontSize]=useState("medium");
@@ -1975,6 +1975,7 @@ const fn=actions[sc.id];if(fn)fn();
 <span style={{fontSize:13}}>🔢</span>
 <input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value}} placeholder="患者ID" style={{width:80,padding:"6px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",textAlign:"center",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}} maxLength={6}/>
 <button onClick={()=>{loadHist();setPage("hist")}} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>📂 履歴</button>
+<button onClick={()=>setDictModal(true)} style={{padding:"4px 10px",borderRadius:8,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)",whiteSpace:"nowrap"}}>📖辞書</button>
 <div style={{display:"flex",gap:3,marginLeft:"auto"}}>
 {[["small","小"],["medium","中"],["large","大"]].map(([v,l])=><button key={v} onClick={()=>setFontSize(v)} style={{padding:"3px 7px",borderRadius:7,border:"none",background:fontSize===v?"#22c55e":"#d1d5db",color:fontSize===v?"#fff":"#57534e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.1)",transition:"all 0.15s"}}>{l}</button>)}
 </div>
@@ -2001,7 +2002,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pDD}}>📝 書き起こし</span>
-<div style={{display:"flex",gap:6,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} style={{padding:"2px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"校正中...":"🔍 AI校正"}</button><span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span></div>
+<div style={{display:"flex",gap:6,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} style={{padding:"2px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬 スキャン中...":"🔬 AI誤字スキャン"}</button><span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span></div>
 </div>
 <textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
@@ -2037,11 +2038,37 @@ const fn=actions[sc.id];if(fn)fn();
 </div></div>}
 {/* お気に入り保存トースト */}
 {favToast&&<div style={{position:"fixed",bottom:30,left:"50%",transform:"translateX(-50%)",background:"#92400e",color:"#fff",padding:"8px 20px",borderRadius:12,fontSize:13,fontWeight:700,zIndex:10001,boxShadow:"0 4px 16px rgba(0,0,0,.3)"}}>{favToast}</div>}
-{/* AI校正モーダル */}
+{/* 辞書管理モーダル */}
+{dictModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDictModal(false)}>
+<div style={{background:C.w,borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+<div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:15,fontWeight:700,color:C.pDD}}>📖 誤字脱字辞書（{dict.length}件）</span>
+<button onClick={()=>setDictEnabled(!dictEnabled)} style={{padding:"3px 10px",borderRadius:8,border:"none",background:dictEnabled?C.rG:C.g200,color:dictEnabled?C.w:C.g500,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{dictEnabled?"ON":"OFF"}</button></div>
+<button onClick={()=>setDictModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+</div>
+<p style={{fontSize:11,color:C.g400,marginBottom:10}}>書き起こし結果に自動適用。左の文字列を右に置換します。</p>
+<div style={{display:"flex",gap:6,marginBottom:12}}>
+<input value={newFrom} onChange={e=>setNewFrom(e.target.value)} placeholder="変換前" style={{...ib,flex:1,padding:"6px 8px",fontSize:12}}/>
+<span style={{alignSelf:"center",color:C.g400,fontSize:12}}>→</span>
+<input value={newTo} onChange={e=>setNewTo(e.target.value)} placeholder="変換後" style={{...ib,flex:1,padding:"6px 8px",fontSize:12}}/>
+<button onClick={()=>{if(newFrom.trim()&&newTo.trim()){dictAddEntry(newFrom.trim(),newTo.trim());setNewFrom("");setNewTo("")}}} style={{padding:"6px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>追加</button>
+</div>
+<div style={{maxHeight:340,overflow:"auto"}}>
+{dict.length===0&&<p style={{fontSize:12,color:C.g400,textAlign:"center",padding:20}}>辞書エントリがありません</p>}
+{dict.map((d,i)=>(<div key={i} style={{display:"flex",gap:6,alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{flex:1,fontSize:12,color:C.g500}}>{d[0]}</span>
+<span style={{color:C.g400,fontSize:11}}>→</span>
+<span style={{flex:1,fontSize:12,color:C.g900,fontWeight:600}}>{d[1]}</span>
+<button onClick={()=>dictDelEntry(i)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>))}
+</div>
+<button onClick={()=>setDictModal(false)} style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:10}}>閉じる</button>
+</div></div>}
+{/* AI誤字スキャンモーダル */}
 {typoModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setTypoModal(null)}>
 <div style={{background:C.w,borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🔍 AI校正候補（{typoModal.length}件）</div>
+<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🔬 AI誤字スキャン結果（{typoModal.length}件）</div>
 <button onClick={()=>setTypoModal(null)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
 </div>
 {typoModal.map((c,i)=>(<div key={i} style={{marginBottom:14,padding:14,borderRadius:12,border:`1.5px solid ${typoSelections[i]!==undefined?C.p+"66":C.g200}`,background:typoSelections[i]!==undefined?"#f7fee7":C.g50}}>
