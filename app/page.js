@@ -1198,19 +1198,19 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>{loadFavorites();setPage("favs")}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り</button>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div></div>
-<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+<div style={{display:"grid",gridTemplateColumns:mob?"repeat(2,1fr)":"repeat(3,1fr)",gap:6}}>
 {filteredHist.map((r,i)=>{
 const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";
 const preview=(r.output_text||"").replace(/\n/g," ").substring(0,30);
 const pid=r.patient_id||"";
-return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)"}}>
-<div style={{fontSize:11,color:"#111",fontWeight:600,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
-<div style={{fontSize:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
+return(<div key={r.id||i} style={{padding:mob?"8px":"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)"}}>
+<div style={{fontSize:mob?10:11,color:"#111",fontWeight:600,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
+<div style={{fontSize:mob?11:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
-<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
-<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
-<button onClick={()=>setFavModal({title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||"",recordId:r.id})} style={{padding:"2px 6px",borderRadius:5,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:9,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
-{r.input_text&&<button onClick={()=>runQualityCheck(r)} style={{padding:"2px 6px",borderRadius:5,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:9,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
+<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
+<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
+<button onClick={()=>setFavModal({title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||"",recordId:r.id})} style={{padding:mob?"2px 4px":"2px 6px",borderRadius:5,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:9,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
+{r.input_text&&<button onClick={()=>runQualityCheck(r)} style={{padding:mob?"2px 4px":"2px 6px",borderRadius:5,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:9,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
 </div>
 </div>)})}
 </div>
