@@ -1317,11 +1317,11 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 {favGroup==="美容"&&<button onClick={()=>{const gf=favorites.filter(f=>f.group_name==="美容");if(gf.length===0){setFavToast("美容データがありません");setTimeout(()=>setFavToast(""),2500);return}generateMenu(gf)}} disabled={menuLoading} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>{menuLoading?"⏳ 生成中...":"📝 メニュー説明文生成"}</button>}
 </div>
 {gFavs.length===0?<div style={{textAlign:"center",padding:40,color:C.g400,fontSize:13}}>このグループにはお気に入りがありません</div>:
-<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(2,1fr)",gap:8}}>
-{gFavs.map(f=><div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-<div style={{fontSize:12,fontWeight:700,color:C.pDD,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}} onClick={()=>setFavDetailModal(f)}>{f.title||"無題"}</div>
-{f.created_at&&<span style={{fontSize:10,color:C.g400,whiteSpace:"nowrap",marginLeft:6}}>{new Date(f.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(f.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}</span>}
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":tab?"repeat(2,1fr)":"repeat(3,1fr)",gap:8}}>
+{gFavs.map(f=>{const favDate=f.created_at?new Date(f.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(f.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";const recMatch=(f.title||"").match(/(\d+分\d+秒|\d+:\d+)/);return<div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+<div style={{display:"flex",alignItems:"center",marginBottom:4,gap:6}}>
+{favDate&&<span style={{fontSize:10,color:C.g400,whiteSpace:"nowrap"}}>{favDate}</span>}
+{recMatch&&<span style={{fontSize:9,color:C.g400,whiteSpace:"nowrap"}}>(録音: {recMatch[1]})</span>}
 </div>
 <div style={{fontSize:11,color:C.g600,marginBottom:6,lineHeight:1.3,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -1330,7 +1330,7 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 <button onClick={()=>openGenModal(f)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:10,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>📄資料生成</button>
 <button onClick={()=>setFavMoveModal(f)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📁移動</button>
 <button onClick={()=>deleteFavorite(f.id)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fca5a5",background:"#fef2f2",fontSize:10,fontWeight:600,color:"#ef4444",fontFamily:"inherit",cursor:"pointer"}}>🗑️</button>
-</div></div>)}
+</div></div>})}
 </div>}
 {/* お気に入り全文モーダル */}
 {favDetailModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavDetailModal(null)}>
