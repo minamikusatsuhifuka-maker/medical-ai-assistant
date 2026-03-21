@@ -466,9 +466,10 @@ useEffect(()=>{loadCsCount()},[]);
 
 // Keyboard shortcuts
 const startRef=useRef(null),stopRef=useRef(null),sumRef=useRef(null),clrRef=useRef(null),undoFnRef=useRef(null),pipFnRef=useRef(null);
+const escapeRef=useRef(null);
 useEffect(()=>{
 const handler=(e)=>{
-if(e.key==="Escape"){e.preventDefault();if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(page!=="main"){setPage("main");return}return}
+if(e.key==="Escape"){e.preventDefault();if(escapeRef.current)escapeRef.current();return}
 const tag=document.activeElement?.tagName;
 if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
 if(e.key==="ArrowDown"||e.key==="ArrowUp"||e.key==="ArrowLeft"||e.key==="ArrowRight")e.preventDefault();
@@ -502,7 +503,7 @@ const cfg=findSC(sc.id);
 if(matchKey(cfg)){e.preventDefault();sc.fn();return;}
 }
 };
-window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[out,shortcuts,typoModal,dictModal,histPopup,qcModal,favModal,favMoveModal,favEditModal,favGenModal,favDetailModal,caseStudyModal,faqModal,menuModal,page]);
+window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[out,shortcuts]);
 const[minTitle,setMinTitle]=useState("");
 const[minHist,setMinHist]=useState([]);
 const[tasks,setTasks]=useState([]);
@@ -535,6 +536,7 @@ const[faqResult,setFaqResult]=useState(""),[faqLoading,setFaqLoading]=useState(f
 const[menuResult,setMenuResult]=useState(""),[menuLoading,setMenuLoading]=useState(false),[menuModal,setMenuModal]=useState(false);
 const[snsInput,setSnsInput]=useState(""),[snsPlatform,setSnsPlatform]=useState("Instagram"),[snsResult,setSnsResult]=useState(""),[snsLoading,setSnsLoading]=useState(false),[snsHistory,setSnsHistory]=useState([]);
 const[satResult,setSatResult]=useState(""),[satLoading,setSatLoading]=useState(false);
+escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(page!=="main"){setPage("main");return}};
 const FAV_GROUPS=["保険","美容","カウンセリング","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast("⭐ 保存しました");setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
