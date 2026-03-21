@@ -398,6 +398,7 @@ const[histTypoLd,setHistTypoLd]=useState(false);
 const[bulkMenu,setBulkMenu]=useState(false);
 const[bulkLd,setBulkLd]=useState(false);
 const[bulkResult,setBulkResult]=useState(null);
+const[bulkFavModal,setBulkFavModal]=useState(false);
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true),[dictModal,setDictModal]=useState(false);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
@@ -546,7 +547,8 @@ const[mobileHideItems,setMobileHideItems]=useState({pip:true,shortcuts:true,font
 escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(page!=="main"){setPage("main");return}};
 const FAV_GROUPS=["保険","美容","カウンセリング","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
-const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast("⭐ 保存しました");setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
+const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast(`⭐ ${group}グループに保存しました`);setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
+const bulkSaveFavorites=async(group)=>{if(!supabase)return;const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;try{const rows=selected.map(r=>{const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP"):"";const pid=r.patient_id||"";return{record_id:r.id||"",group_name:group,title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||""}});await supabase.from("favorites").insert(rows);setFavToast(`⭐ ${selected.length}件を${group}グループに保存しました`);setTimeout(()=>setFavToast(""),3000);loadFavorites()}catch(e){console.error("Bulk fav save error:",e)}};
 const deleteFavorite=async(id)=>{if(!supabase||!confirm("削除しますか？"))return;try{await supabase.from("favorites").delete().eq("id",id);loadFavorites()}catch(e){console.error(e)}};
 const moveFavorite=async(id,newGroup)=>{if(!supabase)return;try{await supabase.from("favorites").update({group_name:newGroup}).eq("id",id);setFavMoveModal(null);loadFavorites()}catch(e){console.error(e)}};
 const openEditModal=(f)=>{setFavEditTitle(f.title||"");setFavEditGroup(f.group_name||"その他");setFavEditContent(f.content||"");setFavEditModal(f)};
@@ -1216,24 +1218,32 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 {BULK_MODES.map(m=><button key={m.id} onClick={()=>runBulkAnalyze(m.id)} style={{display:"block",width:"100%",padding:"8px 12px",borderRadius:7,border:"none",background:C.w,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}} onMouseEnter={e=>e.target.style.background="#eff6ff"} onMouseLeave={e=>e.target.style.background=C.w}>{m.label}</button>)}
 </div>}
 </div>
+<button onClick={()=>setBulkFavModal(true)} disabled={!selectedHistIds.size} style={{padding:"3px 10px",borderRadius:7,border:`1px solid #f59e0b`,background:!selectedHistIds.size?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size?"default":"pointer"}}>⭐ お気に入り一括登録</button>
 </div>
-<div style={{display:"grid",gridTemplateColumns:mob?"repeat(2,1fr)":"repeat(3,1fr)",gap:6}}>
+{bulkFavModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkFavModal(false)}>
+<div style={{background:C.w,borderRadius:14,padding:20,maxWidth:320,width:"100%"}} onClick={e=>e.stopPropagation()}>
+<div style={{fontSize:14,fontWeight:700,color:"#92400e",marginBottom:12}}>⭐ {selectedHistIds.size}件を一括登録</div>
+{FAV_GROUPS.map(g=><button key={g} onClick={()=>{bulkSaveFavorites(g);setBulkFavModal(false)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
+<button onClick={()=>setBulkFavModal(false)} style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
+</div></div>}
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(3,1fr)",gap:6}}>
 {filteredHist.map((r,i)=>{
 const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";
-const preview=(r.output_text||"").replace(/\n/g," ").substring(0,30);
+const preview=(r.output_text||"").replace(/\n/g," ").substring(0,mob?40:30);
 const pid=r.patient_id||"";
 const lines20=(r.input_text||"").split("\n").length>=20;
 const checked=selectedHistIds.has(r.id);
-return(<div key={r.id||i} style={{padding:mob?"8px":"5px 7px",borderRadius:8,border:checked?`1.5px solid ${C.p}`:`1px solid ${C.g200}`,background:checked?"#f7fee7":C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)",position:"relative"}}>
-{lines20&&<span style={{position:"absolute",top:2,right:2,background:"#16a34a",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:4,lineHeight:1.3}}>📄20+</span>}
+const toggleSel=()=>{setSelectedHistIds(prev=>{const n=new Set(prev);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n})};
+return(<div key={r.id||i} onClick={e=>{if(e.target.tagName==="INPUT"||e.target.tagName==="BUTTON")return;toggleSel()}} style={{padding:mob?"6px 8px":"5px 7px",borderRadius:8,border:checked?`1.5px solid ${C.p}`:`1px solid ${C.g200}`,background:checked?"#f7fee7":C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)",position:"relative",cursor:"pointer"}}>
+{lines20&&<span style={{position:"absolute",top:2,right:2,background:"#7c3aed",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:4,lineHeight:1.3}}>📄20+</span>}
 <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:2}}>
-<input type="checkbox" checked={checked} onChange={()=>{setSelectedHistIds(prev=>{const n=new Set(prev);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n})}} style={{width:14,height:14,accentColor:C.p,cursor:"pointer",flexShrink:0}}/>
+<input type="checkbox" checked={checked} onChange={toggleSel} style={{width:14,height:14,accentColor:C.p,cursor:"pointer",flexShrink:0}}/>
 <span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{date}{pid?" | "+pid:""}</span>
 </div>
-<div style={{fontSize:mob?11:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
+<div style={{fontSize:mob?13:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
-<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
-<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
+<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:mob?undefined:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
+<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:mob?undefined:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
 <button onClick={()=>setFavModal({title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||"",recordId:r.id})} style={{padding:mob?"2px 4px":"2px 6px",borderRadius:5,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:9,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {r.input_text&&<button onClick={()=>runQualityCheck(r)} style={{padding:mob?"2px 4px":"2px 6px",borderRadius:5,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:9,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
 </div>
@@ -1305,7 +1315,10 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 {gFavs.length===0?<div style={{textAlign:"center",padding:40,color:C.g400,fontSize:13}}>このグループにはお気に入りがありません</div>:
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(2,1fr)",gap:8}}>
 {gFavs.map(f=><div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-<div style={{fontSize:12,fontWeight:700,color:C.pDD,marginBottom:4,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{f.title||"無題"}</div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+<div style={{fontSize:12,fontWeight:700,color:C.pDD,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}} onClick={()=>setFavDetailModal(f)}>{f.title||"無題"}</div>
+{f.created_at&&<span style={{fontSize:10,color:C.g400,whiteSpace:"nowrap",marginLeft:6}}>{new Date(f.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(f.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}</span>}
+</div>
 <div style={{fontSize:11,color:C.g600,marginBottom:6,lineHeight:1.3,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
 <button onClick={()=>{navigator.clipboard.writeText(f.content||"");sSt("📋 コピーしました")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
