@@ -382,7 +382,7 @@ const DEFAULT_DICT=[
 // === MAIN COMPONENT ===
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
-const btn=(bg,c,extra)=>({padding:mob?"5px 10px":"6px 14px",borderRadius:12,border:"none",background:bg,color:c,fontSize:mob?13:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.15), 0 1px 2px rgba(0,0,0,.1)",transition:"all 0.15s ease",transform:"translateY(0)",...extra});
+const btn=(bg,c,extra)=>({padding:mob?"5px 10px":"6px 14px",borderRadius:12,border:"none",background:bg,color:c,fontSize:Math.round((mob?13:14)*fontScale),fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.15), 0 1px 2px rgba(0,0,0,.1)",transition:"all 0.15s ease",transform:"translateY(0)",...extra});
 const ib={padding:mob?"7px 10px":"8px 12px",borderRadius:mob?10:12,border:`1.5px solid ${C.g200}`,fontSize:mob?14:13,fontFamily:"inherit",outline:"none",background:C.w,color:C.g900,transition:"border-color 0.2s",WebkitAppearance:"none"};
 const card={borderRadius:20,border:"1px solid #e7e5e4",padding:mob?14:20,background:"linear-gradient(180deg,#ffffff,#fafaf9)",marginBottom:mob?12:16,boxShadow:"0 1px 4px rgba(0,0,0,.03)"};
 const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
@@ -398,6 +398,7 @@ const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[ne
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
 const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
 const[fontSize,setFontSize]=useState("medium");
+const fontScale=fontSize==="small"?0.85:fontSize==="large"?1.2:1.0;
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs)}catch{}},[]);
 useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}})()},[]);
 useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.documentElement.style.fontSize=sizes[fontSize]||"14px";localStorage.setItem("mk_fontSize",fontSize)},[fontSize]);
@@ -1194,8 +1195,8 @@ const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month
 const preview=(r.output_text||"").replace(/\n/g," ").substring(0,30);
 const pid=r.patient_id||"";
 return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)"}}>
-<div style={{fontSize:11,color:"#111",fontWeight:600,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
-<div style={{fontSize:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
+<div style={{fontSize:Math.round(11*fontScale),color:"#111",fontWeight:600,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
+<div style={{fontSize:Math.round(10*fontScale),color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
 <button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
 <button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:1,padding:"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
@@ -1217,7 +1218,7 @@ return(<div key={r.id||i} style={{padding:"5px 7px",borderRadius:8,border:`1px s
 </div>
 </div>
 <div style={{flex:1,overflow:"auto",padding:16}}>
-<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{histPopup.content}</pre>
+<pre style={{fontSize:Math.round(12*fontScale),color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{histPopup.content}</pre>
 </div>
 </div>
 </div>}
@@ -1258,8 +1259,8 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 {gFavs.length===0?<div style={{textAlign:"center",padding:40,color:C.g400,fontSize:13}}>このグループにはお気に入りがありません</div>:
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(2,1fr)",gap:8}}>
 {gFavs.map(f=><div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-<div style={{fontSize:12,fontWeight:700,color:C.pDD,marginBottom:4,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{f.title||"無題"}</div>
-<div style={{fontSize:11,color:C.g600,marginBottom:6,lineHeight:1.3,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
+<div style={{fontSize:Math.round(12*fontScale),fontWeight:700,color:C.pDD,marginBottom:4,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{f.title||"無題"}</div>
+<div style={{fontSize:Math.round(11*fontScale),color:C.g600,marginBottom:6,lineHeight:1.3,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
 <button onClick={()=>{navigator.clipboard.writeText(f.content||"");sSt("📋 コピーしました")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
 <button onClick={()=>openEditModal(f)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️</button>
@@ -2004,7 +2005,7 @@ const fn=actions[sc.id];if(fn)fn();
 <span style={{fontSize:13,fontWeight:700,color:C.pDD}}>📝 書き起こし</span>
 <div style={{display:"flex",gap:6,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} style={{padding:"2px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬 スキャン中...":"🔬 AI誤字スキャン"}</button><span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span></div>
 </div>
-<textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+<textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:Math.round(13*fontScale),color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
 {/* 右カラム: 要約結果 */}
 <div style={{flex:1,minWidth:0}}>
@@ -2013,7 +2014,7 @@ const fn=actions[sc.id];if(fn)fn();
 {out&&<div style={{display:"flex",gap:4,whiteSpace:"nowrap"}}><button onClick={()=>cp(out)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>setFavModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),content:out,recordId:""})} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り</button></div>}
 </div>
-<textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+<textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:Math.round(13*fontScale),color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
 </div>
 {snippets.length>0&&<div style={{marginTop:8}}>
