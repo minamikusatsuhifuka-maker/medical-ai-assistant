@@ -530,6 +530,9 @@ const[openTaskId,setOpenTaskId]=useState(null);
 const[selRoles,setSelRoles]=useState(["director","manager","leader","staff"]);
 const[matrixHistOpen,setMatrixHistOpen]=useState(true);
 const[selMatrixDate,setSelMatrixDate]=useState(null);
+const[selTaskIds,setSelTaskIds]=useState(new Set());
+const[matrixMode,setMatrixMode]=useState("collapse");
+const[openQuadrant,setOpenQuadrant]=useState(null);
 const[todos,setTodos]=useState([]);
 const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
@@ -1772,54 +1775,45 @@ return(<div key={date} style={{display:"flex",alignItems:"center",gap:6,padding:
 </label>))}
 <button onClick={()=>setSelRoles(["director","manager","leader","staff"])} style={{padding:"3px 8px",borderRadius:6,border:"1px solid #e5e7eb",background:"#fff",fontSize:10,color:"#6b7280",cursor:"pointer",fontFamily:"inherit"}}>全選択</button>
 </div>
-<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
-{[{label:"🔴 緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3,bg:"#fef2f2",border:"#fca5a5"},
-{label:"🟡 非緊急×重要",filter:t=>t.urgency<3&&t.importance>=3,bg:"#fffbeb",border:"#fcd34d"},
-{label:"🟠 緊急×非重要",filter:t=>t.urgency>=3&&t.importance<3,bg:"#fff7ed",border:"#fdba74"},
-{label:"🟢 非緊急×非重要",filter:t=>t.urgency<3&&t.importance<3,bg:"#f0fdf4",border:"#86efac"}
-].map((q,qi)=>(<div key={qi} style={{padding:10,borderRadius:12,border:`2px solid ${q.border}`,background:q.bg,minHeight:120}}>
-<div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{q.label}</div>
-{tasks.filter(t=>q.filter(t)&&selRoles.includes(t.role_level||"staff")&&(!selMatrixDate||(()=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===selMatrixDate:selMatrixDate==="手動作成"})())).map(t=>{
-const rc=ROLE_COLORS[t.role_level]||ROLE_COLORS.staff;
-const isOpen=openTaskId===t.id;
-const taskTodos=todos.filter(td=>td.task_id===t.id);
-const doneCount=taskTodos.filter(td=>td.done).length;
-return(<div key={t.id} style={{padding:6,borderRadius:8,background:"#fff",marginBottom:4,fontSize:11,border:"2px solid "+rc.border,cursor:"pointer"}} onClick={()=>setOpenTaskId(isOpen?null:t.id)}>
+{(()=>{const QUADS=[{key:"uimp",label:"🔴 緊急×重要",filter:t=>t.urgency>=3&&t.importance>=3,bg:"#fef2f2",border:"#fca5a5"},{key:"nimp",label:"🟡 非緊急×重要",filter:t=>t.urgency<3&&t.importance>=3,bg:"#fffbeb",border:"#fcd34d"},{key:"unot",label:"🟠 緊急×非重要",filter:t=>t.urgency>=3&&t.importance<3,bg:"#fff7ed",border:"#fdba74"},{key:"nnot",label:"🟢 非緊急×非重要",filter:t=>t.urgency<3&&t.importance<3,bg:"#f0fdf4",border:"#86efac"}];
+const filterBase=t=>selRoles.includes(t.role_level||"staff")&&(!selMatrixDate||(()=>{const m=minHist.find(h=>h.id===t.minute_id);return m?new Date(m.created_at).toLocaleDateString("ja-JP")===selMatrixDate:selMatrixDate==="手動作成"})());
+const renderTask=(t,fs)=>{const rc=ROLE_COLORS[t.role_level]||ROLE_COLORS.staff;const isOpen=openTaskId===t.id;const taskTodos=todos.filter(td=>td.task_id===t.id);const doneCount=taskTodos.filter(td=>td.done).length;return(<div key={t.id} style={{padding:6,borderRadius:8,background:"#fff",marginBottom:4,fontSize:fs||11,border:"2px solid "+rc.border,cursor:"pointer"}} onClick={()=>setOpenTaskId(isOpen?null:t.id)}>
 <div style={{display:"flex",alignItems:"center",gap:4}}>
+<input type="checkbox" checked={selTaskIds.has(t.id)} onChange={e=>{e.stopPropagation();setSelTaskIds(prev=>{const n=new Set(prev);if(n.has(t.id))n.delete(t.id);else n.add(t.id);return n})}} style={{cursor:"pointer",accentColor:C.p}}/>
 <input type="checkbox" checked={t.done} onChange={e=>{e.stopPropagation();toggleTask(t.id,t.done)}} style={{cursor:"pointer"}}/>
 <span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:rc.bg,color:rc.text,fontWeight:700}}>{rc.label.split(" ")[1]}</span>
 <span style={{textDecoration:t.done?"line-through":"none",flex:1,fontWeight:600}}>{t.title}</span>
 <button onClick={e=>{e.stopPropagation();deleteTask(t.id)}} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"2px"}}>✕</button>
 </div>
-<div style={{display:"flex",gap:6,marginTop:2,fontSize:10,color:"#6b7280"}}>
-<span>👤 {t.assignee||"未定"}</span>
-<span>📅 {t.due_date||"未定"}</span>
-{taskTodos.length>0&&<span>📝 {doneCount}/{taskTodos.length}</span>}
-<span style={{fontSize:10}}>{isOpen?"▼":"▶"}</span>
-</div>
+<div style={{display:"flex",gap:6,marginTop:2,fontSize:10,color:"#6b7280"}}><span>👤 {t.assignee||"未定"}</span><span>📅 {t.due_date||"未定"}</span>{taskTodos.length>0&&<span>📝 {doneCount}/{taskTodos.length}</span>}<span>{isOpen?"▼":"▶"}</span></div>
 {isOpen&&<div onClick={e=>e.stopPropagation()} style={{marginTop:6,padding:6,background:"#f9fafb",borderRadius:6,border:"1px solid #e5e7eb"}}>
-<div style={{display:"flex",gap:4,marginBottom:4}}>
-<select value={t.assignee||""} onChange={e=>updateTask(t.id,"assignee",e.target.value)} style={{fontSize:9,padding:"1px 4px",borderRadius:4,border:"1px solid #d1d5db"}}>
-<option value="">担当未定</option>{staffList.map(s=>(<option key={s.id} value={s.name}>{s.name}</option>))}
-</select>
-<input type="date" value={t.due_date||""} onChange={e=>updateTask(t.id,"due_date",e.target.value)} style={{fontSize:9,padding:"1px 4px",borderRadius:4,border:"1px solid #d1d5db"}}/>
-</div>
+<div style={{display:"flex",gap:4,marginBottom:4}}><select value={t.assignee||""} onChange={e=>updateTask(t.id,"assignee",e.target.value)} style={{fontSize:9,padding:"1px 4px",borderRadius:4,border:"1px solid #d1d5db"}}><option value="">担当未定</option>{staffList.map(s=>(<option key={s.id} value={s.name}>{s.name}</option>))}</select><input type="date" value={t.due_date||""} onChange={e=>updateTask(t.id,"due_date",e.target.value)} style={{fontSize:9,padding:"1px 4px",borderRadius:4,border:"1px solid #d1d5db"}}/></div>
 {taskTodos.length===0?<button onClick={()=>generateTodosForTask(t)} style={{padding:"4px 12px",borderRadius:6,border:"none",background:C.p,color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer"}}>🔄 TODO自動生成</button>
-:<div>{taskTodos.map(td=>(<div key={td.id} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 0",borderBottom:"1px solid #f3f4f6"}}>
-<input type="checkbox" checked={td.done} onChange={()=>toggleTodo(td.id,td.done)} style={{cursor:"pointer"}}/>
-<span style={{flex:1,fontSize:11,textDecoration:td.done?"line-through":"none"}}>{td.title}</span>
-<select value={td.assignee||""} onChange={e=>updateTodo(td.id,"assignee",e.target.value)} style={{fontSize:9,padding:"1px 3px",borderRadius:3,border:"1px solid #d1d5db"}}>
-<option value="">担当</option>
-{staffList.map(s=>(<option key={s.id} value={s.name}>{s.name}</option>))}
-</select>
-<input type="date" value={td.due_date||""} onChange={e=>updateTodo(td.id,"due_date",e.target.value)} style={{fontSize:9,padding:"1px 3px",borderRadius:3,border:"1px solid #d1d5db",width:90}}/>
-<button onClick={()=>deleteTodo(td.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>✕</button>
-</div>))}</div>}
+:<div>{taskTodos.map(td=>(<div key={td.id} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 0",borderBottom:"1px solid #f3f4f6"}}><input type="checkbox" checked={td.done} onChange={()=>toggleTodo(td.id,td.done)} style={{cursor:"pointer"}}/><span style={{flex:1,fontSize:11,textDecoration:td.done?"line-through":"none"}}>{td.title}</span><select value={td.assignee||""} onChange={e=>updateTodo(td.id,"assignee",e.target.value)} style={{fontSize:9,padding:"1px 3px",borderRadius:3,border:"1px solid #d1d5db"}}><option value="">担当</option>{staffList.map(s=>(<option key={s.id} value={s.name}>{s.name}</option>))}</select><input type="date" value={td.due_date||""} onChange={e=>updateTodo(td.id,"due_date",e.target.value)} style={{fontSize:9,padding:"1px 3px",borderRadius:3,border:"1px solid #d1d5db",width:90}}/><button onClick={()=>deleteTodo(td.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>✕</button></div>))}</div>}
 {todoLd&&openTaskId===t.id&&<div style={{textAlign:"center",padding:8}}><span style={{fontSize:11,color:"#6b7280"}}>TODO生成中...</span></div>}
 </div>}
-</div>)})}
-</div>))}
+</div>)};
+return<>
+<div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+<button onClick={()=>setMatrixMode(matrixMode==="collapse"?"matrix":"collapse")} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.p}`,background:matrixMode==="matrix"?C.pLL:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{matrixMode==="matrix"?"📦 収納表示":"📊 マトリクス表示"}</button>
+{matrixMode==="collapse"&&<button onClick={()=>{if(selTaskIds.size>0)setMatrixMode("matrix")}} disabled={!selTaskIds.size} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.p}44`,background:!selTaskIds.size?"#e5e7eb":"#eff6ff",fontSize:12,fontWeight:600,color:!selTaskIds.size?C.g400:"#2563eb",fontFamily:"inherit",cursor:!selTaskIds.size?"default":"pointer"}}>📊 選択したタスクをマトリクス表示（{selTaskIds.size}件）</button>}
+{selTaskIds.size>0&&<button onClick={()=>setSelTaskIds(new Set())} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button>}
 </div>
+{matrixMode==="matrix"?<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
+{QUADS.map(q=>{const qTasks=tasks.filter(t=>q.filter(t)&&filterBase(t)&&(selTaskIds.size===0||selTaskIds.has(t.id)));return<div key={q.key} style={{padding:10,borderRadius:12,border:`2px solid ${q.border}`,background:q.bg,minHeight:120}}>
+<div style={{fontSize:13,fontWeight:700,marginBottom:6}}>{q.label}（{qTasks.length}件）</div>
+{qTasks.map(t=>renderTask(t,selTaskIds.size>0?15:11))}
+</div>})}
+</div>:<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"1fr 1fr",gap:8}}>
+{QUADS.map(q=>{const qTasks=tasks.filter(t=>q.filter(t)&&filterBase(t));const isOpen2=openQuadrant===q.key;return<div key={q.key} style={{borderRadius:14,border:"1px solid rgba(160,220,100,0.2)",background:"rgba(255,255,255,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",overflow:"hidden"}}>
+<div onClick={()=>setOpenQuadrant(isOpen2?null:q.key)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",cursor:"pointer",background:q.bg,borderBottom:isOpen2?`1px solid ${q.border}`:"none"}}>
+<span style={{fontSize:13,fontWeight:700}}>{q.label}</span>
+<div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,background:q.border,color:"#fff",padding:"2px 8px",borderRadius:10}}>{qTasks.length}件</span><span style={{fontSize:12}}>{isOpen2?"▲":"▼"}</span></div>
+</div>
+{isOpen2&&<div style={{padding:8}}>{qTasks.length===0?<div style={{fontSize:12,color:C.g400,textAlign:"center",padding:12}}>タスクなし</div>:qTasks.map(t=>renderTask(t,11))}</div>}
+</div>})}
+</div>}
+</>})()}
 </>)})()}
 </div>:taskView==="daily"?<div>
 <h3 style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>📅 日別タスク</h3>
