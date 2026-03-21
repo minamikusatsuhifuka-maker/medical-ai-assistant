@@ -455,6 +455,7 @@ const DEFAULT_SNIPPETS=[
 {title:"帯状疱疹ワクチン",text:"帯状疱疹ワクチン（シングリックス）説明：\n・不活化ワクチン、2回接種（2ヶ月間隔）\n・予防効果90%以上、50歳以上対象\n・接種部位の痛み腫れは数日で改善",cat:"その他"},
 ];
 const[snippets,setSnippets]=useState(DEFAULT_SNIPPETS),[newSnTitle,setNewSnTitle]=useState(""),[newSnText,setNewSnText]=useState(""),[pipSnippets,setPipSnippets]=useState([0,1,2,3,4]);
+const[snCatOpen,setSnCatOpen]=useState(null);
 const[docDisease,setDocDisease]=useState(""),[docOut,setDocOut]=useState(""),[docLd,setDocLd]=useState(false),[docFreePrompt,setDocFreePrompt]=useState("");
 const[suggestLd,setSuggestLd]=useState(false),[suggestedSnippets,setSuggestedSnippets]=useState([]);
 const[pastInput,setPastInput]=useState(""),[pastDisease,setPastDisease]=useState(""),[pastSource,setPastSource]=useState(""),[pastLd,setPastLd]=useState(false),[pastCount,setPastCount]=useState(0),[pastMsg,setPastMsg]=useState("");
@@ -2043,7 +2044,7 @@ const fn=actions[sc.id];if(fn)fn();
 </div>
 </div>
 {snippets.length>0&&<div style={{marginTop:8}}>
-<div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 0"}}>
+{mob?(()=>{const cats=[...new Set(snippets.map(s=>s.cat||"その他"))];return<div style={{display:"flex",flexDirection:"column",gap:4,padding:"6px 0"}}>{cats.map((cat,ci)=>{const isOpen=snCatOpen===null?ci===0:snCatOpen===cat;return<div key={cat}><button onClick={()=>setSnCatOpen(isOpen&&snCatOpen!==null?null:cat)} style={{width:"100%",padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:"#f7fee7",fontSize:11,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{cat}</span><span style={{fontSize:10}}>{isOpen?"▲":"▼"}</span></button>{isOpen&&<div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 4px"}}>{snippets.filter(s=>(s.cat||"その他")===cat).map((sn,j)=><button key={j} onClick={()=>{sOut(o=>o+(o?"\n":"")+sn.text);navigator.clipboard.writeText(sn.text).catch(()=>{});sSt("📋 "+sn.title+" をコピー")}} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>{sn.title}</button>)}</div>}</div>})}</div>})():<div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 0"}}>
 {[...new Set(snippets.map(s=>s.cat||"その他"))].map(cat=>(
 <div key={cat} style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center"}}>
 <span style={{fontSize:9,color:C.g400,fontWeight:600,padding:"0 2px"}}>{cat}:</span>
@@ -2052,7 +2053,7 @@ const fn=actions[sc.id];if(fn)fn();
 ))}
 </div>
 ))}
-</div>
+</div>}
 </div>}
 {ld&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが要約を作成中...</span></div>}
 {/* お気に入りグループ選択モーダル */}
