@@ -1202,14 +1202,13 @@ if(page==="about")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",pa
 
 // === HISTORY ===
 if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-<h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0}}>📂 履歴</h2>
-<div style={{display:"flex",gap:6,alignItems:"center"}}>
-<input value={search||""} onChange={e=>{const v=e.target.value;setSearch(v);if(!v.trim()){loadHist()}else if(v.trim().length>=2&&!v.trim().match(/^\d{1,2}\//)){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}}} placeholder="🔍 検索（3/9 11 等）" style={{padding:"5px 10px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",width:160,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}/>
-<span style={{fontSize:12,color:C.g400}}>{filteredHist.length}件</span>
-<button onClick={()=>{loadFavorites();setPage("favs")}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り</button>
-<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
-</div></div>
+<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
+<h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0,whiteSpace:"nowrap"}}>📂 履歴</h2>
+<input value={search||""} onChange={e=>{const v=e.target.value;setSearch(v);if(!v.trim()){loadHist()}else if(v.trim().length>=2&&!v.trim().match(/^\d{1,2}\//)){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}}} placeholder="🔍 検索" style={{flex:1,minWidth:100,height:36,padding:"0 14px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
+<span style={{fontSize:12,color:C.g400,whiteSpace:"nowrap"}}>{filteredHist.length}件</span>
+<button onClick={()=>{loadFavorites();setPage("favs")}} style={{height:36,padding:"0 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:14,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ お気に入り</button>
+<button onClick={()=>setPage("main")} style={{...btn(C.p,C.pDD),height:36,padding:"0 14px",fontSize:14}}>✕ 閉じる</button>
+</div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
 <button onClick={()=>{const ids=new Set(filteredHist.map(r=>r.id));setSelectedHistIds(ids)}} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>すべて選択</button>
 <button onClick={()=>setSelectedHistIds(new Set())} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button>
@@ -1244,8 +1243,8 @@ return(<div key={r.id||i} onClick={e=>{if(e.target.tagName==="INPUT"||e.target.t
 </div>
 <div style={{fontSize:mob?14:13,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
-<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:mob?undefined:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
-<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{flex:mob?undefined:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
+<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
+<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${C.p}`,background:C.pLL,fontSize:9,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
 <button onClick={()=>setFavModal({title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||"",recordId:r.id})} style={{padding:mob?"2px 4px":"2px 6px",borderRadius:5,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:9,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {r.input_text&&<button onClick={()=>runQualityCheck(r)} style={{padding:mob?"2px 4px":"2px 6px",borderRadius:5,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:9,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
 </div>
@@ -2069,16 +2068,16 @@ const fn=actions[sc.id];if(fn)fn();
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:C.g200,overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${C.rG},${C.p})`,borderRadius:3,transition:"width 0.1s"}}/></div>}
 <div style={{display:"flex",gap:12,alignItems:"center",minHeight:mob?80:94}}>
-{rs==="inactive"?(<button onClick={go} style={{...rb,width:mob?80:90,height:mob?80:90,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:C.w,boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?26:30}}>🎙</span><span style={{fontSize:mob?11:12}}>録音開始</span></button>):(<>
+{rs==="inactive"?(<button onClick={go} style={{...rb,width:mob?80:90,height:mob?80:90,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?26:30}}>🎙</span><span style={{fontSize:mob?11:12}}>録音開始</span></button>):(<>
 {rs==="recording"?(<button onClick={pause} style={{...rb,width:60,height:60,background:C.warn,color:"#78350f"}}><span style={{fontSize:22}}>⏸</span></button>):(<button onClick={resume} style={{...rb,width:60,height:60,background:C.rG,color:C.w}}><span style={{fontSize:22}}>▶</span></button>)}
-<button onClick={stopSum} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:C.w,boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14}}>✓</span><span style={{fontSize:9}}>要約</span></button>
+<button onClick={stopSum} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:"#1a3a10",boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14}}>✓</span><span style={{fontSize:9}}>要約</span></button>
 <button onClick={stop} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button></>)}
 </div>
 {rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
-<button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
+<button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#2a4a18":C.g400,fontFamily:"inherit",cursor:"pointer"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
-<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
+<button onClick={()=>sum()} disabled={ld||!inp.trim()} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
 <button onClick={()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")}} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>🗑</button>
 <button onClick={undo} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35,minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}} title="元に戻す (Ctrl+Z)">↩</button>
 <button onClick={clr} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer",minWidth:80,whiteSpace:"nowrap",boxShadow:"0 3px 10px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.1)",height:mob?44:undefined}}>次へ ▶</button></div>
