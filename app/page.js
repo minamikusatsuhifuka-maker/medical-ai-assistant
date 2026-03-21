@@ -539,6 +539,7 @@ const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minO
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
+const[favSaveModal,setFavSaveModal]=useState(null);
 const[favEditModal,setFavEditModal]=useState(null),[favEditTitle,setFavEditTitle]=useState(""),[favEditGroup,setFavEditGroup]=useState(""),[favEditContent,setFavEditContent]=useState("");
 const[favGenModal,setFavGenModal]=useState(null),[favGenPurpose,setFavGenPurpose]=useState("患者向け説明文"),[favGenResult,setFavGenResult]=useState(""),[favGenLoading,setFavGenLoading]=useState(false);
 const[caseSearch,setCaseSearch]=useState(""),[caseStudyModal,setCaseStudyModal]=useState(null),[caseStudyResult,setCaseStudyResult]=useState(""),[caseStudyLoading,setCaseStudyLoading]=useState(false);
@@ -1299,6 +1300,14 @@ return(<div key={r.id||i} onClick={e=>{if(e.target.tagName==="INPUT"||e.target.t
 <div style={{flex:1,overflow:"auto",padding:16}}>
 <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{bulkResult.content}</pre>
 </div></div></div>}
+{/* 履歴用お気に入りグループ選択モーダル */}
+{favModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavModal(null)}>
+<div style={{background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",borderRadius:14,padding:20,maxWidth:320,width:"100%",border:"1px solid rgba(160,220,100,0.2)"}} onClick={e=>e.stopPropagation()}>
+<div style={{fontSize:14,fontWeight:700,color:"#2a5018",marginBottom:4}}>⭐ お気に入りに保存</div>
+{favModal.title&&<div style={{fontSize:11,color:C.g400,marginBottom:10}}>{favModal.title}</div>}
+{FAV_GROUPS.map(g=><button key={g} onClick={()=>{saveFavorite(g,favModal.title,favModal.content,favModal.recordId);setFavModal(null)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:"rgba(255,255,255,0.7)",fontSize:14,fontWeight:600,color:"#2a5018",fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
+<button onClick={()=>setFavModal(null)} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
+</div></div>}
 </div>);
 
 // === FAVORITES PAGE ===
@@ -2089,7 +2098,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果</span>
 {out&&<div style={{display:"flex",gap:3,whiteSpace:"nowrap",flexWrap:"wrap"}}><button onClick={runTypoCheckOut} disabled={typoLdOut} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLdOut?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLdOut?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLdOut?"wait":"pointer"}}>{typoLdOut?"🔬...":"🔬"}</button><button onClick={()=>cp(out)} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
-<button onClick={()=>setFavModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),content:out,recordId:""})} style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button></div>}
+<button onClick={()=>setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),content:out,recordId:""})} style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button></div>}
 </div>
 <textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
@@ -2107,13 +2116,13 @@ const fn=actions[sc.id];if(fn)fn();
 </div>}
 </div>}
 {ld&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが要約を作成中...</span></div>}
-{/* お気に入りグループ選択モーダル */}
-{favModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavModal(null)}>
+{/* トップ画面用お気に入りグループ選択モーダル */}
+{favSaveModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavSaveModal(null)}>
 <div style={{background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",borderRadius:14,padding:20,maxWidth:320,width:"100%",border:"1px solid rgba(160,220,100,0.2)"}} onClick={e=>e.stopPropagation()}>
 <div style={{fontSize:14,fontWeight:700,color:"#2a5018",marginBottom:4}}>⭐ お気に入りに保存</div>
-{favModal.title&&<div style={{fontSize:11,color:C.g400,marginBottom:10}}>{favModal.title}</div>}
-{FAV_GROUPS.map(g=><button key={g} onClick={()=>{saveFavorite(g,favModal.title,favModal.content,favModal.recordId);setFavModal(null)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:"rgba(255,255,255,0.7)",fontSize:14,fontWeight:600,color:"#2a5018",fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
-<button onClick={()=>setFavModal(null)} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
+{favSaveModal.title&&<div style={{fontSize:11,color:C.g400,marginBottom:10}}>{favSaveModal.title}</div>}
+{FAV_GROUPS.map(g=><button key={g} onClick={()=>{saveFavorite(g,favSaveModal.title,favSaveModal.content,favSaveModal.recordId);setFavSaveModal(null)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:"rgba(255,255,255,0.7)",fontSize:14,fontWeight:600,color:"#2a5018",fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
+<button onClick={()=>setFavSaveModal(null)} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
 </div></div>}
 {/* お気に入り保存トースト */}
 {favToast&&<div style={{position:"fixed",bottom:30,left:"50%",transform:"translateX(-50%)",background:"#92400e",color:"#fff",padding:"8px 20px",borderRadius:12,fontSize:13,fontWeight:700,zIndex:10001,boxShadow:"0 4px 16px rgba(0,0,0,.3)"}}>{favToast}</div>}
