@@ -395,6 +395,9 @@ const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=us
 const[histPopup,setHistPopup]=useState(null);
 const[selectedHistIds,setSelectedHistIds]=useState(new Set());
 const[histTypoLd,setHistTypoLd]=useState(false);
+const[bulkMenu,setBulkMenu]=useState(false);
+const[bulkLd,setBulkLd]=useState(false);
+const[bulkResult,setBulkResult]=useState(null);
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true),[dictModal,setDictModal]=useState(false);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
@@ -937,6 +940,8 @@ const runTypoCheckOut=async()=>{const t=out;if(!t||!t.trim()){sSt("要約テキ�
 const applyTypoCorrection=(idx,candidateIdx)=>{try{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates?.[candidateIdx];if(!candidate){console.error("applyTypoCorrection: invalid candidate",{idx,candidateIdx,c});return}if(typoTarget==="out"){sOut(prev=>prev.split(c.from).join(candidate.to))}else{sInp(prev=>prev.split(c.from).join(candidate.to))}dictAddEntry(c.from,candidate.to)}catch(e){console.error("applyTypoCorrection error:",e)}};
 const applyAllTypos=()=>{try{if(!typoModal)return;let t=typoTarget==="out"?out:iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoCustomInputs[i]?.trim()){const customTo=typoCustomInputs[i].trim();t=t.split(c.from).join(customTo);applied.push([c.from,customTo])}else if(typoSelections[i]!==undefined){const candidate=c.candidates?.[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});if(typoTarget==="out"){sOut(t)}else{sInp(t)}if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);saveDictLocal(newDict);applied.forEach(([f,to])=>dictAddSupabase(f,to))}setTypoModal(null);setTypoCustomInputs({});sSt(`✓ ${applied.length}件の修正を登録しました`)}catch(e){console.error("applyAllTypos error:",e);sSt("登録エラー: "+e.message)}};
 const runHistTypoCheck=async()=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setHistTypoLd(true);setTypoTarget("hist");sSt(`🔬 スキャン中... (${selected.length}件)`);try{const combined=selected.map(r=>[r.input_text||"",r.output_text||""].filter(Boolean).join("\n")).join("\n---\n");const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:combined})});if(!r.ok){sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const sel={};d.corrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(d.corrections);sSt("校正候補が見つかりました")}catch(e){sSt("校正エラー: "+e.message)}finally{setHistTypoLd(false)}};
+const BULK_MODES=[{id:"treatment",label:"🏥 疾患別治療説明・プランまとめ"},{id:"patient",label:"👤 患者説明文の自動生成"},{id:"protocol",label:"📋 治療プロトコル抽出"},{id:"faq",label:"❓ よくある質問FAQ生成"},{id:"training",label:"📚 スタッフ向け研修資料生成"}];
+const runBulkAnalyze=async(mode)=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setBulkMenu(false);setBulkLd(true);const modeLabel=BULK_MODES.find(m=>m.id===mode)?.label||mode;sSt(`⏳ 分析中... (${selected.length}件)`);try{const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));const r=await fetch("/api/bulk-analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records,mode})});if(!r.ok){sSt("分析エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("分析エラー: "+d.error);return}setBulkResult({title:modeLabel,content:d.result||""});sSt("分析完了")}catch(e){sSt("分析エラー: "+e.message)}finally{setBulkLd(false)}};
 
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
@@ -1206,6 +1211,11 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>setSelectedHistIds(new Set())} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button>
 <span style={{fontSize:11,color:C.pD,fontWeight:600}}>{selectedHistIds.size}件選択中</span>
 <button onClick={runHistTypoCheck} disabled={!selectedHistIds.size||histTypoLd} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.p}44`,background:!selectedHistIds.size||histTypoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size||histTypoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size||histTypoLd?"default":"pointer"}}>{histTypoLd?`🔬 スキャン中... (${selectedHistIds.size}件)`:"🔬 AI誤字スキャン"}</button>
+<div style={{position:"relative"}}><button onClick={()=>setBulkMenu(v=>!v)} disabled={!selectedHistIds.size||bulkLd} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.p}44`,background:!selectedHistIds.size||bulkLd?"#e5e7eb":"#eff6ff",fontSize:11,fontWeight:600,color:!selectedHistIds.size||bulkLd?C.g400:"#2563eb",fontFamily:"inherit",cursor:!selectedHistIds.size||bulkLd?"default":"pointer"}}>{bulkLd?`⏳ 分析中... (${selectedHistIds.size}件)`:"📊 一括AI分析▼"}</button>
+{bulkMenu&&selectedHistIds.size>0&&<div style={{position:"absolute",top:"100%",left:0,marginTop:4,background:C.w,borderRadius:10,border:`1px solid ${C.g200}`,boxShadow:"0 4px 16px rgba(0,0,0,.15)",zIndex:100,minWidth:220,padding:4}}>
+{BULK_MODES.map(m=><button key={m.id} onClick={()=>runBulkAnalyze(m.id)} style={{display:"block",width:"100%",padding:"8px 12px",borderRadius:7,border:"none",background:C.w,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}} onMouseEnter={e=>e.target.style.background="#eff6ff"} onMouseLeave={e=>e.target.style.background=C.w}>{m.label}</button>)}
+</div>}
+</div>
 </div>
 <div style={{display:"grid",gridTemplateColumns:mob?"repeat(2,1fr)":"repeat(3,1fr)",gap:6}}>
 {filteredHist.map((r,i)=>{
@@ -1263,6 +1273,18 @@ return(<div key={r.id||i} style={{padding:mob?"8px":"5px 7px",borderRadius:8,bor
 </div>}
 </div>
 </div></div>}
+{bulkResult&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkResult(null)}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>{bulkResult.title}</span>
+<div style={{display:"flex",gap:6}}>
+<button onClick={()=>{navigator.clipboard.writeText(bulkResult.content).catch(()=>{});sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>setFavModal({title:bulkResult.title,content:bulkResult.content,recordId:""})} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+<button onClick={()=>setBulkResult(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div></div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{bulkResult.content}</pre>
+</div></div></div>}
 </div>);
 
 // === FAVORITES PAGE ===
