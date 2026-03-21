@@ -393,6 +393,8 @@ const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
 const[histPopup,setHistPopup]=useState(null);
+const[selectedHistIds,setSelectedHistIds]=useState(new Set());
+const[histTypoLd,setHistTypoLd]=useState(false);
 const[pipWin,setPipWin]=useState(null),[pipActive,setPipActive]=useState(false);
 const[dict,setDict]=useState(DEFAULT_DICT),[newFrom,setNewFrom]=useState(""),[newTo,setNewTo]=useState(""),[dictEnabled,setDictEnabled]=useState(true),[dictModal,setDictModal]=useState(false);
 const[logoUrl,setLogoUrl]=useState(""),[logoSize,setLogoSize]=useState(32);
@@ -934,6 +936,7 @@ const runTypoCheck=async()=>{const t=iR.current;if(!t||!t.trim()){sSt("書き起
 const runTypoCheckOut=async()=>{const t=out;if(!t||!t.trim()){sSt("要約テキストがありません");return}setTypoTarget("out");setTypoLdOut(true);sSt("🔍 要約AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})});if(!r.ok){const errText=await r.text();console.error("AI校正 fetch error:",r.status,errText);sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){console.error("AI校正 API error:",d.error);sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 要約の医療用語の誤りは見つかりませんでした");return}const sel={};d.corrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length>0&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(d.corrections);sSt("校正候補が見つかりました")}catch(e){console.error("AI校正 error:",e);sSt("校正エラー: "+e.message)}finally{setTypoLdOut(false)}};
 const applyTypoCorrection=(idx,candidateIdx)=>{try{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates?.[candidateIdx];if(!candidate){console.error("applyTypoCorrection: invalid candidate",{idx,candidateIdx,c});return}if(typoTarget==="out"){sOut(prev=>prev.split(c.from).join(candidate.to))}else{sInp(prev=>prev.split(c.from).join(candidate.to))}dictAddEntry(c.from,candidate.to)}catch(e){console.error("applyTypoCorrection error:",e)}};
 const applyAllTypos=()=>{try{if(!typoModal)return;let t=typoTarget==="out"?out:iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoCustomInputs[i]?.trim()){const customTo=typoCustomInputs[i].trim();t=t.split(c.from).join(customTo);applied.push([c.from,customTo])}else if(typoSelections[i]!==undefined){const candidate=c.candidates?.[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});if(typoTarget==="out"){sOut(t)}else{sInp(t)}if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);saveDictLocal(newDict);applied.forEach(([f,to])=>dictAddSupabase(f,to))}setTypoModal(null);setTypoCustomInputs({});sSt(`✓ ${applied.length}件の修正を登録しました`)}catch(e){console.error("applyAllTypos error:",e);sSt("登録エラー: "+e.message)}};
+const runHistTypoCheck=async()=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setHistTypoLd(true);setTypoTarget("hist");sSt(`🔬 スキャン中... (${selected.length}件)`);try{const combined=selected.map(r=>[r.input_text||"",r.output_text||""].filter(Boolean).join("\n")).join("\n---\n");const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:combined})});if(!r.ok){sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const sel={};d.corrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(d.corrections);sSt("校正候補が見つかりました")}catch(e){sSt("校正エラー: "+e.message)}finally{setHistTypoLd(false)}};
 
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
@@ -1198,13 +1201,25 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>{loadFavorites();setPage("favs")}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り</button>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div></div>
+<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+<button onClick={()=>{const ids=new Set(filteredHist.map(r=>r.id));setSelectedHistIds(ids)}} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>すべて選択</button>
+<button onClick={()=>setSelectedHistIds(new Set())} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button>
+<span style={{fontSize:11,color:C.pD,fontWeight:600}}>{selectedHistIds.size}件選択中</span>
+<button onClick={runHistTypoCheck} disabled={!selectedHistIds.size||histTypoLd} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.p}44`,background:!selectedHistIds.size||histTypoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size||histTypoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size||histTypoLd?"default":"pointer"}}>{histTypoLd?`🔬 スキャン中... (${selectedHistIds.size}件)`:"🔬 AI誤字スキャン"}</button>
+</div>
 <div style={{display:"grid",gridTemplateColumns:mob?"repeat(2,1fr)":"repeat(3,1fr)",gap:6}}>
 {filteredHist.map((r,i)=>{
 const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";
 const preview=(r.output_text||"").replace(/\n/g," ").substring(0,30);
 const pid=r.patient_id||"";
-return(<div key={r.id||i} style={{padding:mob?"8px":"5px 7px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)"}}>
-<div style={{fontSize:mob?10:11,color:"#111",fontWeight:600,marginBottom:2}}>{date}{pid?" | "+pid:""}</div>
+const lines20=(r.input_text||"").split("\n").length>=20;
+const checked=selectedHistIds.has(r.id);
+return(<div key={r.id||i} style={{padding:mob?"8px":"5px 7px",borderRadius:8,border:checked?`1.5px solid ${C.p}`:`1px solid ${C.g200}`,background:checked?"#f7fee7":C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)",position:"relative"}}>
+{lines20&&<span style={{position:"absolute",top:2,right:2,background:"#16a34a",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:4,lineHeight:1.3}}>📄20+</span>}
+<div style={{display:"flex",gap:4,alignItems:"center",marginBottom:2}}>
+<input type="checkbox" checked={checked} onChange={()=>{setSelectedHistIds(prev=>{const n=new Set(prev);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n})}} style={{width:14,height:14,accentColor:C.p,cursor:"pointer",flexShrink:0}}/>
+<span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{date}{pid?" | "+pid:""}</span>
+</div>
 <div style={{fontSize:mob?11:10,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
 <button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} style={{flex:1,padding:mob?"2px 4px":"2px 0",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
