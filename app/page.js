@@ -468,6 +468,7 @@ useEffect(()=>{loadCsCount()},[]);
 const startRef=useRef(null),stopRef=useRef(null),sumRef=useRef(null),clrRef=useRef(null),undoFnRef=useRef(null),pipFnRef=useRef(null);
 useEffect(()=>{
 const handler=(e)=>{
+if(e.key==="Escape"){e.preventDefault();if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(page!=="main"){setPage("main");return}return}
 const tag=document.activeElement?.tagName;
 if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
 if(e.key==="ArrowDown"||e.key==="ArrowUp"||e.key==="ArrowLeft"||e.key==="ArrowRight")e.preventDefault();
@@ -501,7 +502,7 @@ const cfg=findSC(sc.id);
 if(matchKey(cfg)){e.preventDefault();sc.fn();return;}
 }
 };
-window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[out,shortcuts]);
+window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[out,shortcuts,typoModal,dictModal,histPopup,qcModal,favModal,favMoveModal,favEditModal,favGenModal,favDetailModal,caseStudyModal,faqModal,menuModal,page]);
 const[minTitle,setMinTitle]=useState("");
 const[minHist,setMinHist]=useState([]);
 const[tasks,setTasks]=useState([]);
@@ -1038,7 +1039,8 @@ if(page==="shortcuts")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto
 ・⭐をクリックするとトップ画面にショートカットバーが表示されます<br/>
 ・ON/OFFでショートカットの有効/無効を切り替えられます<br/>
 ・設定画面でキーの割り当てを変更できます<br/>
-・小窓（PiP）にも⭐のショートカットが表示されます
+・小窓（PiP）にも⭐のショートカットが表示されます<br/>
+・<kbd style={{padding:"1px 5px",borderRadius:4,border:"1px solid #d1d5db",background:"#fff",fontSize:11}}>Escape</kbd> キーでモーダル・ページを閉じます（固定・変更不可）
 </div>
 </div>
 </div></div>);
@@ -1113,6 +1115,7 @@ if(page==="help")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"1
 ["↑ ArrowUp","要約実行"],
 ["→ ArrowRight","次の患者（クリア）"],
 ["F6","小窓（PiP）on/off"],
+["Escape","モーダル・ページを閉じる"],
 ["設定で追加","カスタムショートカット登録可能"]
 ].map(([key,desc],i)=>(<tr key={i} style={{borderBottom:i<4?`1px solid ${C.g100}`:"none"}}>
 <td style={{padding:"8px 10px",fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}><kbd style={{padding:"2px 8px",borderRadius:5,border:"1px solid #d1d5db",background:"#f9fafb",fontSize:11}}>{key}</kbd></td>
@@ -1851,6 +1854,12 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <input value={sc.key} readOnly onKeyDown={e=>{e.preventDefault();let k="";if(e.ctrlKey)k+="Ctrl+";if(e.altKey)k+="Alt+";if(e.shiftKey)k+="Shift+";if(e.metaKey)k+="Cmd+";const key=e.key;if(!["Control","Alt","Shift","Meta"].includes(key)){k+=key.length===1?key.toUpperCase():key;const u=[...shortcuts];u[i]={...u[i],key:k};setShortcuts(u)}}} style={{width:80,padding:"3px 8px",borderRadius:8,border:`1.5px solid ${C.p}`,fontSize:12,fontFamily:"monospace",fontWeight:700,color:C.pD,background:C.pLL,textAlign:"center",outline:"none",cursor:"pointer"}} placeholder="キーを押す"/>
 <button onClick={()=>{const u=[...shortcuts];u[i]={...u[i],enabled:!u[i].enabled};setShortcuts(u)}} style={{padding:"3px 10px",borderRadius:6,border:"none",background:sc.enabled?C.rG:C.g200,color:sc.enabled?C.w:C.g500,fontSize:10,fontWeight:700,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>{sc.enabled?"ON":"OFF"}</button>
 </div>))}
+<div style={{display:"flex",gap:6,alignItems:"center",padding:"6px 0",borderTop:`1.5px solid ${C.g200}`,marginTop:4}}>
+<span style={{padding:"2px 5px",borderRadius:6,border:`1px solid ${C.g300}`,background:C.g100,fontSize:9,color:C.g500,flexShrink:0}}>🔒</span>
+<span style={{width:mob?100:140,fontSize:12,fontWeight:600,color:C.g700,flexShrink:0}}>✕ 閉じる</span>
+<span style={{width:80,padding:"3px 8px",borderRadius:8,border:`1.5px solid ${C.g300}`,fontSize:12,fontFamily:"monospace",fontWeight:700,color:C.g500,background:C.g100,textAlign:"center"}}>Escape</span>
+<span style={{fontSize:10,color:C.g400}}>固定（モーダル・ページを閉じる）</span>
+</div>
 </div>
 <div style={{display:"flex",gap:8,marginTop:8}}>
 <button onClick={()=>setShortcuts(DEFAULT_SHORTCUTS)} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>初期値に戻す</button>
