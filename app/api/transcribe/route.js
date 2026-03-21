@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+const WHISPER_PROMPT = "皮膚科診療の会話です。以下の用語が頻出します：アトピー性皮膚炎、接触性皮膚炎、蕁麻疹、乾癬、帯状疱疹、足白癬、爪白癬、デルモベート、アンテベート、リンデロン、ロコイド、キンダベート、プロトピック、コレクチム、モイゼルト、デュピクセント、ミチーガ、ヒルドイド、ビーソフテン、アレグラ、ザイザル、アレロック、ビラノア、ルパフィン、デザレックス、ディフェリン、エピデュオ、ベピオ、ラミシール、イトリゾール、バルトレックス、液体窒素、ダーモスコピー、ナローバンドUVB、Vビームレーザー、プロペシア、ざ瘡、酒さ、脂漏性皮膚炎、掌蹠膿疱症、円形脱毛症、男性型脱毛症、プロアクティブ療法、スタンダード療法、外用、内服、処方、再診、初診";
+
 export async function POST(request) {
   try {
     const formData = await request.formData();
@@ -15,6 +17,7 @@ export async function POST(request) {
     whisperForm.append("model", "whisper-1");
     whisperForm.append("language", "ja");
     whisperForm.append("response_format", "json");
+    whisperForm.append("prompt", WHISPER_PROMPT);
 
     const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
