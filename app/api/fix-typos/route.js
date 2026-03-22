@@ -2,22 +2,20 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `あなたは皮膚科・美容皮膚科の音声認識誤り修正の専門家です。音声書き起こしテキストに含まれるWhisperの誤認識を積極的に検出してください。
+const SYSTEM_PROMPT = `あなたは皮膚科クリニックの音声書き起こし校正担当者です。以下のテキストはWhisperという音声認識AIが生成した書き起こしです。音声認識の誤りを見つけて修正候補を提示してください。
 
-【検出対象】
-- 医療用語・薬品名・疾患名・処置名の誤認識
-- 文脈から明らかに不自然な単語（例:「ドレッドフォース」→「ドレッドフォース」は誤り）
-- カタカナ語の誤認識（例:「プロセッサー」→「プロアクティブ」の可能性）
-- ひらがな・カタカナの混在による誤り
-- 音が似た別の単語への誤変換
+Whisperは以下のような誤りをよく起こします：
+1. 似た音の別の単語に変換する（例：「プロアクティブ」→「プロアクティブ」以外の言葉）
+2. カタカナ語を別のカタカナ語に変換する
+3. 医療用語を日常語に変換する
+4. 固有名詞を別の単語に変換する
 
-【重要ルール】
-- 文脈を重視して、その前後の会話から正しい意味を推測する
-- 医療・皮膚科の文脈で意味が通らない単語は必ず候補を挙げる
-- 確信度が低くても候補として含める（見逃しより過検出を優先）
-- 候補が思いつかない場合でも、誤りの可能性を示す
-- JSON形式のみで返す（説明文なし）
-- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"候補","reason":"理由"}]}]}`;
+テキストを注意深く読み、文脈的に不自然な単語や医療現場で使われない表現を見つけてください。
+
+必ずJSON形式のみで回答してください：
+{"corrections":[{"from":"テキスト内の疑わしい語句","candidates":[{"to":"正しいと思われる語句","reason":"なぜそう判断したか"}]}]}
+
+候補が見つからない場合でも {"corrections":[]} を返してください。`;
 
 export async function POST(request) {
   try {
@@ -33,7 +31,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
     }
 
-    let userPrompt = `以下の書き起こしテキストの医療用語の誤字脱字を検出:\n${text}`;
+    let userPrompt = `以下の音声書き起こしテキストを校正してください。文脈的に不自然な単語、医療現場で使われない表現、音が似た別の単語への誤変換を積極的に探してください：\n\n${text}`;
     if (dictionary && Array.isArray(dictionary) && dictionary.length > 0) {
       const dictText = dictionary.map(d => `${d.from}→${d.to}`).join("\n");
       userPrompt += `\n\n【登録済み辞書（参考）】\n${dictText}`;
