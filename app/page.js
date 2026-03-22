@@ -552,7 +552,7 @@ const[snsInput,setSnsInput]=useState(""),[snsPlatform,setSnsPlatform]=useState("
 const[satResult,setSatResult]=useState(""),[satLoading,setSatLoading]=useState(false);
 const[mobileHideItems,setMobileHideItems]=useState({pip:true,shortcuts:true,fontsize:true,tabs_minutes:true,tabs_tasks:true,tabs_sns:true,tabs_analysis:true,tabs_roleplay:true,tabs_caselibrary:true});
 escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(page!=="main"){setPage("main");return}};
-const FAV_GROUPS=["保険","美容","カウンセリング","その他"];
+const FAV_GROUPS=["保険","美容","カウンセリング","治療説明","美容施術説明","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast(`⭐ ${group}グループに保存しました`);setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
 const bulkSaveFavorites=async(group)=>{if(!supabase)return;const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;try{const rows=selected.map(r=>{const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP"):"";const pid=r.patient_id||"";return{record_id:r.id||"",group_name:group,title:date+(pid?" | "+pid:""),content:r.output_text||r.input_text||""}});await supabase.from("favorites").insert(rows);setFavToast(`⭐ ${selected.length}件を${group}グループに保存しました`);setTimeout(()=>setFavToast(""),3000);loadFavorites()}catch(e){console.error("Bulk fav save error:",e)}};
@@ -1320,8 +1320,8 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 <button onClick={()=>{loadHist();setPage("hist")}} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div></div>
-<div style={{display:"flex",gap:4,marginBottom:8}}>
-{FAV_GROUPS.map(g=><button key={g} onClick={()=>setFavGroup(g)} style={{flex:1,padding:"6px 0",borderRadius:8,border:`1.5px solid ${favGroup===g?"#f59e0b":C.g200}`,background:favGroup===g?"#fffbeb":C.w,fontSize:12,fontWeight:favGroup===g?700:500,color:favGroup===g?"#92400e":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{g}</button>)}
+<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
+{FAV_GROUPS.map(g=><button key={g} onClick={()=>setFavGroup(g)} style={{padding:"6px 10px",borderRadius:8,border:`1.5px solid ${favGroup===g?"#f59e0b":C.g200}`,background:favGroup===g?"#fffbeb":C.w,fontSize:12,fontWeight:favGroup===g?700:500,color:favGroup===g?"#92400e":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{g}</button>)}
 </div>
 <div style={{display:"flex",gap:6,marginBottom:12}}>
 <button onClick={()=>{const gf=favorites.filter(f=>f.group_name===favGroup);if(gf.length===0){setFavToast("データがありません");setTimeout(()=>setFavToast(""),2500);return}generateFaq(favGroup,gf)}} disabled={faqLoading} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:"pointer"}}>{faqLoading?"⏳ 生成中...":"❓ FAQ自動生成"}</button>
