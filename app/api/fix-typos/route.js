@@ -2,20 +2,7 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `あなたは皮膚科クリニックの音声書き起こし校正担当者です。以下のテキストはWhisperという音声認識AIが生成した書き起こしです。音声認識の誤りを見つけて修正候補を提示してください。
-
-Whisperは以下のような誤りをよく起こします：
-1. 似た音の別の単語に変換する（例：「プロアクティブ」→「プロアクティブ」以外の言葉）
-2. カタカナ語を別のカタカナ語に変換する
-3. 医療用語を日常語に変換する
-4. 固有名詞を別の単語に変換する
-
-テキストを注意深く読み、文脈的に不自然な単語や医療現場で使われない表現を見つけてください。
-
-必ずJSON形式のみで回答してください：
-{"corrections":[{"from":"テキスト内の疑わしい語句","candidates":[{"to":"正しいと思われる語句","reason":"なぜそう判断したか"}]}]}
-
-候補が見つからない場合でも {"corrections":[]} を返してください。`;
+const SYSTEM_PROMPT = `音声認識（Whisper）の書き起こしテキストの誤りを修正する専門家です。テキストを読んで、明らかに不自然な単語や誤認識と思われる箇所を3〜10個見つけて修正候補を提示してください。必ず何か候補を見つけること。JSONのみで返す: {"corrections":[{"from":"誤り","candidates":[{"to":"修正候補","reason":"理由"}]}]}`;
 
 export async function POST(request) {
   try {
@@ -44,7 +31,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 3000, responseMimeType: "application/json" },
+        generationConfig: { temperature: 1.0, maxOutputTokens: 3000 },
       }),
     });
 
