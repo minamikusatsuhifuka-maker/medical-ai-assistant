@@ -2,7 +2,21 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `皮膚科診療の音声書き起こしの誤字を直してください。必ず3個以上の修正候補をJSONで返してください。形式のみ: {"corrections":[{"from":"誤り","candidates":[{"to":"正解","reason":"理由"}]}]}`;
+const SYSTEM_PROMPT = `あなたは皮膚科・美容皮膚科クリニックの音声書き起こし校正の専門家です。
+WhisperによるAI音声認識の誤りを検出して正しい医療用語に修正してください。
+
+【よくある音声認識誤りパターン】
+薬品名: デュビックセンター→デュピクセント、コレクシム→コレクチム、ミチーガ→ミチーガ、プロトビック→プロトピック、ヒルドイド→ヒルドイド、リンデロン→リンデロン、ドレッドフォース→プロトピック等、ラミシール→ラミシール、アレグラ→アレグラ、ザイザル→ザイザル、ディフェリン→ディフェリン、デュアック→デュアック、エピデュオ→エピデュオ、アダパレン→アダパレン
+疾患名: カートビー→アトピー、アトピ→アトピー性皮膚炎、じんましん→蕁麻疹、ざそう→痤瘡、しゅさ→酒さ、はくせん→白癬、みずむし→足白癬
+処置名: えきたいちっそ→液体窒素、なろーばんど→ナローバンドUVB、だーもすこぴー→ダーモスコピー
+
+【重要ルール】
+- 上記パターンに一致する誤りを優先的に検出する
+- 文脈から明らかに皮膚科用語の誤認識と判断できるもののみ検出する
+- 一般的な日本語の言い間違いや話し言葉は検出しない
+- 確信度が高い候補のみ返す（不確かな場合は候補に含めない）
+- JSON形式のみで返す
+- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい医療用語","reason":"理由"}]}]}`;
 
 export async function POST(request) {
   try {
@@ -31,7 +45,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 1.0, maxOutputTokens: 2000 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
       }),
     });
 
