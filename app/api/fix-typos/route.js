@@ -42,8 +42,11 @@ export async function POST(request) {
     }
 
     const data = await res.json();
-    const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-    console.log("fix-typos raw:", content.slice(0, 500));
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    console.log("fix-typos parts count:", parts.length, "parts:", JSON.stringify(parts.map(p => ({ thought: p.thought, textLen: (p.text||"").length, textPreview: (p.text||"").slice(0,100) }))));
+    // thinking partを除外してtext partのみ結合
+    const content = parts.filter(p => !p.thought).map(p => p.text || "").join("") || "";
+    console.log("fix-typos content:", content.slice(0, 500));
 
     if (!content.trim()) {
       console.error("fix-typos: empty response");
