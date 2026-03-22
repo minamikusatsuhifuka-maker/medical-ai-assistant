@@ -24,14 +24,14 @@ export async function POST(request) {
       userPrompt += `\n\n【登録済み辞書（参考）】\n${dictText}`;
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 1.0, maxOutputTokens: 3000 },
+        generationConfig: { temperature: 0.7, maxOutputTokens: 3000, responseMimeType: "application/json" },
       }),
     });
 
@@ -43,18 +43,31 @@ export async function POST(request) {
 
     const data = await res.json();
     const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-    console.log("Gemini raw response:", content.slice(0, 500));
+    console.log("fix-typos raw response length:", content.length, "preview:", content.slice(0, 300));
+
+    if (!content.trim()) {
+      console.error("fix-typos: empty response from Gemini");
+      return NextResponse.json({ corrections: [] });
+    }
 
     let parsed = { corrections: [] };
     try {
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-                        content.match(/(\{[\s\S]*\})/);
-      const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
-      parsed = JSON.parse(jsonStr);
-    } catch (e) {
-      console.error("JSON parse error:", e.message, "Raw:", content.slice(0, 200));
-      return NextResponse.json({ corrections: [] });
+      // responseMimeType=application/json なので直接パースを試みる
+      parsed = JSON.parse(content.trim());
+    } catch (e1) {
+      console.log("fix-typos: direct parse failed, trying extraction");
+      try {
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) ||
+                          content.match(/(\{[\s\S]*\})/);
+        const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
+        parsed = JSON.parse(jsonStr);
+      } catch (e2) {
+        console.error("fix-typos JSON parse error:", e2.message, "Raw:", content.slice(0, 300));
+        return NextResponse.json({ corrections: [] });
+      }
     }
+
+    console.log("fix-typos parsed corrections count:", parsed.corrections?.length || 0);
 
     if (!parsed.corrections || !Array.isArray(parsed.corrections)) {
       return NextResponse.json({ corrections: [] });
