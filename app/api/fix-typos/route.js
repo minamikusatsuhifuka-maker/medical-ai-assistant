@@ -2,7 +2,20 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `音声認識（Whisper）の書き起こしテキストの誤りを修正する専門家です。テキストを読んで、明らかに不自然な単語や誤認識と思われる箇所を3〜10個見つけて修正候補を提示してください。必ず何か候補を見つけること。JSONのみで返す: {"corrections":[{"from":"誤り","candidates":[{"to":"修正候補","reason":"理由"}]}]}`;
+const SYSTEM_PROMPT = `あなたは皮膚科クリニックで使われている音声認識（Whisper）の誤認識を修正するAIです。
+
+以下のテキストには音声認識の誤りが含まれています。特に以下のパターンを見つけてください：
+
+1. 薬品名の誤認識: デュビックセンター→デュピクセント、コレクシム→コレクチム、マイナソン→マイザー、ホルマイト→モイゼルト、アルマゴス→アルメタ、ドレッドフォース→不明 など
+2. 疾患名の誤認識: みずむし→足白癬、じんましん→蕁麻疹 など
+3. 処置名の誤認識: えきたいちっそ→液体窒素 など
+4. その他の不自然な単語
+
+必ず3個以上の候補を見つけて返してください。見つからないということはありえません。
+テキストの各単語を皮膚科の文脈で検討し、不自然なものを全て挙げてください。
+
+回答はJSON形式のみ（説明文なし）:
+{"corrections":[{"from":"テキスト内の誤った語句","candidates":[{"to":"正しい語句","reason":"理由"}]}]}`;
 
 export async function POST(request) {
   try {
@@ -18,7 +31,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
     }
 
-    let userPrompt = `以下の音声書き起こしテキストを校正してください。文脈的に不自然な単語、医療現場で使われない表現、音が似た別の単語への誤変換を積極的に探してください：\n\n${text}`;
+    let userPrompt = `以下は皮膚科クリニックでのWhisper音声書き起こしテキストです。音声認識の誤りを全て見つけて修正候補を提示してください。必ず3個以上見つけてください：\n\n${text}`;
     if (dictionary && Array.isArray(dictionary) && dictionary.length > 0) {
       const dictText = dictionary.map(d => `${d.from}→${d.to}`).join("\n");
       userPrompt += `\n\n【登録済み辞書（参考）】\n${dictText}`;
@@ -31,7 +44,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 3000, responseMimeType: "application/json" },
+        generationConfig: { temperature: 0.5, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } },
       }),
     });
 
@@ -43,31 +56,40 @@ export async function POST(request) {
 
     const data = await res.json();
     const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-    console.log("fix-typos raw response length:", content.length, "preview:", content.slice(0, 300));
+    console.log("fix-typos raw:", content.slice(0, 500));
 
     if (!content.trim()) {
-      console.error("fix-typos: empty response from Gemini");
+      console.error("fix-typos: empty response");
       return NextResponse.json({ corrections: [] });
     }
 
     let parsed = { corrections: [] };
     try {
-      // responseMimeType=application/json なので直接パースを試みる
+      // まず直接パース
       parsed = JSON.parse(content.trim());
     } catch (e1) {
-      console.log("fix-typos: direct parse failed, trying extraction");
       try {
-        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-                          content.match(/(\{[\s\S]*\})/);
-        const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
-        parsed = JSON.parse(jsonStr);
+        // ```json...``` ブロックを抽出
+        const m1 = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (m1) {
+          parsed = JSON.parse(m1[1].trim());
+        } else {
+          // {..."corrections"...} を抽出
+          const m2 = content.match(/\{[\s\S]*"corrections"[\s\S]*\}/);
+          if (m2) {
+            parsed = JSON.parse(m2[0]);
+          } else {
+            console.error("fix-typos: no JSON found in:", content.slice(0, 300));
+            return NextResponse.json({ corrections: [] });
+          }
+        }
       } catch (e2) {
-        console.error("fix-typos JSON parse error:", e2.message, "Raw:", content.slice(0, 300));
+        console.error("fix-typos parse error:", e2.message, "raw:", content.slice(0, 300));
         return NextResponse.json({ corrections: [] });
       }
     }
 
-    console.log("fix-typos parsed corrections count:", parsed.corrections?.length || 0);
+    console.log("fix-typos corrections:", parsed.corrections?.length || 0);
 
     if (!parsed.corrections || !Array.isArray(parsed.corrections)) {
       return NextResponse.json({ corrections: [] });
