@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 const SYSTEM_PROMPT = `あなたは皮膚科・美容皮膚科の専門医です。音声書き起こしテキストに含まれる医療用語の誤認識を積極的に検出してください。
 
@@ -56,7 +56,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
       }),
     });
 
