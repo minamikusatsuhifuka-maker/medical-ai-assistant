@@ -394,6 +394,10 @@ const[dragTpl,setDragTpl]=useState(null);
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
 const[histPopup,setHistPopup]=useState(null);
 const[selectedHistIds,setSelectedHistIds]=useState(new Set());
+const[openDates,setOpenDates]=useState(new Set());
+const[dailyMenu,setDailyMenu]=useState(null);
+const[dailyLd,setDailyLd]=useState(false);
+const[dailyResult,setDailyResult]=useState(null);
 const[histTypoLd,setHistTypoLd]=useState(false);
 const[bulkMenu,setBulkMenu]=useState(false);
 const[bulkLd,setBulkLd]=useState(false);
@@ -1249,29 +1253,47 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 {FAV_GROUPS.map(g=><button key={g} onClick={()=>{bulkSaveFavorites(g);setBulkFavModal(false)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
 <button onClick={()=>setBulkFavModal(false)} style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
 </div></div>}
-<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(3,1fr)",gap:6}}>
-{filteredHist.map((r,i)=>{
-const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";
-const preview=(r.output_text||"").replace(/\n/g," ").substring(0,mob?40:30);
-const pid=r.patient_id||"";
-const lines20=(r.input_text||"").split("\n").length>=20;
-const checked=selectedHistIds.has(r.id);
-const toggleSel=()=>{setSelectedHistIds(prev=>{const n=new Set(prev);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n})};
-return(<div key={r.id||i} onClick={e=>{if(e.target.tagName==="INPUT"||e.target.tagName==="BUTTON")return;toggleSel()}} style={{padding:mob?"6px 8px":"5px 7px",borderRadius:8,border:checked?`1.5px solid ${C.p}`:`1px solid ${C.g200}`,background:checked?"#f7fee7":C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)",position:"relative",cursor:"pointer"}}>
+{(()=>{const DAYS=["日","月","火","水","木","金","土"];const grouped={};filteredHist.forEach(r=>{const dk=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"}):"不明";if(!grouped[dk])grouped[dk]=[];grouped[dk].push(r)});const dateKeys=Object.keys(grouped);if(openDates.size===0&&dateKeys.length>0){setTimeout(()=>setOpenDates(new Set([dateKeys[0]])),0)}return dateKeys.map(dk=>{const recs=grouped[dk];const isOpen=openDates.has(dk);const d=recs[0]?.created_at?new Date(recs[0].created_at):null;const dayStr=d?DAYS[d.getDay()]:"";const toggleDate=()=>setOpenDates(prev=>{const n=new Set(prev);if(n.has(dk))n.delete(dk);else n.add(dk);return n});const DAILY_MODES=[{id:"summary",label:"📋 日次まとめ"},{id:"staff_manual",label:"👥 スタッフ指導マニュアル"},{id:"patient_material",label:"👤 患者向け説明資料ベース"},{id:"analysis",label:"📈 診療データ分析"}];const runDaily=async(mode)=>{setDailyMenu(null);setDailyLd(true);setDailyResult(null);try{const res=await fetch("/api/daily-summary",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:recs.map(r=>({input_text:r.input_text||"",output_text:r.output_text||"",patient_id:r.patient_id||""})),date:dk,mode})});const data=await res.json();if(data.error)throw new Error(data.error);setDailyResult({title:DAILY_MODES.find(m=>m.id===mode)?.label||"分析結果",date:dk,content:data.result||""})}catch(e){setDailyResult({title:"エラー",date:dk,content:"エラー: "+e.message})}finally{setDailyLd(false)}};return<div key={dk} style={{marginBottom:8}}>
+<div onClick={toggleDate} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(160,220,100,0.2)",borderRadius:12,padding:"10px 16px",cursor:"pointer",userSelect:"none"}}>
+<span style={{fontWeight:700,color:"#2a5018",fontSize:14}}>📅 {dk}（{dayStr}）- {recs.length}件</span>
+<div style={{display:"flex",alignItems:"center",gap:6}}>
+<div style={{position:"relative"}}><button onClick={e=>{e.stopPropagation();setDailyMenu(dailyMenu===dk?null:dk)}} style={{padding:"3px 10px",borderRadius:7,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:11,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📊 日次分析▼</button>
+{dailyMenu===dk&&<div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:C.w,borderRadius:10,border:`1px solid ${C.g200}`,boxShadow:"0 4px 16px rgba(0,0,0,.15)",zIndex:100,minWidth:220,padding:4}} onClick={e=>e.stopPropagation()}>
+{DAILY_MODES.map(m=><button key={m.id} onClick={()=>runDaily(m.id)} style={{display:"block",width:"100%",padding:"8px 12px",borderRadius:7,border:"none",background:C.w,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}} onMouseEnter={e=>e.target.style.background="#eff6ff"} onMouseLeave={e=>e.target.style.background=C.w}>{m.label}</button>)}
+</div>}
+</div>
+<span style={{fontSize:16,color:"#2a5018"}}>{isOpen?"▲":"▼"}</span>
+</div></div>
+{isOpen&&<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(3,1fr)",gap:6,marginTop:6}}>
+{recs.map((r,i)=>{const time=r.created_at?new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";const preview=(r.output_text||"").replace(/\n/g," ").substring(0,mob?40:30);const pid=r.patient_id||"";const lines20=(r.input_text||"").split("\n").length>=20;const checked=selectedHistIds.has(r.id);const toggleSel=()=>{setSelectedHistIds(prev=>{const n=new Set(prev);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n})};return(<div key={r.id||i} onClick={e=>{if(e.target.tagName==="INPUT"||e.target.tagName==="BUTTON")return;toggleSel()}} style={{padding:mob?"6px 8px":"5px 7px",borderRadius:8,border:checked?`1.5px solid ${C.p}`:`1px solid ${C.g200}`,background:checked?"#f7fee7":C.w,boxShadow:"0 1px 2px rgba(0,0,0,.05)",position:"relative",cursor:"pointer"}}>
 {lines20&&<span style={{position:"absolute",top:2,right:2,background:"#7c3aed",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:4,lineHeight:1.3}}>📄20+</span>}
 <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:2}}>
 <input type="checkbox" checked={checked} onChange={toggleSel} style={{width:14,height:14,accentColor:C.p,cursor:"pointer",flexShrink:0}}/>
-<span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{date}{pid?" | "+pid:""}</span>
+<span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{time}{pid?" | "+pid:""}</span>
 </div>
 <div style={{fontSize:mob?14:13,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 <div style={{display:"flex",gap:3}}>
-<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date,pid})} title="書き起こし内容を表示" onMouseEnter={e=>showTip(e,"書き起こし内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
-<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date,pid})} title="要約内容を表示" onMouseEnter={e=>showTip(e,"要約内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.p}`,background:C.pLL,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
+<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date:time,pid})} title="書き起こし内容を表示" onMouseEnter={e=>showTip(e,"書き起こし内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
+<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date:time,pid})} title="要約内容を表示" onMouseEnter={e=>showTip(e,"要約内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.p}`,background:C.pLL,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
 <button onClick={()=>{const fullDate=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";setFavModal({title:fullDate+(pid?" | ID:"+pid:""),input_text:r.input_text||"",output_text:r.output_text||"",recordId:r.id})}} title="お気に入りに保存" onMouseEnter={e=>showTip(e,"お気に入りに保存")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {r.input_text&&<button onClick={()=>runQualityCheck(r)} title="AI対応品質チェック" onMouseEnter={e=>showTip(e,"AI対応品質チェック")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:11,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
 </div>
 </div>)})}
-</div>
+</div>}
+</div>})})()}
+{dailyLd&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:C.w,borderRadius:16,padding:30,textAlign:"center",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #3b82f6",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><span style={{color:C.g500,fontSize:14,fontWeight:600}}>⏳ 生成中...</span></div></div>}
+{dailyResult&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDailyResult(null)}>
+<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
+<div><span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{dailyResult.title}</span><span style={{fontSize:11,color:C.g400,marginLeft:8}}>{dailyResult.date}</span></div>
+<div style={{display:"flex",gap:6}}>
+<button onClick={()=>{navigator.clipboard.writeText(dailyResult.content);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite("治療説明",`[${dailyResult.title}] ${dailyResult.date}`,dailyResult.content,"");setDailyResult(null)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+<button onClick={()=>setDailyResult(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div></div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{dailyResult.content}</pre>
+</div></div></div>}
 {histPopup&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setHistPopup(null)}>
 <div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
