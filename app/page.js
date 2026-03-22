@@ -553,8 +553,10 @@ const[satResult,setSatResult]=useState(""),[satLoading,setSatLoading]=useState(f
 const[kbResult,setKbResult]=useState(""),[kbLoading,setKbLoading]=useState(false),[kbMode,setKbMode]=useState(""),[kbFavGroup,setKbFavGroup]=useState("その他"),[kbModal,setKbModal]=useState(false);
 const[calResult,setCalResult]=useState(""),[calLoading,setCalLoading]=useState(false),[calModal,setCalModal]=useState(false),[calFavGroup,setCalFavGroup]=useState("その他");
 const[hpResult,setHpResult]=useState(""),[hpLoading,setHpLoading]=useState(false),[hpModal,setHpModal]=useState(false),[hpType,setHpType]=useState(""),[hpFavGroup,setHpFavGroup]=useState("その他");
+const[trResult,setTrResult]=useState(""),[trLoading,setTrLoading]=useState(false),[trModal,setTrModal]=useState(false),[trType,setTrType]=useState(""),[trFavGroup,setTrFavGroup]=useState("その他"),[trCount,setTrCount]=useState(0);
+const[pxResult,setPxResult]=useState(""),[pxLoading,setPxLoading]=useState(false),[pxModal,setPxModal]=useState(false),[pxType,setPxType]=useState(""),[pxFavGroup,setPxFavGroup]=useState("その他");
 const[mobileHideItems,setMobileHideItems]=useState({pip:true,shortcuts:true,fontsize:true,tabs_minutes:true,tabs_tasks:true,tabs_sns:true,tabs_analysis:true,tabs_roleplay:true,tabs_caselibrary:true,tabs_knowledge:true});
-escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(kbModal){setKbModal(false);return}if(calModal){setCalModal(false);return}if(hpModal){setHpModal(false);return}if(page!=="main"){setPage("main");return}};
+escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(kbModal){setKbModal(false);return}if(calModal){setCalModal(false);return}if(hpModal){setHpModal(false);return}if(trModal){setTrModal(false);return}if(pxModal){setPxModal(false);return}if(page!=="main"){setPage("main");return}};
 const FAV_GROUPS=["保険","美容","カウンセリング","治療説明","美容施術説明","その他"];
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast(`⭐ ${group}グループに保存しました`);setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
@@ -576,6 +578,8 @@ const runSatisfactionAnalysis=async()=>{if(!supabase)return;setSatLoading(true);
 const runKnowledgeBase=async(mode)=>{if(!supabase)return;setKbMode(mode);setKbLoading(true);setKbResult("");setKbModal(true);try{const{data}=await supabase.from("records").select("input_text,output_text,created_at").order("created_at",{ascending:false}).limit(30);if(!data||data.length<3){setKbResult("データが不足しています（最低3件の履歴が必要です）");setKbLoading(false);return}const endpoint=mode==="report"?"/api/quality-report":"/api/knowledge-base";const body=mode==="report"?{records:data}:{records:data,mode};const res=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const result=await res.json();if(result.error)throw new Error(result.error);setKbResult(result.result||"")}catch(e){setKbResult("エラー: "+e.message)}finally{setKbLoading(false)}};
 const runContentCalendar=async()=>{if(!supabase)return;setCalLoading(true);setCalResult("");setCalModal(true);try{const{data}=await supabase.from("records").select("output_text,created_at").order("created_at",{ascending:false}).limit(50);if(!data||data.length<3){setCalResult("データが不足しています（最低3件の履歴が必要です）");setCalLoading(false);return}const now=new Date();const nextMonth=new Date(now.getFullYear(),now.getMonth()+1,1);const month=`${nextMonth.getFullYear()}年${nextMonth.getMonth()+1}月`;const res=await fetch("/api/content-calendar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,month})});const result=await res.json();if(result.error)throw new Error(result.error);setCalResult(result.result||"")}catch(e){setCalResult("エラー: "+e.message)}finally{setCalLoading(false)}};
 const runHomepageContent=async(type)=>{if(!supabase)return;setHpType(type);setHpLoading(true);setHpResult("");setHpModal(true);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(50);if(!data||data.length<3){setHpResult("データが不足しています（最低3件の履歴が必要です）");setHpLoading(false);return}const res=await fetch("/api/homepage-content",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,type})});const result=await res.json();if(result.error)throw new Error(result.error);setHpResult(result.result||"")}catch(e){setHpResult("エラー: "+e.message)}finally{setHpLoading(false)}};
+const runTrendReport=async(type)=>{if(!supabase)return;setTrType(type);setTrLoading(true);setTrResult("");setTrModal(true);setTrCount(0);try{const{data}=await supabase.from("records").select("output_text,created_at").order("created_at",{ascending:false}).limit(100);if(!data||data.length<3){setTrResult("データが不足しています（最低3件の履歴が必要です）");setTrLoading(false);return}setTrCount(data.length);const res=await fetch("/api/trend-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,type})});const result=await res.json();if(result.error)throw new Error(result.error);setTrResult(result.result||"")}catch(e){setTrResult("エラー: "+e.message)}finally{setTrLoading(false)}};
+const runPatientExperience=async(type)=>{if(!supabase)return;setPxType(type);setPxLoading(true);setPxResult("");setPxModal(true);try{const{data}=await supabase.from("records").select("output_text,input_text,created_at").order("created_at",{ascending:false}).limit(50);if(!data||data.length<3){setPxResult("データが不足しています（最低3件の履歴が必要です）");setPxLoading(false);return}if(type==="patient"){const res=await fetch("/api/trend-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,type:"patient"})});const result=await res.json();if(result.error)throw new Error(result.error);setPxResult(result.result||"")}else{const res=await fetch("/api/knowledge-base",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,mode:"training"})});const result=await res.json();if(result.error)throw new Error(result.error);setPxResult(result.result||"")}}catch(e){setPxResult("エラー: "+e.message)}finally{setPxLoading(false)}};
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
 const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
@@ -1704,6 +1708,43 @@ if(page==="knowledge"){const KB_MODES=[{id:"report",label:"📊 月次品質レ�
 </div>
 </div>
 </div>}
+<div style={{marginTop:20}}>
+<div style={card}>
+<h3 style={{fontSize:16,fontWeight:700,color:"#e11d48",margin:"0 0 8px"}}>🤝 患者体験改善</h3>
+<p style={{fontSize:12,color:C.g500,marginBottom:12}}>直近50件の診療記録から患者体験の改善ポイントをAIが分析します。</p>
+<div style={{display:"grid",gap:10,gridTemplateColumns:mob?"1fr":"1fr 1fr"}}>
+<button onClick={()=>runPatientExperience("patient")} disabled={pxLoading} style={{padding:"14px 16px",borderRadius:14,border:"none",background:pxLoading?C.g200:"linear-gradient(135deg,#7c3aed,#8b5cf6)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:pxLoading?"not-allowed":"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+<div>😊 患者ニーズ・不安分析</div>
+<div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:4}}>訴えTOP10と満足度向上提案</div>
+</button>
+<button onClick={()=>runPatientExperience("training")} disabled={pxLoading} style={{padding:"14px 16px",borderRadius:14,border:"none",background:pxLoading?C.g200:"linear-gradient(135deg,#059669,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:pxLoading?"not-allowed":"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+<div>💬 説明方法改善提案</div>
+<div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:4}}>対応パターンと説明改善</div>
+</button>
+</div>
+</div>
+</div>
+{pxModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setPxModal(false)}}>
+<div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${C.g200}`}}>
+<h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#e11d48"}}>{pxType==="patient"?"😊 患者ニーズ・不安分析":"💬 説明方法改善提案"}</h3>
+<button onClick={()=>setPxModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:20}}>
+{pxLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #e11d48",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが診療記録を分析中...</span></div>}
+{pxResult&&!pxLoading&&<div>
+<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+<button onClick={()=>{navigator.clipboard.writeText(pxResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<select value={pxFavGroup} onChange={e=>setPxFavGroup(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontFamily:"inherit",color:C.g600}}>
+{FAV_GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
+</select>
+<button onClick={()=>{const title=pxType==="patient"?"[患者ニーズ分析]":"[説明方法改善]";saveFavorite(pxFavGroup,title+" "+new Date().toLocaleDateString("ja-JP"),pxResult,"");setPxModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+</div>
+<pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{pxResult}</pre>
+</div>}
+</div>
+</div>
+</div>}
 </div>)}
 
 // === SATISFACTION ANALYSIS PAGE ===
@@ -1723,6 +1764,51 @@ if(page==="satisfaction")return(<div style={{maxWidth:800,margin:"0 auto",paddin
 <pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{satResult}</pre>
 </div>}
 </div>
+<div style={{marginTop:20}}>
+<div style={card}>
+<h3 style={{fontSize:16,fontWeight:700,color:"#0891b2",margin:"0 0 8px"}}>📈 トレンド・統計レポート</h3>
+<p style={{fontSize:12,color:C.g500,marginBottom:12}}>直近100件の診療記録からデータ分析・統計レポートをAIが自動生成します。</p>
+<div style={{display:"grid",gap:10,gridTemplateColumns:mob?"1fr":"1fr 1fr"}}>
+<button onClick={()=>runTrendReport("trend")} disabled={trLoading} style={{padding:"14px 16px",borderRadius:14,border:"none",background:trLoading?C.g200:"linear-gradient(135deg,#0891b2,#06b6d4)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:trLoading?"not-allowed":"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+<div>📅 疾患トレンド分析</div>
+<div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:4}}>月別・季節別の疾患傾向と予測</div>
+</button>
+<button onClick={()=>runTrendReport("drugs")} disabled={trLoading} style={{padding:"14px 16px",borderRadius:14,border:"none",background:trLoading?C.g200:"linear-gradient(135deg,#059669,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:trLoading?"not-allowed":"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+<div>💊 処方・処置ランキング</div>
+<div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:4}}>薬品・処置TOP10と在庫参考</div>
+</button>
+<button onClick={()=>runTrendReport("patient")} disabled={trLoading} style={{padding:"14px 16px",borderRadius:14,border:"none",background:trLoading?C.g200:"linear-gradient(135deg,#7c3aed,#8b5cf6)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:trLoading?"not-allowed":"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+<div>👥 患者ニーズ分析</div>
+<div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:4}}>訴え・不安パターンと改善提案</div>
+</button>
+<button onClick={()=>runTrendReport("summary")} disabled={trLoading} style={{padding:"14px 16px",borderRadius:14,border:"none",background:trLoading?C.g200:"linear-gradient(135deg,#dc2626,#ef4444)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:trLoading?"not-allowed":"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+<div>📊 経営サマリー</div>
+<div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:4}}>疾患構成・治療傾向・改善提案</div>
+</button>
+</div>
+</div>
+</div>
+{trModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setTrModal(false)}}>
+<div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${C.g200}`}}>
+<h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#0891b2"}}>{trType==="trend"?"📅 疾患トレンド分析":trType==="drugs"?"💊 処方・処置ランキング":trType==="patient"?"👥 患者ニーズ分析":"📊 経営サマリー"}</h3>
+<button onClick={()=>setTrModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:20}}>
+{trLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #0891b2",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>⏳ 分析中... ({trCount}件)</span></div>}
+{trResult&&!trLoading&&<div>
+<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+<button onClick={()=>{navigator.clipboard.writeText(trResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<select value={trFavGroup} onChange={e=>setTrFavGroup(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontFamily:"inherit",color:C.g600}}>
+{FAV_GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
+</select>
+<button onClick={()=>{const title=trType==="trend"?"[疾患トレンド]":trType==="drugs"?"[処方ランキング]":trType==="patient"?"[患者ニーズ]":"[経営サマリー]";saveFavorite(trFavGroup,title+" "+new Date().toLocaleDateString("ja-JP"),trResult,"");setTrModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+</div>
+<pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{trResult}</pre>
+</div>}
+</div>
+</div>
+</div>}
 </div>)
 
 // === DOC GENERATION ===
