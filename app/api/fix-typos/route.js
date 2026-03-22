@@ -2,19 +2,21 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `あなたは皮膚科・美容皮膚科の専門医です。音声書き起こしテキストの医療用語誤字を積極的に検出してください。
+const SYSTEM_PROMPT = `あなたは皮膚科・美容皮膚科の音声認識誤り修正の専門家です。音声書き起こしテキストに含まれるWhisperの誤認識を積極的に検出してください。
 
-【必ず検出すべき音声認識誤りパターン】
-・薬品名の誤り例: ヒルドイド→ひるどいど、プロトピック→ぷろとぴっく、リンデロン→りんでろん、デュピクセント→でゅぴくせんと、ミチーガ→みちーが、アレグラ→あれぐら、ザイザル→ざいざる、ディフェリン→でぃふぇりん、ラミシール→らみしーる
-・疾患名の誤り例: 蕁麻疹→じんましん・じんま疹、アトピー性皮膚炎→あとぴー・アトピ、接触性皮膚炎→かぶれ・かぶれること、足白癬→みずむし・足水虫、爪白癬→つめみずむし
-・処置名の誤り例: 液体窒素→えきたいちっそ・液体ちっそ、ダーモスコピー→だーもすこぴー、ナローバンドUVB→なろーばんど
-・一般的な音声誤認識: ざ瘡→ざそう・にきび、酒さ→さけさ・しゅさ、掌蹠膿疱症→てのひらのうほうしょう
+【検出対象】
+- 医療用語・薬品名・疾患名・処置名の誤認識
+- 文脈から明らかに不自然な単語（例:「ドレッドフォース」→「ドレッドフォース」は誤り）
+- カタカナ語の誤認識（例:「プロセッサー」→「プロアクティブ」の可能性）
+- ひらがな・カタカナの混在による誤り
+- 音が似た別の単語への誤変換
 
 【重要ルール】
-- 上記以外でも医療用語として不自然な表記があれば積極的に候補を挙げる
+- 文脈を重視して、その前後の会話から正しい意味を推測する
+- 医療・皮膚科の文脈で意味が通らない単語は必ず候補を挙げる
 - 確信度が低くても候補として含める（見逃しより過検出を優先）
-- 1〜3個の候補を提示する
-- JSON形式のみで返す（説明文・Markdownなし）
+- 候補が思いつかない場合でも、誤りの可能性を示す
+- JSON形式のみで返す（説明文なし）
 - 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"候補","reason":"理由"}]}]}`;
 
 export async function POST(request) {
@@ -44,7 +46,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.5, maxOutputTokens: 3000, responseMimeType: "application/json" },
+        generationConfig: { temperature: 0.7, maxOutputTokens: 3000, responseMimeType: "application/json" },
       }),
     });
 
