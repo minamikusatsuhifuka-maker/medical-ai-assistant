@@ -1339,18 +1339,18 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div>
 {gFavs.length===0?<div style={{textAlign:"center",padding:40,color:C.g400,fontSize:13}}>このグループにはお気に入りがありません</div>:
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":tab?"repeat(2,1fr)":"repeat(3,1fr)",gap:8}}>
-{gFavs.map(f=>{const favDate=f.created_at?new Date(f.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(f.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";const recMatch=(f.title||"").match(/(\d+分\d+秒|\d+:\d+)/);return<div key={f.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-<div style={{display:"flex",alignItems:"center",marginBottom:4,gap:6}}>
-{favDate&&<span style={{fontSize:10,color:C.g400,whiteSpace:"nowrap"}}>{favDate}</span>}
+{gFavs.map(f=>{const favDate=f.created_at?new Date(f.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(f.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";const recMatch=(f.title||"").match(/(\d+分\d+秒|\d+:\d+)/);return<div key={f.id} style={{padding:mob?"6px 8px":"5px 7px",borderRadius:14,border:"1px solid rgba(160,220,100,0.2)",background:"rgba(255,255,255,0.7)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",boxShadow:"0 1px 2px rgba(0,0,0,.05)",fontFamily:"'Zen Maru Gothic',sans-serif"}}>
+<div style={{display:"flex",alignItems:"center",marginBottom:2,gap:6}}>
+{favDate&&<span style={{fontSize:11,color:"#2a4a18",fontWeight:700,whiteSpace:"nowrap"}}>{favDate}</span>}
 {recMatch&&<span style={{fontSize:9,color:C.g400,whiteSpace:"nowrap"}}>(録音: {recMatch[1]})</span>}
 </div>
-<div style={{fontSize:11,color:C.g600,marginBottom:6,lineHeight:1.3,cursor:"pointer"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
-<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-<button onClick={()=>{navigator.clipboard.writeText(f.content||"");sSt("📋 コピーしました")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📋</button>
-<button onClick={()=>openEditModal(f)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️</button>
-<button onClick={()=>openGenModal(f)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:10,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>📄資料生成</button>
-<button onClick={()=>setFavMoveModal(f)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>📁移動</button>
-<button onClick={()=>deleteFavorite(f.id)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fca5a5",background:"#fef2f2",fontSize:10,fontWeight:600,color:"#ef4444",fontFamily:"inherit",cursor:"pointer"}}>🗑️</button>
+<div style={{fontSize:13,color:"#2a3a20",marginBottom:3,lineHeight:1.3,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Zen Maru Gothic',sans-serif"}} onClick={()=>setFavDetailModal(f)}>{(f.content||"").substring(0,30)}{(f.content||"").length>30?"...":""}</div>
+<div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+<button onClick={()=>{navigator.clipboard.writeText(f.content||"");sSt("📋 コピーしました")}} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:"#2a4a18",fontFamily:"'Zen Maru Gothic',sans-serif",cursor:"pointer"}}>📋</button>
+<button onClick={()=>openEditModal(f)} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:"#2a4a18",fontFamily:"'Zen Maru Gothic',sans-serif",cursor:"pointer"}}>✏️</button>
+<button onClick={()=>openGenModal(f)} style={{padding:"2px 8px",borderRadius:5,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:9,fontWeight:600,color:"#2563eb",fontFamily:"'Zen Maru Gothic',sans-serif",cursor:"pointer"}}>📄資料生成</button>
+<button onClick={()=>setFavMoveModal(f)} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.g50,fontSize:9,fontWeight:600,color:"#2a4a18",fontFamily:"'Zen Maru Gothic',sans-serif",cursor:"pointer"}}>📁移動</button>
+<button onClick={()=>deleteFavorite(f.id)} style={{padding:"2px 8px",borderRadius:5,border:"1px solid #fca5a5",background:"#fef2f2",fontSize:9,fontWeight:600,color:"#ef4444",fontFamily:"'Zen Maru Gothic',sans-serif",cursor:"pointer"}}>🗑️</button>
 </div></div>})}
 </div>}
 {/* お気に入り全文モーダル */}
@@ -2250,8 +2250,8 @@ style={{padding:mob?"4px 8px":"5px 12px",borderRadius:10,border:tid===t.id?`2px 
 {shortcuts.filter(s=>s.showOnTop&&s.enabled).map(sc=>(<button key={sc.id} onClick={()=>{
 const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:()=>sum(),clear:()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")},next:()=>clr(),copy:()=>{if(out)cp(out)},pip:()=>{pipActive?closePip():openPip()},doc:()=>setPage("doc"),counsel:()=>setPage("counsel"),undo:()=>undo(),room1:()=>sRid("r1"),room2:()=>sRid("r2"),room3:()=>sRid("r3"),room4:()=>sRid("r4"),room5:()=>sRid("r5"),room6:()=>sRid("r6"),room7:()=>sRid("r7")};
 const fn=actions[sc.id];if(fn)fn();
-}} style={{padding:"3px 8px",borderRadius:8,border:`1px solid ${C.p}55`,background:C.w,fontSize:mob?10:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-<span style={{fontSize:9,color:C.g500}}>{sc.label.replace(/^[^\s]+\s/,"")}</span>
+}} style={{padding:"3px 8px",borderRadius:8,border:`1px solid ${C.p}55`,background:C.w,fontSize:mob?10:11,fontWeight:700,color:"#1a3a10",fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+<span style={{fontSize:9,color:"#1a3a10",fontWeight:700}}>{sc.label.replace(/^[^\s]+\s/,"")}</span>
 <span style={{fontSize:9,padding:"1px 4px",borderRadius:4,background:C.pD,color:C.w,fontFamily:"monospace",fontWeight:700}}>{sc.key}</span>
 </button>))}
 </div>}
@@ -2273,7 +2273,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{display:"flex",gap:12,alignItems:"center",minHeight:mob?80:94}}>
 {rs==="inactive"?(<button onClick={go} style={{...rb,width:mob?80:90,height:mob?80:90,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?26:30}}>🎙</span><span style={{fontSize:mob?11:12}}>録音開始</span></button>):(<>
 {rs==="recording"?(<button onClick={pause} style={{...rb,width:60,height:60,background:C.warn,color:"#78350f"}}><span style={{fontSize:22}}>⏸</span></button>):(<button onClick={resume} style={{...rb,width:60,height:60,background:C.rG,color:C.w}}><span style={{fontSize:22}}>▶</span></button>)}
-<button onClick={stopSum} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:"#1a3a10",boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14}}>✓</span><span style={{fontSize:9}}>要約</span></button>
+<button onClick={stopSum} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:"#1a3a10",boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14,fontWeight:700}}>✓</span><span style={{fontSize:9,fontWeight:700,color:"#1a3a10"}}>要約</span></button>
 <button onClick={stop} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button></>)}
 </div>
 {rs==="recording"&&<div style={{fontSize:12,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
