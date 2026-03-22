@@ -2,20 +2,7 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `あなたは皮膚科クリニックで使われている音声認識（Whisper）の誤認識を修正するAIです。
-
-以下のテキストには音声認識の誤りが含まれています。特に以下のパターンを見つけてください：
-
-1. 薬品名の誤認識: デュビックセンター→デュピクセント、コレクシム→コレクチム、マイナソン→マイザー、ホルマイト→モイゼルト、アルマゴス→アルメタ、ドレッドフォース→不明 など
-2. 疾患名の誤認識: みずむし→足白癬、じんましん→蕁麻疹 など
-3. 処置名の誤認識: えきたいちっそ→液体窒素 など
-4. その他の不自然な単語
-
-必ず3個以上の候補を見つけて返してください。見つからないということはありえません。
-テキストの各単語を皮膚科の文脈で検討し、不自然なものを全て挙げてください。
-
-回答はJSON形式のみ（説明文なし）:
-{"corrections":[{"from":"テキスト内の誤った語句","candidates":[{"to":"正しい語句","reason":"理由"}]}]}`;
+const SYSTEM_PROMPT = `皮膚科診療の音声書き起こしの誤字を直してください。必ず3個以上の修正候補をJSONで返してください。形式のみ: {"corrections":[{"from":"誤り","candidates":[{"to":"正解","reason":"理由"}]}]}`;
 
 export async function POST(request) {
   try {
@@ -44,7 +31,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.5, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 } },
+        generationConfig: { temperature: 1.0, maxOutputTokens: 2000 },
       }),
     });
 
@@ -65,16 +52,13 @@ export async function POST(request) {
 
     let parsed = { corrections: [] };
     try {
-      // まず直接パース
       parsed = JSON.parse(content.trim());
     } catch (e1) {
       try {
-        // ```json...``` ブロックを抽出
         const m1 = content.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (m1) {
           parsed = JSON.parse(m1[1].trim());
         } else {
-          // {..."corrections"...} を抽出
           const m2 = content.match(/\{[\s\S]*"corrections"[\s\S]*\}/);
           if (m2) {
             parsed = JSON.parse(m2[0]);
