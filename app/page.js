@@ -1250,7 +1250,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>setBulkFavModal(true)} disabled={!selectedHistIds.size} title="選択した履歴をお気に入りに一括登録" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #f59e0b`,background:!selectedHistIds.size?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size?"default":"pointer"}}>⭐ お気に入り一括登録</button>
 </div>
 {bulkFavModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkFavModal(false)}>
-<div style={{background:C.w,borderRadius:14,padding:20,maxWidth:320,width:"100%"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:14,padding:20,maxWidth:320,width:"100%"}} onClick={e=>e.stopPropagation()}>
 <div style={{fontSize:14,fontWeight:700,color:"#92400e",marginBottom:12}}>⭐ {selectedHistIds.size}件を一括登録</div>
 {FAV_GROUPS.map(g=><button key={g} onClick={()=>{bulkSaveFavorites(g);setBulkFavModal(false)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
 <button onClick={()=>setBulkFavModal(false)} style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
@@ -1286,7 +1286,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 </div>})})()}
 {dailyLd&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:C.w,borderRadius:16,padding:30,textAlign:"center",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #3b82f6",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><span style={{color:C.g500,fontSize:14,fontWeight:600}}>⏳ 生成中...</span></div></div>}
 {dailyResult&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDailyResult(null)}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <div><span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{dailyResult.title}</span><span style={{fontSize:11,color:C.g400,marginLeft:8}}>{dailyResult.date}</span></div>
 <div style={{display:"flex",gap:6}}>
@@ -1298,7 +1298,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{dailyResult.content}</pre>
 </div></div></div>}
 {histPopup&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setHistPopup(null)}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <div>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{histPopup.title}</span>
@@ -1316,7 +1316,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 </div>}
 {/* 品質チェックモーダル */}
 {qcModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!qcLoading)setQcModal(null)}}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>🔍 対応品質チェック</span>
 <button onClick={()=>{if(!qcLoading)setQcModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1332,7 +1332,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 </div>
 </div></div>}
 {bulkResult&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkResult(null)}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>{bulkResult.title}</span>
 <div style={{display:"flex",gap:6}}>
@@ -1392,7 +1392,7 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div>}
 {/* お気に入り全文モーダル */}
 {favDetailModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavDetailModal(null)}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{favDetailModal.title}</span>
 <div style={{display:"flex",gap:6}}>
@@ -1404,7 +1404,7 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div></div></div>}
 {/* お気に入りAI分析モーダル */}
 {qcModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!qcLoading)setQcModal(null)}}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>🔍 AI分析</span>
 <button onClick={()=>{if(!qcLoading)setQcModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1421,14 +1421,14 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div></div>}
 {/* グループ移動モーダル */}
 {favMoveModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavMoveModal(null)}>
-<div style={{background:C.w,borderRadius:14,padding:20,maxWidth:320,width:"100%"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:14,padding:20,maxWidth:320,width:"100%"}} onClick={e=>e.stopPropagation()}>
 <div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:12}}>📁 グループ移動</div>
 {FAV_GROUPS.filter(g=>g!==favMoveModal.group_name).map(g=><button key={g} onClick={()=>moveFavorite(favMoveModal.id,g)} style={{display:"block",width:"100%",padding:"8px 12px",marginBottom:6,borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:13,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
 <button onClick={()=>setFavMoveModal(null)} style={{width:"100%",padding:"6px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
 </div></div>}
 {/* 編集モーダル */}
 {favEditModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavEditModal(null)}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:560,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:560,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>✏️ お気に入り編集</span>
 <button onClick={()=>setFavEditModal(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1453,7 +1453,7 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div></div>}
 {/* 資料生成モーダル */}
 {favGenModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!favGenLoading)setFavGenModal(null)}}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#2563eb"}}>📄 資料自動生成</span>
 <button onClick={()=>{if(!favGenLoading)setFavGenModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1485,7 +1485,7 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div></div>}
 {/* FAQ生成モーダル */}
 {faqModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!faqLoading)setFaqModal(false)}}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#7c3aed"}}>❓ FAQ自動生成（{favGroup}）</span>
 <button onClick={()=>{if(!faqLoading)setFaqModal(false)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1503,7 +1503,7 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div></div>}
 {/* メニュー説明文モーダル */}
 {menuModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!menuLoading)setMenuModal(false)}}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#92400e"}}>📝 施術メニュー説明文</span>
 <button onClick={()=>{if(!menuLoading)setMenuModal(false)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1544,7 +1544,7 @@ caseGroups.map(g=><div key={g} style={{marginBottom:16}}>
 </div>)}
 {/* 症例解説モーダル */}
 {caseStudyModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!caseStudyLoading)setCaseStudyModal(null)}}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#7c3aed"}}>📖 症例解説: {(caseStudyModal.title||"無題").substring(0,30)}</span>
 <button onClick={()=>{if(!caseStudyLoading)setCaseStudyModal(null)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -1562,7 +1562,7 @@ caseGroups.map(g=><div key={g} style={{marginBottom:16}}>
 </div></div>}
 {/* お気に入り全文モーダル(症例ライブラリ用) */}
 {favDetailModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavDetailModal(null)}>
-<div style={{background:C.w,borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>{favDetailModal.title}</span>
 <button onClick={()=>setFavDetailModal(null)} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
@@ -2386,7 +2386,7 @@ const fn=actions[sc.id];if(fn)fn();
 {favToast&&<div style={{position:"fixed",bottom:30,left:"50%",transform:"translateX(-50%)",background:"#92400e",color:"#fff",padding:"8px 20px",borderRadius:12,fontSize:13,fontWeight:700,zIndex:10001,boxShadow:"0 4px 16px rgba(0,0,0,.3)"}}>{favToast}</div>}
 {/* 辞書管理モーダル */}
 {dictModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDictModal(false)}>
-<div style={{background:C.w,borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
 <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:15,fontWeight:700,color:C.pDD}}>📖 誤字脱字辞書（{dict.length}件）</span>
 <button onClick={()=>setDictEnabled(!dictEnabled)} style={{padding:"3px 10px",borderRadius:8,border:"none",background:dictEnabled?C.rG:C.g200,color:dictEnabled?C.w:C.g500,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{dictEnabled?"ON":"OFF"}</button></div>
@@ -2412,7 +2412,7 @@ const fn=actions[sc.id];if(fn)fn();
 </div></div>}
 {/* AI誤字スキャンモーダル */}
 {typoModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setTypoModal(null)}>
-<div style={{background:C.w,borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+<div style={{background:"#ffffff",borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
 <div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🔬 AI誤字スキャン結果（{typoModal.length}件）</div>
 <button onClick={()=>setTypoModal(null)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
