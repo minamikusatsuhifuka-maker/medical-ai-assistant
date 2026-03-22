@@ -2,7 +2,20 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `皮膚科・美容皮膚科の専門医として音声書き起こしの医療用語誤字を検出してください。薬品名・疾患名・処置名の誤りのみ対象。必ずJSON形式のみで返答し、説明文やMarkdownは一切含めないこと。形式: {"corrections":[{"from":"誤り","candidates":[{"to":"正しい表現","reason":"理由"}]}]}`;
+const SYSTEM_PROMPT = `あなたは皮膚科・美容皮膚科の専門医です。音声書き起こしテキストの医療用語誤字を積極的に検出してください。
+
+【必ず検出すべき音声認識誤りパターン】
+・薬品名の誤り例: ヒルドイド→ひるどいど、プロトピック→ぷろとぴっく、リンデロン→りんでろん、デュピクセント→でゅぴくせんと、ミチーガ→みちーが、アレグラ→あれぐら、ザイザル→ざいざる、ディフェリン→でぃふぇりん、ラミシール→らみしーる
+・疾患名の誤り例: 蕁麻疹→じんましん・じんま疹、アトピー性皮膚炎→あとぴー・アトピ、接触性皮膚炎→かぶれ・かぶれること、足白癬→みずむし・足水虫、爪白癬→つめみずむし
+・処置名の誤り例: 液体窒素→えきたいちっそ・液体ちっそ、ダーモスコピー→だーもすこぴー、ナローバンドUVB→なろーばんど
+・一般的な音声誤認識: ざ瘡→ざそう・にきび、酒さ→さけさ・しゅさ、掌蹠膿疱症→てのひらのうほうしょう
+
+【重要ルール】
+- 上記以外でも医療用語として不自然な表記があれば積極的に候補を挙げる
+- 確信度が低くても候補として含める（見逃しより過検出を優先）
+- 1〜3個の候補を提示する
+- JSON形式のみで返す（説明文・Markdownなし）
+- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"候補","reason":"理由"}]}]}`;
 
 export async function POST(request) {
   try {
@@ -31,7 +44,7 @@ export async function POST(request) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 2000, responseMimeType: "application/json" },
+        generationConfig: { temperature: 0.5, maxOutputTokens: 3000, responseMimeType: "application/json" },
       }),
     });
 
