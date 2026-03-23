@@ -67,11 +67,26 @@ export async function POST(request) {
       /\[音楽\]/,
       /\[無音\]/,
       /^[silence]/i,
+      /本日はご覧いただ/,
+      /びらん.*ありがとう/,
+      /ご覧いただれ/,
+      /またお呼び掛けていただ/,
+      /これまで見ていただ/,
+      /最後までご覧いただ/,
+      /良い1日を/,
+      /良い一日を/,
     ];
     const isHallucination = HALLUCINATION_PATTERNS.some(p => p.test(transcribedText.trim()))
       && transcribedText.trim().length < 30;
     let filteredText = isHallucination ? "" : transcribedText;
     if (filteredText.trim().length <= 3) filteredText = "";
+    const lines = filteredText.split("\n").filter(l => l.trim());
+    if (lines.length >= 3) {
+      const unique = new Set(lines.map(l => l.trim()));
+      if (unique.size <= Math.ceil(lines.length * 0.4)) {
+        filteredText = "";
+      }
+    }
     return NextResponse.json({ text: filteredText });
   } catch (e) {
     console.error("Transcribe error:", e);
