@@ -247,7 +247,11 @@ export async function POST(request) {
       /\[笑い\]/,
       /\[無音\]/,
     ];
-    let filteredText = HALLUCINATION_PATTERNS.some(p => p.test(transcribedText)) ? "" : transcribedText;
+    const isFullHallucination = HALLUCINATION_PATTERNS.some(p => {
+      const trimmed = transcribedText.trim();
+      return p.test(trimmed) && trimmed.length < 50;
+    });
+    let filteredText = isFullHallucination ? "" : transcribedText;
     // 短すぎるテキスト（5文字以下）もフィルタ
     if(filteredText.length <= 5) filteredText = "";
     // 同じ短いフレーズが繰り返される場合もフィルタ（Whisperの幻聴パターン）
