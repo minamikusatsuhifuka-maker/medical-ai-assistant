@@ -9,8 +9,67 @@ useEffect(()=>{setW(window.innerWidth);const h=()=>setW(window.innerWidth);windo
 return{isMobile:w<640,isTablet:w>=640&&w<1024,w};
 }
 
-// === COLOR THEME (Pearl Breeze) ===
-const C={p:"#5a9040",pD:"#3a6820",pDD:"#2a5018",pL:"rgba(160,220,100,0.25)",pLL:"rgba(200,240,160,0.15)",w:"rgba(255,255,255,0.7)",g50:"rgba(255,255,255,0.5)",g100:"rgba(240,252,228,0.6)",g200:"rgba(160,220,100,0.2)",g300:"#d6d3d1",g400:"#a8a29e",g500:"#5a8838",g600:"#57534e",g700:"#44403c",g800:"#292524",g900:"#1c1917",err:"#f43f5e",warn:"#f59e0b",rG:"#5a9040",pLL2:"rgba(200,240,160,0.15)"};
+// === COLOR THEMES ===
+const THEMES = {
+  "pearl": {
+    name: "🌿 Pearl Breeze（現行）",
+    bg: "linear-gradient(135deg, #e8f8e0, #d8f4a8)",
+    headerBg: "linear-gradient(135deg, rgba(200,240,160,0.6), rgba(220,248,180,0.5), rgba(240,252,200,0.45))",
+    cardBg: "rgba(255,255,255,0.7)",
+    cardBorder: "rgba(160,220,100,0.2)",
+    p: "#5a9040", pD: "#3a6820", pDD: "#2a5018",
+    pL: "rgba(160,220,100,0.25)", pLL: "rgba(200,240,160,0.15)",
+    g50: "rgba(255,255,255,0.5)", g100: "rgba(240,252,228,0.6)", g200: "rgba(160,220,100,0.2)", g400: "#a8a29e", g500: "#5a8838",
+    btnRecBg: "linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",
+    btnRecColor: "#1a3a10",
+    bodyBg: "linear-gradient(135deg, #e8f8e0, #d8f4a8)",
+    swatch: "#a8d878",
+  },
+  "ultra-cream": {
+    name: "🤍 Ultra Cream",
+    bg: "#fffefc",
+    headerBg: "rgba(255,254,252,0.9)",
+    cardBg: "#fffef9",
+    cardBorder: "#eee8da",
+    p: "#b8a888", pD: "#8a7c68", pDD: "#6a6050",
+    pL: "rgba(216,200,168,0.3)", pLL: "rgba(245,240,229,0.4)",
+    g50: "#fffef9", g100: "#f5f0e5", g200: "#ece4d4", g400: "#c8b898", g500: "#a89878",
+    btnRecBg: "#b8a888",
+    btnRecColor: "#fffefc",
+    bodyBg: "#fffefc",
+    swatch: "#d8c8a8",
+  },
+  "soft-linen": {
+    name: "✨ Soft Linen",
+    bg: "#fefdf8",
+    headerBg: "rgba(254,253,248,0.9)",
+    cardBg: "#fefcf6",
+    cardBorder: "#ede6d8",
+    p: "#a89878", pD: "#826e54", pDD: "#584840",
+    pL: "rgba(200,184,152,0.3)", pLL: "rgba(240,232,216,0.4)",
+    g50: "#fefcf6", g100: "#f0e8d8", g200: "#e8dece", g400: "#c8b898", g500: "#a89878",
+    btnRecBg: "linear-gradient(135deg, #c8b898, #a89878)",
+    btnRecColor: "#fefdf8",
+    bodyBg: "#fefdf8",
+    swatch: "#c8b898",
+  },
+  "morning-cream": {
+    name: "🌱 Morning Cream",
+    bg: "#fffefc",
+    headerBg: "rgba(255,254,252,0.9)",
+    cardBg: "#fefdf8",
+    cardBorder: "#e5e0d0",
+    p: "#78a860", pD: "#589040", pDD: "#3a6828",
+    pL: "rgba(152,192,128,0.3)", pLL: "rgba(242,248,238,0.4)",
+    g50: "#fefdf8", g100: "#f2f8ee", g200: "#d8ecd0", g400: "#98c080", g500: "#78a860",
+    btnRecBg: "linear-gradient(135deg, #98c080, #78a860)",
+    btnRecColor: "#fffefc",
+    bodyBg: "#fffefc",
+    swatch: "#98c080",
+  },
+};
+const _defaultC={p:"#5a9040",pD:"#3a6820",pDD:"#2a5018",pL:"rgba(160,220,100,0.25)",pLL:"rgba(200,240,160,0.15)",w:"rgba(255,255,255,0.7)",g50:"rgba(255,255,255,0.5)",g100:"rgba(240,252,228,0.6)",g200:"rgba(160,220,100,0.2)",g300:"#d6d3d1",g400:"#a8a29e",g500:"#5a8838",g600:"#57534e",g700:"#44403c",g800:"#292524",g900:"#1c1917",err:"#f43f5e",warn:"#f59e0b",rG:"#5a9040",pLL2:"rgba(200,240,160,0.15)"};
+let C=_defaultC;
 
 const exportToExcel=async(tasks,todos,minHist,title)=>{
 const XLSX=await import("xlsx");
@@ -382,9 +441,13 @@ const DEFAULT_DICT=[
 // === MAIN COMPONENT ===
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
-const btn=(bg,c,extra)=>({padding:mob?"5px 10px":"6px 14px",borderRadius:12,border:"1px solid rgba(140,210,80,0.4)",background:bg,color:c,fontSize:mob?15:16,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 3px 12px rgba(140,210,80,0.25)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",transition:"all 0.15s ease",transform:"translateY(0)",...extra});
+const[themeName,setThemeName]=useState(()=>{try{return localStorage.getItem("mk_theme")||"pearl"}catch{return "pearl"}});
+const theme=THEMES[themeName]||THEMES["pearl"];
+C={p:theme.p,pD:theme.pD,pDD:theme.pDD,pL:theme.pL,pLL:theme.pLL,g50:theme.g50,g100:theme.g100||"rgba(240,252,228,0.6)",g200:theme.g200,g300:"#d6d3d1",g400:theme.g400,g500:theme.g500,g600:"#57534e",g700:"#44403c",g800:"#292524",g900:"#1c1917",err:"#f43f5e",warn:"#f59e0b",rG:"#5a9040",w:theme.cardBg,pLL2:theme.pLL};
+const applyTheme=(name)=>{setThemeName(name);try{localStorage.setItem("mk_theme",name)}catch{}};
+const btn=(bg,c,extra)=>({padding:mob?"5px 10px":"6px 14px",borderRadius:12,border:`1px solid ${C.pL}`,background:bg,color:c,fontSize:mob?15:16,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:`0 3px 12px ${C.pL}`,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",transition:"all 0.15s ease",transform:"translateY(0)",...extra});
 const ib={padding:mob?"7px 10px":"8px 12px",borderRadius:mob?10:12,border:`1.5px solid ${C.g200}`,fontSize:15,fontFamily:"inherit",outline:"none",background:C.w,color:C.g900,transition:"border-color 0.2s",WebkitAppearance:"none"};
-const card={borderRadius:14,border:"1px solid rgba(160,220,100,0.2)",padding:mob?14:20,background:"rgba(255,255,255,0.7)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",marginBottom:mob?12:16,boxShadow:"0 1px 4px rgba(0,0,0,.03)"};
+const card={borderRadius:14,border:`1px solid ${theme.cardBorder}`,padding:mob?14:20,background:theme.cardBg,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",marginBottom:mob?12:16,boxShadow:"0 1px 4px rgba(0,0,0,.03)"};
 const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
@@ -2160,6 +2223,16 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 </div>
 </div>
 <div style={{...card,marginBottom:16}}>
+<h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🎨 カラーテーマ</h3>
+<p style={{fontSize:12,color:C.g400,marginBottom:10}}>画面のカラーテーマを切り替えられます。</p>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+{Object.entries(THEMES).map(([key,t])=>(<button key={key} onClick={()=>applyTheme(key)} style={{padding:"10px 12px",borderRadius:12,border:themeName===key?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:themeName===key?C.pLL:C.g50,cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all 0.15s"}}>
+<div style={{display:"flex",alignItems:"center",gap:8}}>
+<div style={{width:20,height:20,borderRadius:6,background:t.swatch||t.p,border:"1px solid rgba(0,0,0,0.1)",flexShrink:0}}/>
+<span style={{fontSize:13,fontWeight:themeName===key?700:500,color:themeName===key?C.pD:C.g600}}>{t.name}</span>
+</div></button>))}
+</div></div>
+<div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:mob?14:15,fontWeight:700,color:C.pDD,marginBottom:8}}>⌨️ ショートカットキー設定</h3>
 <p style={{fontSize:12,color:C.g400,marginBottom:10}}>各機能のキー割り当てを変更できます。⭐=トップ画面＋小窓に表示</p>
 <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -2279,9 +2352,9 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 </div>);
 
 // === MAIN ===
-return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px",minHeight:"100vh",fontFamily:"'Zen Maru Gothic', sans-serif"}}>
+return(<div style={{maxWidth:900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px",minHeight:"100vh",fontFamily:"'Zen Maru Gothic', sans-serif",background:theme.bodyBg}}>
 {tooltip.visible&&<div style={{position:"fixed",left:tooltip.x,top:tooltip.y,transform:"translate(-50%, -100%)",background:"rgba(42,58,32,0.92)",color:"#e8f5d8",padding:"4px 10px",borderRadius:8,fontSize:12,fontWeight:600,fontFamily:"'Zen Maru Gothic', sans-serif",pointerEvents:"none",zIndex:99999,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>{tooltip.text}</div>}
-<header style={{background:"linear-gradient(135deg, rgba(200,240,160,0.6), rgba(220,248,180,0.5), rgba(240,252,200,0.45))",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:"1px solid rgba(160,220,100,0.25)",padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:mob?0:"0 0 24px 24px"}}>
+<header style={{background:theme.headerBg,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${theme.cardBorder}`,padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:mob?0:"0 0 24px 24px"}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 2.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span></div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
@@ -2329,7 +2402,7 @@ const fn=actions[sc.id];if(fn)fn();
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:C.g200,overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${C.rG},${C.p})`,borderRadius:3,transition:"width 0.1s"}}/></div>}
 <div style={{display:"flex",gap:12,alignItems:"center",minHeight:mob?80:94}}>
-{rs==="inactive"?(<button onClick={go} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:mob?80:90,height:mob?80:90,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?26:30}}>🎙</span><span style={{fontSize:mob?11:12}}>録音開始</span></button>):(<>
+{rs==="inactive"?(<button onClick={go} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:mob?80:90,height:mob?80:90,background:theme.btnRecBg,color:theme.btnRecColor,boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?26:30}}>🎙</span><span style={{fontSize:mob?11:12}}>録音開始</span></button>):(<>
 {rs==="recording"?(<button onClick={pause} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.warn,color:"#78350f"}}><span style={{fontSize:22}}>⏸</span></button>):(<button onClick={resume} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.rG,color:C.w}}><span style={{fontSize:22}}>▶</span></button>)}
 <button onClick={stopSum} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:"#1a3a10",boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14,fontWeight:700}}>✓</span><span style={{fontSize:9,fontWeight:700,color:"#1a3a10"}}>要約</span></button>
 <button onClick={stop} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button></>)}
