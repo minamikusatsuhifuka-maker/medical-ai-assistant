@@ -630,6 +630,12 @@ const[calResult,setCalResult]=useState(""),[calLoading,setCalLoading]=useState(f
 const[hpResult,setHpResult]=useState(""),[hpLoading,setHpLoading]=useState(false),[hpModal,setHpModal]=useState(false),[hpType,setHpType]=useState(""),[hpFavGroup,setHpFavGroup]=useState("その他");
 const[trResult,setTrResult]=useState(""),[trLoading,setTrLoading]=useState(false),[trModal,setTrModal]=useState(false),[trType,setTrType]=useState(""),[trFavGroup,setTrFavGroup]=useState("その他"),[trCount,setTrCount]=useState(0);
 const[pxResult,setPxResult]=useState(""),[pxLoading,setPxLoading]=useState(false),[pxModal,setPxModal]=useState(false),[pxType,setPxType]=useState(""),[pxFavGroup,setPxFavGroup]=useState("その他");
+const[philResult,setPhilResult]=useState("");
+const[philLoading,setPhilLoading]=useState(false);
+const[philModal,setPhilModal]=useState(false);
+const[personaResult,setPersonaResult]=useState("");
+const[personaLoading,setPersonaLoading]=useState(false);
+const[personaModal,setPersonaModal]=useState(false);
 const[mobileHideItems,setMobileHideItems]=useState({pip:true,shortcuts:true,fontsize:true,tabs_minutes:true,tabs_tasks:true,tabs_sns:true,tabs_analysis:true,tabs_roleplay:true,tabs_caselibrary:true,tabs_knowledge:true});
 escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(kbModal){setKbModal(false);return}if(calModal){setCalModal(false);return}if(hpModal){setHpModal(false);return}if(trModal){setTrModal(false);return}if(pxModal){setPxModal(false);return}if(page!=="main"){setPage("main");return}};
 const FAV_GROUPS=["保険","美容","カウンセリング","治療説明","美容施術説明","その他"];
@@ -660,6 +666,44 @@ const runContentCalendar=async()=>{if(!supabase)return;setCalLoading(true);setCa
 const runHomepageContent=async(type)=>{if(!supabase)return;setHpType(type);setHpLoading(true);setHpResult("");setHpModal(true);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(50);if(!data||data.length<3){setHpResult("データが不足しています（最低3件の履歴が必要です）");setHpLoading(false);return}const res=await fetch("/api/homepage-content",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,type})});const result=await res.json();if(result.error)throw new Error(result.error);setHpResult(result.result||"")}catch(e){setHpResult("エラー: "+e.message)}finally{setHpLoading(false)}};
 const runTrendReport=async(type)=>{if(!supabase)return;setTrType(type);setTrLoading(true);setTrResult("");setTrModal(true);setTrCount(0);try{const{data}=await supabase.from("records").select("output_text,created_at").order("created_at",{ascending:false}).limit(100);if(!data||data.length<3){setTrResult("データが不足しています（最低3件の履歴が必要です）");setTrLoading(false);return}setTrCount(data.length);const res=await fetch("/api/trend-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,type})});const result=await res.json();if(result.error)throw new Error(result.error);setTrResult(result.result||"")}catch(e){setTrResult("エラー: "+e.message)}finally{setTrLoading(false)}};
 const runPatientExperience=async(type)=>{if(!supabase)return;setPxType(type);setPxLoading(true);setPxResult("");setPxModal(true);try{const{data}=await supabase.from("records").select("output_text,input_text,created_at").order("created_at",{ascending:false}).limit(50);if(!data||data.length<3){setPxResult("データが不足しています（最低3件の履歴が必要です）");setPxLoading(false);return}if(type==="patient"){const res=await fetch("/api/trend-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,type:"patient"})});const result=await res.json();if(result.error)throw new Error(result.error);setPxResult(result.result||"")}else{const res=await fetch("/api/knowledge-base",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,mode:"training"})});const result=await res.json();if(result.error)throw new Error(result.error);setPxResult(result.result||"")}}catch(e){setPxResult("エラー: "+e.message)}finally{setPxLoading(false)}};
+const runPhilosophy=async()=>{
+if(!supabase)return;
+setPhilLoading(true);setPhilModal(true);setPhilResult("");
+try{
+const[{data:records},{data:counseling}]=await Promise.all([
+supabase.from("records").select("input_text,output_text").order("created_at",{ascending:false}).limit(50),
+supabase.from("counseling_records").select("transcription,summary").order("created_at",{ascending:false}).limit(20)
+]);
+let content="【診療記録】\n";
+if(records)content+=records.map(r=>r.output_text||r.input_text||"").filter(Boolean).join("\n---\n");
+content+="\n\n【カウンセリング記録】\n";
+if(counseling)content+=counseling.map(r=>r.summary||r.transcription||"").filter(Boolean).join("\n---\n");
+if(content.trim().length<50){setPhilResult("分析に必要なデータが不足しています（診療記録を増やしてから再度お試しください）");setPhilLoading(false);return}
+const res=await fetch("/api/philosophy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});
+const data=await res.json();
+if(data.error)throw new Error(data.error);
+setPhilResult(data.result||"");
+}catch(e){setPhilResult("エラー: "+e.message)}finally{setPhilLoading(false)}
+};
+const runPersona=async()=>{
+if(!supabase)return;
+setPersonaLoading(true);setPersonaModal(true);setPersonaResult("");
+try{
+const[{data:minutes},{data:tasks}]=await Promise.all([
+supabase.from("minutes").select("output_text").order("created_at",{ascending:false}).limit(20),
+supabase.from("tasks").select("title,category,role_level,done").limit(100)
+]);
+let content="【議事録】\n";
+if(minutes)content+=minutes.map(m=>m.output_text||"").filter(Boolean).join("\n---\n");
+content+="\n\n【タスク実績】\n";
+if(tasks)content+=tasks.map(t=>`${t.title}（${t.role_level||""}・${t.category||""}・${t.done?"完了":"未完了"}）`).join("\n");
+if(content.trim().length<50){setPersonaResult("分析に必要なデータが不足しています（議事録・タスクを増やしてから再度お試しください）");setPersonaLoading(false);return}
+const res=await fetch("/api/recruit-persona",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});
+const data=await res.json();
+if(data.error)throw new Error(data.error);
+setPersonaResult(data.result||"");
+}catch(e){setPersonaResult("エラー: "+e.message)}finally{setPersonaLoading(false)}
+};
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
 const saveAudio=async(blob)=>{if(!supabase||!blob||blob.size<1000)return;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const path=`audio/${rid}/${ts}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error)console.error("Audio save error:",error);else console.log("Audio saved:",path)}catch(e){console.error("Audio save error:",e)}};
@@ -1961,6 +2005,68 @@ if(page==="knowledge"){const KB_MODES=[{id:"report",label:"📊 月次品質レ�
 </div>}
 </div>
 </div>
+</div>}
+
+{/* ⑦ 診療哲学抽出 */}
+<div style={{marginTop:20}}>
+  <div style={card}>
+    <h3 style={{fontSize:16,fontWeight:700,color:"#7c3aed",margin:"0 0 8px"}}>🌟 診療哲学・クリニックらしさの抽出</h3>
+    <p style={{fontSize:12,color:C.g500,marginBottom:12}}>診療記録・カウンセリング記録をAIが分析し、当院独自の診療哲学・価値観・強みを言語化します。ミッション策定・ブランディング・ホームページコピーの素材として活用できます。</p>
+    <button onClick={runPhilosophy} disabled={philLoading} style={{width:"100%",padding:"18px",borderRadius:14,border:"none",background:philLoading?C.g200:"linear-gradient(135deg,#7c3aed,#a855f7)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:philLoading?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+      {philLoading?"⏳ 分析中...":"🌟 診療哲学・クリニックらしさを抽出する"}
+    </button>
+  </div>
+</div>
+
+{/* ⑨ 採用ペルソナ生成 */}
+<div style={{marginTop:20}}>
+  <div style={card}>
+    <h3 style={{fontSize:16,fontWeight:700,color:"#0891b2",margin:"0 0 8px"}}>🤝 採用ペルソナ・求人票素材の生成</h3>
+    <p style={{fontSize:12,color:C.g500,marginBottom:12}}>議事録・タスク実績をAIが分析し、当院で活躍できる人材像・求人票のコピー・面接評価基準を自動生成します。採用の属人化を防ぎ、ミスマッチを減らします。</p>
+    <button onClick={runPersona} disabled={personaLoading} style={{width:"100%",padding:"18px",borderRadius:14,border:"none",background:personaLoading?C.g200:"linear-gradient(135deg,#0891b2,#06b6d4)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:personaLoading?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+      {personaLoading?"⏳ 分析中...":"🤝 採用ペルソナ・求人票素材を生成する"}
+    </button>
+  </div>
+</div>
+
+{/* 診療哲学モーダル */}
+{philModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setPhilModal(false)}}>
+  <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${C.g200}`}}>
+      <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#7c3aed"}}>🌟 診療哲学・クリニックらしさ</h3>
+      <button onClick={()=>setPhilModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+    </div>
+    <div style={{flex:1,overflow:"auto",padding:20}}>
+      {philLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>診療記録・カウンセリング記録を分析中...</span></div>}
+      {philResult&&!philLoading&&<div>
+        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <button onClick={()=>{navigator.clipboard.writeText(philResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+          <button onClick={()=>{saveFavorite("その他","[診療哲学] "+new Date().toLocaleDateString("ja-JP"),philResult,"");setPhilModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+        </div>
+        <pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{philResult}</pre>
+      </div>}
+    </div>
+  </div>
+</div>}
+
+{/* 採用ペルソナモーダル */}
+{personaModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setPersonaModal(false)}}>
+  <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:`1px solid ${C.g200}`}}>
+      <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#0891b2"}}>🤝 採用ペルソナ・求人票素材</h3>
+      <button onClick={()=>setPersonaModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+    </div>
+    <div style={{flex:1,overflow:"auto",padding:20}}>
+      {personaLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #0891b2",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>議事録・タスク実績を分析中...</span></div>}
+      {personaResult&&!personaLoading&&<div>
+        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <button onClick={()=>{navigator.clipboard.writeText(personaResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+          <button onClick={()=>{saveFavorite("その他","[採用ペルソナ] "+new Date().toLocaleDateString("ja-JP"),personaResult,"");setPersonaModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+        </div>
+        <pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{personaResult}</pre>
+      </div>}
+    </div>
+  </div>
 </div>}
 </div>)}
 
