@@ -640,6 +640,9 @@ const[portfolioResult,setPortfolioResult]=useState("");
 const[portfolioLoading,setPortfolioLoading]=useState(false);
 const[portfolioModal,setPortfolioModal]=useState(false);
 const[portfolioGroup,setPortfolioGroup]=useState("美容");
+const[journeyResult,setJourneyResult]=useState("");
+const[journeyLoading,setJourneyLoading]=useState(false);
+const[journeyModal,setJourneyModal]=useState(false);
 const[mobileHideItems,setMobileHideItems]=useState({pip:true,shortcuts:true,fontsize:true,tabs_minutes:true,tabs_tasks:true,tabs_sns:true,tabs_analysis:true,tabs_roleplay:true,tabs_caselibrary:true,tabs_knowledge:true});
 escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(kbModal){setKbModal(false);return}if(calModal){setCalModal(false);return}if(hpModal){setHpModal(false);return}if(trModal){setTrModal(false);return}if(pxModal){setPxModal(false);return}if(page!=="main"){setPage("main");return}};
 const FAV_GROUPS=["保険","美容","カウンセリング","治療説明","美容施術説明","その他"];
@@ -729,6 +732,34 @@ const data=await res.json();
 if(data.error)throw new Error(data.error);
 setPortfolioResult(data.result||"");
 }catch(e){setPortfolioResult("エラー: "+e.message)}finally{setPortfolioLoading(false)}
+};
+const runJourneyMap=async()=>{
+if(!supabase)return;
+setJourneyLoading(true);setJourneyModal(true);setJourneyResult("");
+try{
+const[{data:counseling},{data:records}]=await Promise.all([
+supabase.from("counseling_records").select("transcription,summary,created_at").order("created_at",{ascending:false}).limit(30),
+supabase.from("records").select("input_text,output_text,created_at").order("created_at",{ascending:false}).limit(30)
+]);
+let content="【カウンセリング記録】\n";
+if(counseling&&counseling.length>0){
+content+=counseling.map(r=>`[${new Date(r.created_at).toLocaleDateString("ja-JP")}]\n${r.summary||r.transcription||""}`).join("\n---\n");
+}else{
+content+="（カウンセリング記録なし）\n";
+}
+content+="\n\n【診療記録】\n";
+if(records&&records.length>0){
+content+=records.map(r=>r.output_text||r.input_text||"").filter(Boolean).join("\n---\n");
+}
+if(content.trim().length<50){
+setJourneyResult("分析に必要なデータが不足しています。\nカウンセリング記録・診療記録を増やしてから再度お試しください。");
+setJourneyLoading(false);return;
+}
+const res=await fetch("/api/journey-map",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});
+const data=await res.json();
+if(data.error)throw new Error(data.error);
+setJourneyResult(data.result||"");
+}catch(e){setJourneyResult("エラー: "+e.message)}finally{setJourneyLoading(false)}
 };
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
@@ -2323,6 +2354,40 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 分析結果</span>
 <button onClick={()=>navigator.clipboard.writeText(csOut)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 <textarea value={csOut} onChange={e=>setCsOut(e.target.value)} style={{width:"100%",height:400,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
+</div>}
+
+{/* ② 患者ジャーニーマップ */}
+<div style={{marginTop:16}}>
+<div style={{...card,background:"linear-gradient(135deg,#f0f9ff,#e0f2fe)",border:"1.5px solid #7dd3fc"}}>
+<h3 style={{fontSize:15,fontWeight:700,color:"#0369a1",margin:"0 0 6px"}}>🗺️ 患者ジャーニーマップ生成</h3>
+<p style={{fontSize:12,color:"#0c4a6e",marginBottom:12,lineHeight:1.6}}>カウンセリング・診療記録をAIが分析し、患者が「初回来院 → 検討 → 決断 → リピート」の各フェーズで感じている不安・期待・行動パターンを可視化します。ホームページ改善・問診票設計・接遇向上に活用できます。</p>
+<button onClick={runJourneyMap} disabled={journeyLoading} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:journeyLoading?"#e2e8f0":"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:journeyLoading?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+{journeyLoading?"⏳ 分析中...":"🗺️ 患者ジャーニーマップを生成する"}
+</button>
+</div>
+</div>
+
+{/* 患者ジャーニーマップ モーダル */}
+{journeyModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setJourneyModal(false)}}>
+<div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+<h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#0369a1"}}>🗺️ 患者ジャーニーマップ</h3>
+<button onClick={()=>setJourneyModal(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:20}}>
+{journeyLoading&&<div style={{textAlign:"center",padding:40}}>
+<div style={{width:32,height:32,border:"3px solid #e2e8f0",borderTop:"3px solid #0369a1",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/>
+<span style={{color:"#64748b"}}>カウンセリング・診療記録を分析中...</span>
+</div>}
+{journeyResult&&!journeyLoading&&<div>
+<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+<button onClick={()=>{navigator.clipboard.writeText(journeyResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#0369a1",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite("カウンセリング","[患者ジャーニーマップ] "+new Date().toLocaleDateString("ja-JP"),journeyResult,"");setJourneyModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+</div>
+<pre style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.8,fontFamily:"inherit",background:"#f8fafc",padding:14,borderRadius:12}}>{journeyResult}</pre>
+</div>}
+</div>
+</div>
 </div>}
 </div></div>);
 
