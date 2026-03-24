@@ -441,6 +441,9 @@ const DEFAULT_DICT=[
 // === MAIN COMPONENT ===
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
+// テーマを即時適用（SSRフラッシュ防止）
+const themeAppliedRef=useRef(false);
+if(!themeAppliedRef.current&&typeof window!=="undefined"){themeAppliedRef.current=true;const savedTheme=localStorage.getItem("mk_theme")||"pearl";const t=THEMES[savedTheme]||THEMES["pearl"];document.body.style.background=t.bodyBg}
 const[themeName,setThemeName]=useState(()=>{try{return localStorage.getItem("mk_theme")||"pearl"}catch{return "pearl"}});
 const theme=THEMES[themeName]||THEMES["pearl"];
 C={p:theme.p,pD:theme.pD,pDD:theme.pDD,pL:theme.pL,pLL:theme.pLL,g50:theme.g50,g100:theme.g100||"rgba(240,252,228,0.6)",g200:theme.g200,g300:"#d6d3d1",g400:theme.g400,g500:theme.g500,g600:"#57534e",g700:"#44403c",g800:"#292524",g900:"#1c1917",err:"#f43f5e",warn:"#f59e0b",rG:"#5a9040",w:theme.cardBg,pLL2:theme.pLL};
