@@ -643,6 +643,10 @@ const[portfolioGroup,setPortfolioGroup]=useState("美容");
 const[journeyResult,setJourneyResult]=useState("");
 const[journeyLoading,setJourneyLoading]=useState(false);
 const[journeyModal,setJourneyModal]=useState(false);
+const[insightResult,setInsightResult]=useState("");
+const[insightLoading,setInsightLoading]=useState(false);
+const[insightModal,setInsightModal]=useState(false);
+const[insightMode,setInsightMode]=useState("full");
 const[mobileHideItems,setMobileHideItems]=useState({pip:true,shortcuts:true,fontsize:true,tabs_minutes:true,tabs_tasks:true,tabs_sns:true,tabs_analysis:true,tabs_roleplay:true,tabs_caselibrary:true,tabs_knowledge:true});
 escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){setDictModal(false);return}if(histPopup){setHistPopup(null);return}if(qcModal){setQcModal(null);return}if(favModal){setFavModal(null);return}if(favMoveModal){setFavMoveModal(null);return}if(favEditModal){setFavEditModal(null);return}if(favGenModal){setFavGenModal(null);return}if(favDetailModal){setFavDetailModal(null);return}if(caseStudyModal){setCaseStudyModal(null);return}if(faqModal){setFaqModal(false);return}if(menuModal){setMenuModal(false);return}if(kbModal){setKbModal(false);return}if(calModal){setCalModal(false);return}if(hpModal){setHpModal(false);return}if(trModal){setTrModal(false);return}if(pxModal){setPxModal(false);return}if(page!=="main"){setPage("main");return}};
 const FAV_GROUPS=["保険","美容","カウンセリング","治療説明","美容施術説明","その他"];
@@ -760,6 +764,29 @@ const data=await res.json();
 if(data.error)throw new Error(data.error);
 setJourneyResult(data.result||"");
 }catch(e){setJourneyResult("エラー: "+e.message)}finally{setJourneyLoading(false)}
+};
+const runInsightDashboard=async(mode)=>{
+if(!supabase)return;
+const m=mode||insightMode;
+setInsightLoading(true);setInsightModal(true);setInsightResult("");
+try{
+const[{data:records},{data:counseling},{data:favs}]=await Promise.all([
+supabase.from("records").select("input_text,output_text,created_at").order("created_at",{ascending:false}).limit(100),
+supabase.from("counseling_records").select("transcription,summary,created_at").order("created_at",{ascending:false}).limit(30),
+supabase.from("favorites").select("title,content,group_name,created_at").order("created_at",{ascending:false}).limit(50)
+]);
+let content="【診療記録】\n";
+if(records)content+=records.map(r=>r.output_text||r.input_text||"").filter(Boolean).join("\n---\n");
+content+="\n\n【カウンセリング記録】\n";
+if(counseling)content+=counseling.map(r=>r.summary||r.transcription||"").filter(Boolean).join("\n---\n");
+content+="\n\n【お気に入り症例】\n";
+if(favs)content+=favs.map(f=>`[${f.group_name}] ${f.content||""}`).filter(Boolean).join("\n---\n");
+if(content.trim().length<50){setInsightResult("分析に必要なデータが不足しています。\n診療記録を増やしてから再度お試しください。");setInsightLoading(false);return}
+const res=await fetch("/api/insight-dashboard",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content,mode:m})});
+const data=await res.json();
+if(data.error)throw new Error(data.error);
+setInsightResult(data.result||"");
+}catch(e){setInsightResult("エラー: "+e.message)}finally{setInsightLoading(false)}
 };
 const audioSaveRef=useRef(false),allAudioChunks=useRef([]);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
@@ -2225,6 +2252,53 @@ if(page==="satisfaction")return(<div style={{maxWidth:800,margin:"0 auto",paddin
 </div>}
 </div>
 </div>
+</div>}
+
+{/* ① 患者インサイト分析ダッシュボード */}
+<div style={{marginTop:20}}>
+  <div style={{...card,background:"#FFFDF9",borderRadius:18,border:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+    <h3 style={{fontSize:16,fontWeight:700,color:"#1e40af",margin:"0 0 8px"}}>🔭 患者インサイト分析ダッシュボード</h3>
+    <p style={{fontSize:12,color:"#8A7A6A",marginBottom:12,lineHeight:1.6}}>診療記録・カウンセリング・症例データを横断的にAIが分析し、マーケティング戦略・集客改善・季節対策・患者層の深掘りを行います。</p>
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {[
+        {id:"full",label:"🔭 総合インサイト"},
+        {id:"marketing",label:"📣 マーケティング戦略"},
+        {id:"seasonal",label:"🌸 季節・トレンド予測"},
+        {id:"segment",label:"👥 患者セグメント分析"},
+        {id:"revenue",label:"💰 収益改善提案"}
+      ].map(m=>(
+        <button key={m.id} onClick={()=>setInsightMode(m.id)} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${insightMode===m.id?"#1e40af":"#e5e7eb"}`,background:insightMode===m.id?"#eff6ff":"#fff",fontSize:12,fontWeight:insightMode===m.id?700:500,color:insightMode===m.id?"#1e40af":"#64748b",fontFamily:"inherit",cursor:"pointer"}}>{m.label}</button>
+      ))}
+    </div>
+    <button onClick={()=>runInsightDashboard(insightMode)} disabled={insightLoading} style={{width:"100%",padding:"18px",borderRadius:14,border:"none",background:insightLoading?"#e2e8f0":"linear-gradient(135deg,#1e40af,#3b82f6)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:insightLoading?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
+      {insightLoading?"⏳ 分析中...":"🔭 患者インサイトを分析する"}
+    </button>
+  </div>
+</div>
+
+{/* 患者インサイトモーダル */}
+{insightModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setInsightModal(false)}}>
+  <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+      <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#1e40af"}}>
+        {insightMode==="full"?"🔭 総合インサイト":insightMode==="marketing"?"📣 マーケティング戦略":insightMode==="seasonal"?"🌸 季節・トレンド予測":insightMode==="segment"?"👥 患者セグメント分析":"💰 収益改善提案"}
+      </h3>
+      <button onClick={()=>setInsightModal(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+    </div>
+    <div style={{flex:1,overflow:"auto",padding:20}}>
+      {insightLoading&&<div style={{textAlign:"center",padding:40}}>
+        <div style={{width:32,height:32,border:"3px solid #e2e8f0",borderTop:"3px solid #1e40af",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/>
+        <span style={{color:"#64748b"}}>診療・カウンセリング・症例データを横断分析中...</span>
+      </div>}
+      {insightResult&&!insightLoading&&<div>
+        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <button onClick={()=>{navigator.clipboard.writeText(insightResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#1e40af",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+          <button onClick={()=>{const title=insightMode==="full"?"[総合インサイト]":insightMode==="marketing"?"[マーケティング戦略]":insightMode==="seasonal"?"[季節トレンド予測]":insightMode==="segment"?"[患者セグメント]":"[収益改善提案]";saveFavorite("その他",title+" "+new Date().toLocaleDateString("ja-JP"),insightResult,"");setInsightModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+        </div>
+        <pre style={{fontSize:13,color:"#1e293b",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.8,fontFamily:"inherit",background:"#f8fafc",padding:14,borderRadius:12}}>{insightResult}</pre>
+      </div>}
+    </div>
+  </div>
 </div>}
 </div>)
 
