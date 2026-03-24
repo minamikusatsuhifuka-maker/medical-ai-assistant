@@ -441,10 +441,7 @@ const DEFAULT_DICT=[
 // === MAIN COMPONENT ===
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
-// テーマを即時適用（SSRフラッシュ防止）
-const themeAppliedRef=useRef(false);
-if(!themeAppliedRef.current&&typeof window!=="undefined"){themeAppliedRef.current=true;const savedTheme=localStorage.getItem("mk_theme")||"pearl";const t=THEMES[savedTheme]||THEMES["pearl"];document.body.style.background=t.bodyBg}
-const[themeName,setThemeName]=useState(()=>{try{return localStorage.getItem("mk_theme")||"pearl"}catch{return "pearl"}});
+const[themeName,setThemeName]=useState("pearl");
 const theme=THEMES[themeName]||THEMES["pearl"];
 C={p:theme.p,pD:theme.pD,pDD:theme.pDD,pL:theme.pL,pLL:theme.pLL,g50:theme.g50,g100:theme.g100||"rgba(240,252,228,0.6)",g200:theme.g200,g300:"#d6d3d1",g400:theme.g400,g500:theme.g500,g600:"#57534e",g700:"#44403c",g800:"#292524",g900:"#1c1917",err:"#f43f5e",warn:"#f59e0b",rG:"#5a9040",w:theme.cardBg,pLL2:theme.pLL};
 const applyTheme=(name)=>{setThemeName(name);try{localStorage.setItem("mk_theme",name)}catch{}};
@@ -478,6 +475,7 @@ const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
 const[fontSize,setFontSize]=useState("medium");
 const[fontFamily,setFontFamily]=useState("Zen Maru Gothic");
 const[snippetFontSize,setSnippetFontSize]=useState(14);
+useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs))}catch{}},[]);
 useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}})()},[]);
 useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.documentElement.style.fontSize=sizes[fontSize]||"14px";const zooms={small:"0.85",medium:"1",large:"1.2"};document.documentElement.style.zoom=zooms[fontSize]||"1";localStorage.setItem("mk_fontSize",fontSize)},[fontSize]);
