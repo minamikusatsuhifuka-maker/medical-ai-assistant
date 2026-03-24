@@ -616,7 +616,7 @@ const[favEditModal,setFavEditModal]=useState(null),[favEditTitle,setFavEditTitle
 const[favGenModal,setFavGenModal]=useState(null),[favGenPurpose,setFavGenPurpose]=useState("患者向け説明文"),[favGenResult,setFavGenResult]=useState(""),[favGenLoading,setFavGenLoading]=useState(false);
 const[caseSearch,setCaseSearch]=useState(""),[caseStudyModal,setCaseStudyModal]=useState(null),[caseStudyResult,setCaseStudyResult]=useState(""),[caseStudyLoading,setCaseStudyLoading]=useState(false);
 const[qcModal,setQcModal]=useState(null),[qcResult,setQcResult]=useState(""),[qcLoading,setQcLoading]=useState(false);
-const[rpInput,setRpInput]=useState(""),[rpResult,setRpResult]=useState(""),[rpLoading,setRpLoading]=useState(false),[rpHistory,setRpHistory]=useState([]);
+const[rpInput,setRpInput]=useState(""),[rpResult,setRpResult]=useState(""),[rpLoading,setRpLoading]=useState(false),[rpHistory,setRpHistory]=useState([]),[rpCategory,setRpCategory]=useState("reception");
 const[faqResult,setFaqResult]=useState(""),[faqLoading,setFaqLoading]=useState(false),[faqModal,setFaqModal]=useState(false);
 const[menuResult,setMenuResult]=useState(""),[menuLoading,setMenuLoading]=useState(false),[menuModal,setMenuModal]=useState(false);
 const[snsInput,setSnsInput]=useState(""),[snsPlatform,setSnsPlatform]=useState("Instagram"),[snsResult,setSnsResult]=useState(""),[snsLoading,setSnsLoading]=useState(false),[snsHistory,setSnsHistory]=useState([]);
@@ -1639,24 +1639,29 @@ caseGroups.map(g=><div key={g} style={{marginBottom:16}}>
 </div>)}
 
 // === ROLEPLAY ===
+const RP_CATEGORIES=[{id:"reception",label:"🏥 受付・接遇",color:"#AED9C8",textColor:"#1A5744",scenarios:["初めて来院した患者への受付対応","保険証を忘れた患者への対応","予約なしで来院した混雑時の対応","待ち時間が長いとクレームする患者","電話で予約を取りたい患者への対応","高齢で耳が聞こえにくい患者への対応","外国人患者（日本語が不得意）への対応","問診票の書き方がわからない患者への説明"]},{id:"atopy",label:"🌿 アトピー・湿疹",color:"#C5B8E8",textColor:"#3A2470",scenarios:["アトピー性皮膚炎の治療方針を不安がる患者","ステロイド外用薬を怖がって使いたくない患者","デュピクセント注射を勧められ費用を心配する患者","プロアクティブ療法の説明を求める患者","子どものアトピーを心配する母親への対応","保湿剤の正しい塗り方を聞く患者","かゆくて夜眠れないと訴える患者","アトピーで学校・仕事に支障が出ている患者"]},{id:"acne",label:"✨ ニキビ・美容",color:"#F2C9A8",textColor:"#7A3D14",scenarios:["ニキビ治療の効果が出ないと訴える患者","ディフェリンゲルの副作用（赤み・乾燥）を心配する患者","ケミカルピーリングの効果と副作用を聞く患者","肝斑治療（トラネキサム酸）の説明を求める患者","ボトックス注射を初めて検討している患者","ヒアルロン酸注射のリスクを心配する患者","施術後のダウンタイムについて質問する患者","美容施術の費用・モニター価格について質問する患者"]},{id:"infection",label:"🦠 感染症・緊急",color:"#F4A8A8",textColor:"#7A1A1A",scenarios:["帯状疱疹の痛みを訴える高齢患者","水虫（足白癬）の治療期間が長いと不満を言う患者","とびひ（伝染性膿痂疹）の子どもを連れた親御さん","疥癬感染が判明し動揺している患者","蜂窩織炎で発熱・腫脹がひどい患者","単純ヘルペスが繰り返すことへの不安を訴える患者"]},{id:"hair",label:"💇 脱毛・AGA",color:"#AED9C8",textColor:"#1A5744",scenarios:["円形脱毛症を発症して動揺している患者","AGA治療薬（フィナステリド）の副作用を心配する患者","医療脱毛の痛みや効果を心配する患者","脱毛施術中に肌トラブルが起きた患者への対応","男性型脱毛症の進行を強く気にする患者"]},{id:"difficult",label:"⚠️ クレーム・困難対応",color:"#F2C9A8",textColor:"#7A3D14",scenarios:["診察時間が短いとクレームする患者","前回と薬が変わったことに不満を言う患者","他院との治療方針の違いを指摘する患者","SNSで見た民間療法を試したいと主張する患者","保険適用外と説明しても納得しない患者","医師や他スタッフへの不満を受付にぶつける患者","電話で強い口調でクレームをつける患者","お会計の金額が思ったより高いと驚く患者"]},{id:"explanation",label:"📋 説明・指導",color:"#C5B8E8",textColor:"#3A2470",scenarios:["外用薬の正しい塗り方・量の説明","内服薬の飲み方・注意点の説明","遮光指導（紫外線対策）の説明","日常生活での皮膚ケア指導","検査（アレルギー検査）の説明と同意取得","診断書・紹介状の依頼への対応","次回予約の取り方・フォローアップの説明"]}];
+const rpCat=RP_CATEGORIES.find(c=>c.id===rpCategory)||RP_CATEGORIES[0];
 if(page==="roleplay")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-<h2 style={{fontSize:18,fontWeight:700,color:"#dc2626",margin:0}}>🎭 ロールプレイ練習</h2>
-<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#5C4A3A",margin:0}}>🎭 ロールプレイ練習<span style={{fontSize:12,fontWeight:500,color:"#8A7A6A",marginLeft:8}}>（新人教育用）</span></h2>
+<button onClick={()=>setPage("main")} style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#D9CFBF",color:"#6B5A4A",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
 </div>
-<div style={card}>
-<p style={{fontSize:13,color:C.g500,marginBottom:12}}>疾患名や状況を入力すると、AIが患者との会話練習シナリオと模範応答を生成します。</p>
+<p style={{fontSize:13,color:"#8A7A6A",margin:"0 0 12px"}}>実際の診療現場を想定したシナリオで接遇・対応を練習しましょう</p>
+<div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
+{RP_CATEGORIES.map(cat=><button key={cat.id} onClick={()=>setRpCategory(cat.id)} style={{padding:"6px 14px",borderRadius:20,border:rpCategory===cat.id?"none":"1px solid #ddd",background:rpCategory===cat.id?cat.color:"#f5f5f5",color:rpCategory===cat.id?cat.textColor:"#666",fontSize:12,fontWeight:rpCategory===cat.id?700:500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{cat.label}</button>)}
+</div>
+<div style={{...card,background:"#FFFDF9",borderRadius:18,border:"none",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+{rpCat.scenarios.map(s=><button key={s} onClick={()=>setRpInput(s)} style={{padding:"8px 12px",borderRadius:10,border:"1px solid #D9CFBF",background:rpInput===s?rpCat.color:"#FFFDF9",color:rpInput===s?rpCat.textColor:"#5C4A3A",fontSize:12,fontWeight:rpInput===s?700:500,fontFamily:"inherit",cursor:"pointer",textAlign:"left",transition:"background 0.15s"}} onMouseEnter={e=>{if(rpInput!==s)e.target.style.background=rpCat.color+"40"}} onMouseLeave={e=>{if(rpInput!==s)e.target.style.background="#FFFDF9"}}>{s}</button>)}
+</div>
 <div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
-<input value={rpInput} onChange={e=>setRpInput(e.target.value)} placeholder="疾患名または状況を入力（例：アトピーの患者が不安を訴えている）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
-<button onClick={generateRoleplay} disabled={rpLoading||!rpInput.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:rpLoading?C.g200:"linear-gradient(135deg,#dc2626,#ef4444)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!rpInput.trim()?.45:1}}>{rpLoading?"⏳ 生成中...":"🎭 練習問題を生成"}</button>
+<input value={rpInput} onChange={e=>setRpInput(e.target.value)} placeholder="カスタムシナリオを自由入力（例：アトピーの患者が不安を訴えている）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
+<button onClick={generateRoleplay} disabled={rpLoading||!rpInput.trim()} style={{padding:"10px 20px",borderRadius:14,border:"none",background:rpLoading?C.g200:"#C4A882",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!rpInput.trim()?.45:1}}>{rpLoading?"⏳ 生成中...":"🎭 練習開始"}</button>
 </div>
-<div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-{["アトピー性皮膚炎の患者が治療に不安","ニキビ治療の効果が出ないと訴える患者","帯状疱疹の痛みを訴える高齢患者","美容施術の費用について質問する患者","待ち時間が長いとクレームする患者","薬の副作用を心配する患者"].map(s=>(<button key={s} onClick={()=>setRpInput(s)} style={{padding:"3px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fef2f2",fontSize:11,fontWeight:500,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>{s}</button>))}
-</div>
-{rpLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #dc2626",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIがシナリオを作成中...</span></div>}
+{rpLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:"3px solid #C4A882",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#8A7A6A"}}>AIがシナリオを作成中...</span></div>}
 {rpResult&&!rpLoading&&<div style={{marginTop:8}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-<span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>🎭 生成結果</span>
+<span style={{fontSize:13,fontWeight:700,color:"#5C4A3A"}}>🎭 生成結果</span>
 <div style={{display:"flex",gap:4}}>
 <button onClick={()=>{navigator.clipboard.writeText(rpResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{saveFavorite("その他","[ロールプレイ] "+rpInput.substring(0,30),rpResult,"")}} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>💾 お気に入り保存</button>
