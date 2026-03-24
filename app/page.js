@@ -479,6 +479,7 @@ useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);co
 useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}})()},[]);
 useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.documentElement.style.fontSize=sizes[fontSize]||"14px";const zooms={small:"0.85",medium:"1",large:"1.2"};document.documentElement.style.zoom=zooms[fontSize]||"1";localStorage.setItem("mk_fontSize",fontSize)},[fontSize]);
 useEffect(()=>{document.documentElement.style.fontFamily=`'${fontFamily}', sans-serif`;document.body.style.fontFamily=`'${fontFamily}', sans-serif`;localStorage.setItem("mk_fontFamily",fontFamily)},[fontFamily]);
+useEffect(()=>{const t=THEMES[themeName]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"},[themeName]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
 useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
@@ -617,6 +618,7 @@ const[favGenModal,setFavGenModal]=useState(null),[favGenPurpose,setFavGenPurpose
 const[caseSearch,setCaseSearch]=useState(""),[caseStudyModal,setCaseStudyModal]=useState(null),[caseStudyResult,setCaseStudyResult]=useState(""),[caseStudyLoading,setCaseStudyLoading]=useState(false);
 const[qcModal,setQcModal]=useState(null),[qcResult,setQcResult]=useState(""),[qcLoading,setQcLoading]=useState(false);
 const[rpInput,setRpInput]=useState(""),[rpResult,setRpResult]=useState(""),[rpLoading,setRpLoading]=useState(false),[rpHistory,setRpHistory]=useState([]),[rpCategory,setRpCategory]=useState("reception");
+const[rpMaterialModal,setRpMaterialModal]=useState(false),[rpMaterialSize,setRpMaterialSize]=useState("A5"),[rpMaterialPrompt,setRpMaterialPrompt]=useState("");
 const[faqResult,setFaqResult]=useState(""),[faqLoading,setFaqLoading]=useState(false),[faqModal,setFaqModal]=useState(false);
 const[menuResult,setMenuResult]=useState(""),[menuLoading,setMenuLoading]=useState(false),[menuModal,setMenuModal]=useState(false);
 const[snsInput,setSnsInput]=useState(""),[snsPlatform,setSnsPlatform]=useState("Instagram"),[snsResult,setSnsResult]=useState(""),[snsLoading,setSnsLoading]=useState(false),[snsHistory,setSnsHistory]=useState([]);
@@ -645,6 +647,7 @@ const saveGenResultAsFavorite=async()=>{if(!supabase||!favGenModal||!favGenResul
 const generateCaseStudy=async(f)=>{setCaseStudyModal(f);setCaseStudyResult("");setCaseStudyLoading(true);try{const res=await fetch("/api/case-study",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:f.content||""})});const data=await res.json();if(data.error)throw new Error(data.error);setCaseStudyResult(data.result||"")}catch(e){setCaseStudyResult("エラー: "+e.message)}finally{setCaseStudyLoading(false)}};
 const runQualityCheck=async(r)=>{setQcModal(r);setQcResult("");setQcLoading(true);try{const res=await fetch("/api/quality-check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:r.input_text||""})});const data=await res.json();if(data.error)throw new Error(data.error);setQcResult(data.result||"")}catch(e){setQcResult("エラー: "+e.message)}finally{setQcLoading(false)}};
 const generateRoleplay=async()=>{if(!rpInput.trim())return;setRpLoading(true);setRpResult("");try{const res=await fetch("/api/roleplay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({situation:rpInput})});const data=await res.json();if(data.error)throw new Error(data.error);setRpResult(data.result||"");const entry={id:Date.now(),situation:rpInput,result:data.result||"",date:new Date().toLocaleDateString("ja-JP")};try{const prev=JSON.parse(localStorage.getItem("mk_rpHistory")||"[]");const updated=[entry,...prev].slice(0,10);localStorage.setItem("mk_rpHistory",JSON.stringify(updated));setRpHistory(updated)}catch{}}catch(e){setRpResult("エラー: "+e.message)}finally{setRpLoading(false)}};
+const generateMaterialPrompt=()=>{const sizeInstruction=rpMaterialSize==="A5"?"A5サイズ1枚（約400〜600文字）に収まるコンパクトな構成":"A4サイズ1枚（約800〜1200文字）に収まる詳細な構成";const prompt=`以下の皮膚科診療情報をもとに、患者向けの見やすい説明資料を作成してください。\n\n【資料の要件】\n- サイズ: ${rpMaterialSize}（${sizeInstruction}）\n- 対象: 患者・ご家族が自宅で読み返せる資料\n- デザイン: 清潔感のある医療系レイアウト、読みやすいフォント\n- 言語: 平易な日本語（専門用語には説明を添える）\n\n【必ず含める項目】\n1. 疾患・施術名（大きめのタイトル）\n2. どんな状態か（症状・特徴の簡単な説明）\n3. 治療・施術の効果（期待できること）\n4. 副作用・注意点（正直に、でも怖くなりすぎない表現で）\n5. 日常生活のポイント・Tips（すぐ実践できるアドバイス3〜5つ）\n6. 次回受診の目安\n${rpMaterialSize==="A4"?"7. よくある質問Q&A（2〜3問）\n8. クリニックからのメッセージ（温かい一言）":""}\n\n【元となる診療情報】\nシナリオ: ${rpInput}\n\n${rpResult}\n\n上記をもとに、患者さんが安心して治療に取り組めるような温かみのある資料を作成してください。`;setRpMaterialPrompt(prompt)};
 const generateFaq=async(group,favs)=>{setFaqLoading(true);setFaqResult("");setFaqModal(true);try{const content=favs.map(f=>`【${f.title||"無題"}】\n${f.content||""}`).join("\n---\n");const res=await fetch("/api/generate-faq",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});const data=await res.json();if(data.error)throw new Error(data.error);setFaqResult(data.result||"")}catch(e){setFaqResult("エラー: "+e.message)}finally{setFaqLoading(false)}};
 const generateMenu=async(favs)=>{setMenuLoading(true);setMenuResult("");setMenuModal(true);try{const content=favs.map(f=>`【${f.title||"無題"}】\n${f.content||""}`).join("\n---\n");const res=await fetch("/api/generate-menu",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});const data=await res.json();if(data.error)throw new Error(data.error);setMenuResult(data.result||"")}catch(e){setMenuResult("エラー: "+e.message)}finally{setMenuLoading(false)}};
 const generateSns=async()=>{if(!snsInput.trim())return;setSnsLoading(true);setSnsResult("");try{const res=await fetch("/api/generate-sns",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({platform:snsPlatform,theme:snsInput})});const data=await res.json();if(data.error)throw new Error(data.error);setSnsResult(data.result||"");const entry={id:Date.now(),platform:snsPlatform,theme:snsInput,result:data.result||"",date:new Date().toLocaleDateString("ja-JP")};try{const prev=JSON.parse(localStorage.getItem("mk_snsHistory")||"[]");const updated=[entry,...prev].slice(0,10);localStorage.setItem("mk_snsHistory",JSON.stringify(updated));setSnsHistory(updated)}catch{}}catch(e){setSnsResult("エラー: "+e.message)}finally{setSnsLoading(false)}};
@@ -1665,6 +1668,7 @@ if(page==="roleplay")return(<div style={{maxWidth:800,margin:"0 auto",padding:mo
 <div style={{display:"flex",gap:4}}>
 <button onClick={()=>{navigator.clipboard.writeText(rpResult);sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{saveFavorite("その他","[ロールプレイ] "+rpInput.substring(0,30),rpResult,"")}} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>💾 お気に入り保存</button>
+<button onClick={()=>{setRpMaterialModal(true);setRpMaterialPrompt("")}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #C4A882",background:"#FAF0E0",fontSize:12,fontWeight:600,color:"#7A5A30",fontFamily:"inherit",cursor:"pointer"}}>📄 患者向け資料を作成</button>
 </div>
 </div>
 <pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit",background:C.g50,padding:14,borderRadius:12}}>{rpResult}</pre>
@@ -1680,6 +1684,26 @@ if(page==="roleplay")return(<div style={{maxWidth:800,margin:"0 auto",padding:mo
 </div>
 <div style={{fontSize:11,color:C.g500,marginTop:4,lineHeight:1.3}}>{(h.result||"").substring(0,80)}...</div>
 </div>)}
+</div>
+</div>}
+{rpMaterialModal&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setRpMaterialModal(false)}}>
+<div style={{background:"#FFFDF9",borderRadius:16,padding:24,width:"100%",maxWidth:600,maxHeight:"85vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+<h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#5C4A3A"}}>📄 患者向け資料生成（Genspark用プロンプト）</h3>
+<button onClick={()=>setRpMaterialModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{marginBottom:16}}>
+<p style={{fontSize:13,color:"#8A7A6A",marginBottom:8}}>資料サイズを選択してください:</p>
+<div style={{display:"flex",gap:8}}>
+<button onClick={()=>setRpMaterialSize("A5")} style={{padding:"8px 20px",borderRadius:10,border:"none",background:rpMaterialSize==="A5"?"#AED9C8":"#f5f5f5",color:rpMaterialSize==="A5"?"#1A5744":"#666",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>A5サイズ（簡潔版）</button>
+<button onClick={()=>setRpMaterialSize("A4")} style={{padding:"8px 20px",borderRadius:10,border:"none",background:rpMaterialSize==="A4"?"#C5B8E8":"#f5f5f5",color:rpMaterialSize==="A4"?"#3A2470":"#666",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>A4サイズ（詳細版）</button>
+</div>
+</div>
+<button onClick={generateMaterialPrompt} style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:"#C4A882",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:16}}>プロンプトを生成</button>
+{rpMaterialPrompt&&<div>
+<textarea readOnly value={rpMaterialPrompt} style={{width:"100%",height:200,fontSize:11,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontFamily:"inherit",resize:"vertical",color:C.g700,boxSizing:"border-box"}}/>
+<button onClick={()=>{navigator.clipboard.writeText(rpMaterialPrompt);window.open("https://genspark.ai","_blank");sSt("📋 コピーしました")}} style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#3A2470,#5A3E9A)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginTop:8}}>📋 コピーしてGensparkで開く</button>
+</div>}
 </div>
 </div>}
 </div>)
