@@ -1,5 +1,7 @@
 export const maxDuration = 60;
 
+const SCAN_CHUNK_SIZE = 5000;
+
 const SYSTEM_PROMPT = `あなたはクリニック経営・医療・マーケティング分野の音声書き起こし校正の専門家です。
 会議・ミーティングの音声認識で発生しやすい誤変換を検出し、正しい用語に修正してください。
 
@@ -28,6 +30,37 @@ const SYSTEM_PROMPT = `あなたはクリニック経営・医療・マーケテ
 - JSON形式のみで返す
 - 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい用語","reason":"理由（カテゴリも明記）"}]}]}`;
 
+async function scanChunk(text, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ parts: [{ text: `以下はクリニックの会議・ミーティングの音声書き起こしテキストです。\n医療・経営・マーケティング用語の音声認識誤りを全て見つけてください：\n\n${text}` }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
+  if (!content.trim()) return [];
+
+  let parsed = { corrections: [] };
+  try {
+    parsed = JSON.parse(content.trim());
+  } catch {
+    const m1 = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (m1) { try { parsed = JSON.parse(m1[1].trim()); } catch {} }
+    else {
+      const m2 = content.match(/\{[\s\S]*"corrections"[\s\S]*\}/);
+      if (m2) { try { parsed = JSON.parse(m2[0]); } catch {} }
+    }
+  }
+  return Array.isArray(parsed.corrections) ? parsed.corrections : [];
+}
+
 export async function POST(request) {
   try {
     const { text, dictionary } = await request.json();
@@ -40,61 +73,42 @@ export async function POST(request) {
       return Response.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
     }
 
-    // 長文の場合は最初の5000字のみスキャン
-    const scanText = text.length > 5000 ? text.slice(0, 5000) + "\n...(以降省略)" : text;
-
-    let userPrompt = `以下はクリニックの会議・ミーティングの音声書き起こしテキストです。
-医療・経営・マーケティング用語の音声認識誤りを全て見つけてください：\n\n${scanText}`;
-
-    if (dictionary && Array.isArray(dictionary) && dictionary.length > 0) {
-      const dictText = dictionary.map(d => `${d.from}→${d.to}`).join("\n");
-      userPrompt += `\n\n【登録済み辞書（これらは除外）】\n${dictText}`;
+    // テキストをチャンク分割
+    const chunks = [];
+    for (let i = 0; i < text.length; i += SCAN_CHUNK_SIZE) {
+      chunks.push(text.slice(i, i + SCAN_CHUNK_SIZE));
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-      }),
-    });
+    // 辞書登録済みのセット
+    const registeredFroms = new Set(
+      (dictionary && Array.isArray(dictionary)) ? dictionary.map(d => d.from) : []
+    );
 
-    if (!res.ok) {
-      return Response.json({ error: "AI校正APIエラー" }, { status: 500 });
-    }
+    // 全チャンクをスキャンして結果を統合（重複除去）
+    const allCorrections = [];
+    const seenFroms = new Set();
 
-    const data = await res.json();
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    const content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
-
-    if (!content.trim()) return Response.json({ corrections: [] });
-
-    let parsed = { corrections: [] };
-    try {
-      parsed = JSON.parse(content.trim());
-    } catch {
-      const m1 = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (m1) { try { parsed = JSON.parse(m1[1].trim()); } catch {} }
-      else {
-        const m2 = content.match(/\{[\s\S]*"corrections"[\s\S]*\}/);
-        if (m2) { try { parsed = JSON.parse(m2[0]); } catch {} }
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const corrections = await scanChunk(chunks[i], apiKey);
+        for (const c of corrections) {
+          // 辞書登録済み・スキャン済みは除外
+          if (registeredFroms.has(c.from) || seenFroms.has(c.from)) continue;
+          seenFroms.add(c.from);
+          allCorrections.push(c);
+        }
+      } catch (e) {
+        console.error(`minutes-typos chunk ${i} error:`, e.message);
+        // チャンクエラーは無視して続行
       }
     }
 
-    if (!parsed.corrections || !Array.isArray(parsed.corrections)) {
-      return Response.json({ corrections: [] });
-    }
+    return Response.json({
+      corrections: allCorrections,
+      scannedChunks: chunks.length,
+      totalLength: text.length
+    });
 
-    // 辞書登録済みを除外
-    if (dictionary && Array.isArray(dictionary)) {
-      const registeredFroms = new Set(dictionary.map(d => d.from));
-      parsed.corrections = parsed.corrections.filter(c => !registeredFroms.has(c.from));
-    }
-
-    return Response.json(parsed);
   } catch (e) {
     console.error("minutes-typos error:", e);
     return Response.json({ error: "サーバーエラー" }, { status: 500 });
