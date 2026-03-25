@@ -1200,7 +1200,10 @@ const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in windo
 const pw=await window.documentPictureInPicture.requestWindow({width:270,height:175});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
-pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:linear-gradient(135deg,#3d5a1e,#567d2a);color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:2px">
+const pipTheme=localStorage.getItem('mk_theme')||'pearl';
+const pipBgMap={'pearl':'linear-gradient(135deg,#3d5a1e,#567d2a)','ultra-cream':'linear-gradient(135deg,#4a6741,#6b8f5e)','soft-linen':'linear-gradient(135deg,#5c6b52,#7a8f6e)','morning-cream':'linear-gradient(135deg,#4a6741,#6b8f5e)'};
+const pipBg=pipBgMap[pipTheme]||pipBgMap['pearl'];
+pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:${pipBg};color:#fff;padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:2px">
 <div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;opacity:.5">${rmName}</span>
 <input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:1px 5px;border-radius:4px;border:none;font-size:9px;background:rgba(255,255,255,.15);color:#fff;outline:none"/>
 <span id="pip-status" style="font-size:9px;font-weight:600;color:#94a3b8">停止</span></div>
