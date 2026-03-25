@@ -2456,6 +2456,7 @@ finally{setMinTypoLd(false)}
 <div style={{fontSize:13,color:C.g700,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{taskAnalysis}</div>
 </div>}
 </div>
+{typoModalEl}
 </div></div>);
 
 // === COUNSELING ANALYSIS ===
