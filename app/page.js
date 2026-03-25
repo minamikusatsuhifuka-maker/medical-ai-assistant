@@ -1025,24 +1025,25 @@ setProg(50);
 try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||""})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error)}else{setMinOut(d.summary);const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理）`:"";sSt("議事録作成完了 ✓"+chunkMsg+" → 次へで新規打合せ");setGeminiModel(d.model||"");if(supabase&&d.summary){try{const{data:minData}=await supabase.from("minutes").insert({title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",input_text:minIR.current||"",output_text:d.summary}).select().single();if(minData){const taskPrompt=`以下の皮膚科・美容皮膚科クリニックの議事録からタスクとTODOを抽出してください。
 
 【判断基準】
-- 患者対応・医療安全に関するタスク（重要度:高）
-- スタッフ教育・採用・労務管理（重要度:中〜高）
-- 売上・集患・マーケティング施策（重要度:中〜高）
-- 設備・機器の導入・メンテナンス（重要度:中）
-- 院内オペレーション改善（重要度:中）
-- 法令遵守・届出・保険請求（重要度:高）
-- 患者満足度向上・クレーム対応（重要度:高）
-- 美容メニュー開発・価格設定（重要度:中）
+- 患者対応・医療安全に関するタスク（重要度:高・urgency:3〜4・importance:4）
+- スタッフ教育・採用・労務管理（重要度:中〜高・urgency:2・importance:3〜4）
+- 売上・集患・マーケティング施策（重要度:中〜高・urgency:2〜3・importance:3）
+- 設備・機器の導入・メンテナンス（重要度:中・urgency:2・importance:2〜3）
+- 院内オペレーション改善（重要度:中・urgency:2・importance:2〜3）
+- 法令遵守・届出・保険請求（重要度:高・urgency:3〜4・importance:4）
+- 患者満足度向上・クレーム対応（重要度:高・urgency:3〜4・importance:4）
+- 美容メニュー開発・価格設定（重要度:中・urgency:2・importance:2〜3）
 
 必ず以下のJSON配列のみを返してください。説明文やマークダウンは不要です。
-[{"title":"タスク名","assignee":"","due_date":null,"urgency":2,"importance":2,"category":"operations"}]
+[{"title":"タスク名","assignee":"","due_date":null,"urgency":2,"importance":2,"category":"operations","role_level":"staff"}]
 
 categoryは: operations(運営), medical(医療), hr(人事), finance(経理)
+role_levelは: director(院長が対応), manager(マネジャーが対応), leader(リーダーが対応), staff(スタッフが対応)
 urgency: 1=低 2=やや低 3=やや高 4=高
 importance: 1=低 2=やや低 3=やや高 4=高
 
-議事録:
-`+d.summary;const tr2=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:taskPrompt,mode:"gemini",prompt:"JSONの配列のみ返してください。他のテキストは一切不要です。"})});const td=await tr2.json();if(td.summary){let jsonStr2=td.summary;jsonStr2=jsonStr2.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const si2=jsonStr2.indexOf("[");const ei2=jsonStr2.lastIndexOf("]");if(si2!==-1&&ei2!==-1)jsonStr2=jsonStr2.substring(si2,ei2+1);try{const parsed=JSON.parse(jsonStr2);if(Array.isArray(parsed)){for(const t of parsed){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}}}catch(e){console.error("minSum task parse error:",e)}}}}catch{}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
+議事録（先頭3000字）:
+`+d.summary.substring(0,3000);const tr2=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:taskPrompt,mode:"gemini",prompt:"JSONの配列のみ返してください。他のテキストは一切不要です。"})});const td=await tr2.json();if(td.summary){let jsonStr2=td.summary;jsonStr2=jsonStr2.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();const si2=jsonStr2.indexOf("[");const ei2=jsonStr2.lastIndexOf("]");if(si2!==-1&&ei2!==-1)jsonStr2=jsonStr2.substring(si2,ei2+1);try{const parsed=JSON.parse(jsonStr2);if(Array.isArray(parsed)){for(const t of parsed){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}}}catch(e){console.error("minSum task parse error:",e)}}}}catch{}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
 const minNext=()=>{minStop();setMinOut("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
