@@ -609,6 +609,9 @@ const[todos,setTodos]=useState([]);
 const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[minTypoLd,setMinTypoLd]=useState(false);
+const[minDraftId,setMinDraftId]=useState(null);
+const[minAutoSaving,setMinAutoSaving]=useState(false);
+const minAutoSaveRef=useRef(null);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
@@ -840,8 +843,11 @@ setProg(50);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPrompt,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
 
 const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
-const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0)ch.push(e.data)};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){setMinInp(p=>p+(p?"\n":"")+d.text.trim())}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci}};
-const minStop=()=>{if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}if(minMR.current&&minMR.current.state==="recording")minMR.current.stop();setMinRS("inactive");minSR.current="inactive";xAM()};
+const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0)ch.push(e.data)};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const r=await fetch("/api/transcribe",{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){setMinInp(p=>p+(p?"\n":"")+d.text.trim())}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
+// 10分ごとの自動保存タイマー開始
+if(minAutoSaveRef.current)clearInterval(minAutoSaveRef.current);
+minAutoSaveRef.current=setInterval(()=>{saveMinDraft(true)},10*60*1000)};
+const minStop=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}if(minMR.current&&minMR.current.state==="recording")minMR.current.stop();setMinRS("inactive");minSR.current="inactive";xAM()};
 const loadMinHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(50);if(data)setMinHist(data)}catch{}};
 const saveManualMinute=async()=>{
 if(!supabase||!manualMinText.trim())return;
@@ -976,11 +982,57 @@ sSt("✓ 議事録をまとめました");
 sSt("まとめエラー: "+e.message);
 }finally{setMergeLd(false);setProg(0)}
 };
+// 議事録の書き起こしを途中保存（手動・自動共通）
+const saveMinDraft=async(isAuto=false)=>{
+if(!supabase||!minIR.current?.trim())return;
+try{
+setMinAutoSaving(true);
+const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（録音中）";
+if(minDraftId){
+await supabase.from("minutes").update({
+input_text:minIR.current||"",
+title,
+updated_at:new Date().toISOString()
+}).eq("id",minDraftId);
+}else{
+const{data}=await supabase.from("minutes").insert({
+title,
+input_text:minIR.current||"",
+output_text:"（録音中・未要約）"
+}).select().single();
+if(data)setMinDraftId(data.id);
+}
+if(!isAuto)sSt("💾 書き起こしを保存しました");
+await loadMinHist();
+}catch(e){
+console.error("saveMinDraft error:",e);
+if(!isAuto)sSt("保存エラー: "+e.message);
+}finally{
+setMinAutoSaving(false);
+}
+};
 const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);setProg(10);
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
 setProg(50);
-try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||""})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error)}else{setMinOut(d.summary);const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理）`:"";sSt("議事録作成完了 ✓"+chunkMsg+" → 次へで新規打合せ");setGeminiModel(d.model||"");if(supabase&&d.summary){try{const{data:minData}=await supabase.from("minutes").insert({title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",input_text:minIR.current||"",output_text:d.summary}).select().single();if(minData){const taskPrompt=`以下の皮膚科・美容皮膚科クリニックの議事録からタスクとTODOを抽出してください。
+try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||""})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error)}else{setMinOut(d.summary);const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理）`:"";sSt("議事録作成完了 ✓"+chunkMsg+" → 次へで新規打合せ");setGeminiModel(d.model||"");if(supabase&&d.summary){try{let minData=null;
+if(minDraftId){
+const{data:updated}=await supabase.from("minutes").update({
+title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",
+input_text:minIR.current||"",
+output_text:d.summary
+}).eq("id",minDraftId).select().single();
+minData=updated;
+setMinDraftId(null);
+}else{
+const{data:inserted}=await supabase.from("minutes").insert({
+title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",
+input_text:minIR.current||"",
+output_text:d.summary
+}).select().single();
+minData=inserted;
+}
+if(minData){const taskPrompt=`以下の皮膚科・美容皮膚科クリニックの議事録からタスクとTODOを抽出してください。
 
 【判断基準】
 - 患者対応・医療安全に関するタスク（重要度:高・urgency:3〜4・importance:4）
@@ -1002,7 +1054,7 @@ importance: 1=低 2=やや低 3=やや高 4=高
 
 議事録（先頭3000字）:
 `;try{const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました")}else{console.warn("extract-tasks: no tasks or empty",td)}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
-const minNext=()=>{minStop();setMinOut("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
+const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}setMinDraftId(null);minStop();setMinOut("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
@@ -2314,7 +2366,14 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.pause();setMinRS("paused")}}} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
 <button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button>
 </div>}
-<span style={{fontSize:12,color:minRS==="recording"?C.rG:minRS==="paused"?C.warn:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":minRS==="paused"?"⏸ 一時停止中":"停止"}</span></div>
+<span style={{fontSize:12,color:minRS==="recording"?C.rG:minRS==="paused"?C.warn:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":minRS==="paused"?"⏸ 一時停止中":"停止"}</span>
+{(minRS==="recording"||minRS==="paused")&&minInp.trim()&&
+<button onClick={()=>saveMinDraft(false)} disabled={minAutoSaving} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.p}`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:minAutoSaving?"wait":"pointer",whiteSpace:"nowrap"}}>
+{minAutoSaving?"💾 保存中...":"💾 今すぐ保存"}
+</button>}
+{minAutoSaving&&<span style={{fontSize:11,color:C.g400,fontWeight:600}}>💾 自動保存中...</span>}
+{minDraftId&&!minAutoSaving&&minRS!=="inactive"&&<span style={{fontSize:11,color:C.pD,fontWeight:600}}>✓ 保存済み（10分毎に自動更新）</span>}
+</div>
 <div style={{marginBottom:12}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}><span style={{fontSize:12,fontWeight:600,color:C.g500}}>書き起こし（10秒間隔）</span><div style={{display:"flex",alignItems:"center",gap:6}}>
 <button onClick={async()=>{
@@ -2406,7 +2465,12 @@ finally{setMinTypoLd(false)}
 {openMinId===m.id?<div style={{marginBottom:4}}>{(()=>{try{const src=JSON.parse(m.input_text);if(src&&src.source_titles){return(<div style={{padding:6,borderRadius:6,background:"#f5f3ff",border:"1px solid #c4b5fd",marginBottom:6,fontSize:11}}>
 <span style={{fontWeight:700,color:"#7c3aed"}}>📎 まとめ元:</span>
 {src.source_titles.map((s,i)=>(<span key={i} style={{marginLeft:4,padding:"1px 6px",borderRadius:4,background:"#ede9fe",color:"#6d28d9"}}>{s.date} {s.title}</span>))}
-</div>)}}catch{}return null})()}<div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button><button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button></div>:<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>}
+</div>)}}catch{}return null})()}<div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button><button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button>
+{m.input_text&&m.input_text!=="（録音中・未要約）"&&<details style={{marginTop:8}}>
+<summary style={{fontSize:11,color:C.g400,cursor:"pointer",userSelect:"none"}}>📝 書き起こし全文を表示（{Math.ceil((m.input_text||"").length/40)}行）</summary>
+<pre style={{fontSize:11,color:C.g600,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:6,padding:8,borderRadius:8,background:C.g50,maxHeight:200,overflowY:"auto",lineHeight:1.6,fontFamily:"inherit"}}>{m.input_text}</pre>
+</details>}
+</div>:<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>}
 </div>)})}
 {taskAnalysis&&<div style={{marginTop:12,padding:12,borderRadius:12,border:`2px solid #a78bfa`,background:"#f5f3ff"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
