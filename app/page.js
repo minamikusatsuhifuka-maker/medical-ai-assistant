@@ -1450,6 +1450,7 @@ const rn=(id)=>{const r=R.find(x=>x.id===id);return r?`${r.i}${r.l}`:id};
 
 const titleRow=()=>(<div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl&&<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:8,objectFit:"contain"}}/>}<span style={{fontWeight:700,fontSize:15,color:C.w}}>南草津皮フ科AIカルテ要約</span></div>);
 
+const noiseModalEl=noiseModal&&noiseCandidates.length>0&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setNoiseModal(false)}><div style={{background:"#fff",borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontSize:15,fontWeight:700,color:"#dc2626"}}>🚫 ノイズ候補（{noiseCandidates.length}件）</div><button onClick={()=>setNoiseModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button></div><p style={{fontSize:12,color:C.g500,marginBottom:12}}>AIが検出したノイズ候補です。登録するとこのフレーズを含む行が書き起こしから自動除去されます。</p>{noiseCandidates.map((c,i)=>(<div key={i} style={{marginBottom:10,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50}}><div style={{fontSize:13,fontWeight:600,color:"#dc2626",marginBottom:4}}>🚫 {c.text}</div><div style={{fontSize:11,color:C.g500,marginBottom:8}}>💡 {c.reason}</div><button onClick={()=>{addNoisePattern(c.text);setNoiseCandidates(prev=>prev.filter((_,j)=>j!==i));if(noiseCandidates.length<=1)setNoiseModal(false)}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 登録する</button></div>))}<div style={{marginTop:12,display:"flex",gap:8}}><button onClick={()=>{noiseCandidates.forEach(c=>addNoisePattern(c.text));setNoiseModal(false);setNoiseCandidates([])}} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:C.p,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ すべて登録（{noiseCandidates.length}件）</button><button onClick={()=>{setNoiseModal(false);setNoiseCandidates([])}} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>スキップ</button></div></div></div>;
 const typoModalEl=typoModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setTypoModal(null)}><div style={{background:"#ffffff",borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🔬 AI誤字スキャン結果（{typoModal.length}件）</div><button onClick={()=>setTypoModal(null)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button></div>{typoModal.map((c,i)=>(<div key={i} style={{marginBottom:14,padding:14,borderRadius:12,border:`1.5px solid ${typoSelections[i]!==undefined?C.p+"66":C.g200}`,background:typoSelections[i]!==undefined?"#f7fee7":C.g50}}><div style={{fontSize:13,fontWeight:600,color:"#dc2626",marginBottom:8}}>（誤）{c.from}</div><div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:typoSelections[i]!==undefined?8:0}}>{c.candidates.map((cand,j)=>(<button key={j} onClick={()=>{setTypoSelections(prev=>({...prev,[i]:prev[i]===j?undefined:j}));setTypoCustomInputs(prev=>{const n={...prev};delete n[i];return n})}} style={{padding:"6px 14px",borderRadius:10,border:typoSelections[i]===j?`2px solid ${C.rG}`:`1.5px solid ${C.g300}`,background:typoSelections[i]===j?"#dcfce7":C.w,fontSize:13,fontWeight:typoSelections[i]===j?700:500,color:typoSelections[i]===j?"#166534":C.g700,fontFamily:"inherit",cursor:"pointer",transition:"all 0.15s"}}>{cand.to}</button>))}</div><div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}><span style={{fontSize:11,color:C.g500,whiteSpace:"nowrap"}}>その他：</span><input type="text" value={typoCustomInputs[i]||""} onChange={e=>{const v=e.target.value;setTypoCustomInputs(prev=>({...prev,[i]:v}));if(v)setTypoSelections(prev=>{const n={...prev};delete n[i];return n})}} placeholder="自由に入力..." style={{flex:1,padding:"4px 8px",borderRadius:8,border:`1.5px solid ${typoCustomInputs[i]?.trim()?C.p+"66":C.g300}`,background:typoCustomInputs[i]?.trim()?"#f7fee7":C.w,fontSize:12,fontFamily:"inherit",outline:"none"}}/></div>{typoSelections[i]!==undefined&&c.candidates[typoSelections[i]]&&<div style={{fontSize:11,color:C.g500,marginTop:6,marginBottom:2,paddingLeft:4}}>💡 {c.candidates[typoSelections[i]].reason}</div>}{(typoSelections[i]!==undefined||typoCustomInputs[i]?.trim())&&<button onClick={()=>{const cc=typoModal[i];const toVal=typoCustomInputs[i]?.trim()||(typoSelections[i]!==undefined&&cc.candidates[typoSelections[i]]?cc.candidates[typoSelections[i]].to:null);if(toVal){dictAddEntry(cc.from,toVal)}setTypoModal(prev=>{if(!prev)return null;const n=[...prev];n.splice(i,1);if(!n.length)return null;return n});setTypoSelections(prev=>{const ns={};Object.keys(prev).forEach(k=>{const ki=Number(k);if(ki<i)ns[ki]=prev[ki];else if(ki>i)ns[ki-1]=prev[ki]});return ns});setTypoCustomInputs(prev=>{const ns={};Object.keys(prev).forEach(k=>{const ki=Number(k);if(ki<i)ns[ki]=prev[ki];else if(ki>i)ns[ki-1]=prev[ki]});return ns});sSt("✓ 辞書に追加しました")}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginTop:6}}>✓ これで登録</button>}</div>))}{typoModal.length>1&&<div style={{marginTop:10,display:"flex",gap:8}}><button onClick={applyAllTypos} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:C.p,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 選択済みをすべて登録（{typoModal.filter((_,i)=>typoSelections[i]!==undefined||typoCustomInputs[i]?.trim()).length}/{typoModal.length}件）</button><button onClick={()=>setTypoModal(null)} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>閉じる</button></div>}</div></div>;
 // === SHORTCUTS PAGE ===
 if(page==="shortcuts")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}><div style={card}>
@@ -1790,6 +1791,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>setFavModal(null)} style={{width:"100%",padding:"8px",borderRadius:10,border:"1px solid rgba(160,220,100,0.2)",background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
 </div></div>}
 {typoModalEl}
+{noiseModalEl}
 </div>);
 
 // === FAVORITES PAGE ===
@@ -2659,6 +2661,7 @@ finally{setMinTypoLd(false)}
 </div>}
 </div>
 {typoModalEl}
+{noiseModalEl}
 </div></div>);
 
 // === COUNSELING ANALYSIS ===
@@ -3031,27 +3034,7 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
   )}
 </div>
 
-{/* ノイズ候補モーダル */}
-{noiseModal&&noiseCandidates.length>0&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setNoiseModal(false)}>
-  <div style={{background:"#fff",borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-      <div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🚫 ノイズ候補（{noiseCandidates.length}件）</div>
-      <button onClick={()=>setNoiseModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
-    </div>
-    <p style={{fontSize:12,color:C.g500,marginBottom:12}}>AIが検出したノイズ候補です。登録するとこのフレーズを含む行が書き起こしから自動除去されます。</p>
-    {noiseCandidates.map((c,i)=>(
-      <div key={i} style={{marginBottom:10,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50}}>
-        <div style={{fontSize:13,fontWeight:600,color:"#dc2626",marginBottom:4}}>🚫 {c.text}</div>
-        <div style={{fontSize:11,color:C.g500,marginBottom:8}}>💡 {c.reason}</div>
-        <button onClick={()=>{addNoisePattern(c.text);setNoiseCandidates(prev=>prev.filter((_,j)=>j!==i));if(noiseCandidates.length<=1)setNoiseModal(false)}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 登録する</button>
-      </div>
-    ))}
-    <div style={{marginTop:12,display:"flex",gap:8}}>
-      <button onClick={()=>{noiseCandidates.forEach(c=>addNoisePattern(c.text));setNoiseModal(false);setNoiseCandidates([])}} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:C.p,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ すべて登録（{noiseCandidates.length}件）</button>
-      <button onClick={()=>{setNoiseModal(false);setNoiseCandidates([])}} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>スキップ</button>
-    </div>
-  </div>
-</div>}
+{noiseModalEl}
 
 <div style={{...card,marginTop:12}}>
 <h3 style={{fontSize:mob?14:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🔤 フォント選択</h3>
