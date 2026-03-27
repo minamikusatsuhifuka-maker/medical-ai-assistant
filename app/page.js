@@ -3022,13 +3022,14 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
     <button onClick={()=>{addNoisePattern(newNoiseInput);setNewNoiseInput("")}} disabled={!newNoiseInput.trim()} style={{padding:"8px 14px",borderRadius:10,border:"none",background:newNoiseInput.trim()?C.p:C.g200,color:newNoiseInput.trim()?C.w:C.g400,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:newNoiseInput.trim()?"pointer":"default"}}>＋ 追加</button>
   </div>
 
-  {/* 登録済みパターン一覧 */}
+  {/* 登録済みパターン一覧（スクロール式リスト） */}
   {noisePatterns.length>0?(
-    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+    <div style={{maxHeight:280,overflowY:"auto",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w}}>
       {noisePatterns.map((p,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:8,background:"#fee2e2",border:"1px solid #fca5a5"}}>
-          <span style={{fontSize:12,color:"#991b1b"}}>{p}</span>
-          <button onClick={()=>removeNoisePattern(i)} style={{padding:"0 4px",border:"none",background:"none",color:"#dc2626",fontSize:14,cursor:"pointer",lineHeight:1}}>×</button>
+        <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderBottom:i<noisePatterns.length-1?`1px solid ${C.g200}`:"none",background:i%2===0?C.g50:C.w}}>
+          <span style={{fontSize:12,color:"#dc2626",flexShrink:0}}>🚫</span>
+          <span style={{fontSize:12,color:C.text,flex:1,wordBreak:"break-all",lineHeight:1.5}}>{p}</span>
+          <button onClick={()=>removeNoisePattern(i)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid #fca5a5`,background:"#fff1f2",color:"#dc2626",fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>削除</button>
         </div>
       ))}
     </div>
