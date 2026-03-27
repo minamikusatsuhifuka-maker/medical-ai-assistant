@@ -475,8 +475,13 @@ const[shortcuts,setShortcuts]=useState(DEFAULT_SHORTCUTS);
 const[fontSize,setFontSize]=useState("medium");
 const[fontFamily,setFontFamily]=useState("Zen Maru Gothic");
 const[snippetFontSize,setSnippetFontSize]=useState(14);
+const[noisePatterns,setNoisePatterns]=useState([]);
+const[noiseScanLd,setNoiseScanLd]=useState(false);
+const[noiseCandidates,setNoiseCandidates]=useState([]);
+const[noiseModal,setNoiseModal]=useState(false);
+const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np))}catch{}},[]);
 useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}})()},[]);
 useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.documentElement.style.fontSize=sizes[fontSize]||"14px";const zooms={small:"0.85",medium:"1",large:"1.2"};document.documentElement.style.zoom=zooms[fontSize]||"1";localStorage.setItem("mk_fontSize",fontSize)},[fontSize]);
 useEffect(()=>{document.documentElement.style.fontFamily=`'${fontFamily}', sans-serif`;document.body.style.fontFamily=`'${fontFamily}', sans-serif`;localStorage.setItem("mk_fontFamily",fontFamily)},[fontFamily]);
@@ -1200,6 +1205,13 @@ const filterTranscriptNoise=(text)=>{
   const filtered=lines.filter(line=>{
     const t=line.trim();
     if(!t)return false;
+    // カスタム登録パターンチェック（完全一致・部分一致）
+    for(const np of noisePatterns){
+      if(!np)continue;
+      try{
+        if(t===np||t.includes(np))return false;
+      }catch{}
+    }
 
     // ===== 動画・映像系フレーズ =====
     const videoPatterns=[
@@ -1251,6 +1263,9 @@ const filterTranscriptNoise=(text)=>{
 const toKatakana=(s)=>s.replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96));
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else{r=r.split(from).join(to)}}return r};
 const saveDictLocal=(d)=>{try{localStorage.setItem("mk_dict",JSON.stringify(d))}catch{}};
+const saveNoisePatternsLocal=(patterns)=>{
+  try{localStorage.setItem("mk_noisePatterns",JSON.stringify(patterns))}catch{}
+};
 const dictAddSupabase=async(from,to)=>{if(!supabase)return;try{await supabase.from("dictionary").insert({from_text:from,to_text:to})}catch(e){console.error("dict insert error:",e)}};
 const dictDelSupabase=async(from)=>{if(!supabase)return;try{await supabase.from("dictionary").delete().eq("from_text",from)}catch(e){console.error("dict delete error:",e)}};
 const dictAddEntry=(from,to)=>{const nd=[[from,to],...dict];setDict(nd);saveDictLocal(nd);dictAddSupabase(from,to)};
@@ -1268,6 +1283,39 @@ const runTypoCheckOut=async()=>{const t=out;if(!t||!t.trim()){sSt("要約テキ�
 const applyTypoCorrection=(idx,candidateIdx)=>{try{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates?.[candidateIdx];if(!candidate){console.error("applyTypoCorrection: invalid candidate",{idx,candidateIdx,c});return}if(typoTarget==="out"){sOut(prev=>prev.split(c.from).join(candidate.to))}else if(typoTarget==="minOut"){setMinOut(prev=>prev.split(c.from).join(candidate.to))}else if(typoTarget==="minInp"){setMinInp(prev=>prev.split(c.from).join(candidate.to))}else{sInp(prev=>prev.split(c.from).join(candidate.to))}dictAddEntry(c.from,candidate.to)}catch(e){console.error("applyTypoCorrection error:",e)}};
 const applyAllTypos=()=>{try{if(!typoModal)return;let t=typoTarget==="out"?out:typoTarget==="minOut"?minOut:typoTarget==="minInp"?minInp:iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoCustomInputs[i]?.trim()){const customTo=typoCustomInputs[i].trim();t=t.split(c.from).join(customTo);applied.push([c.from,customTo])}else if(typoSelections[i]!==undefined){const candidate=c.candidates?.[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});if(typoTarget==="out"){sOut(t)}else if(typoTarget==="minOut"){setMinOut(t)}else if(typoTarget==="minInp"){setMinInp(t)}else{sInp(t)}if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);saveDictLocal(newDict);applied.forEach(([f,to])=>dictAddSupabase(f,to))}setTypoModal(null);setTypoCustomInputs({});sSt(`✓ ${applied.length}件の修正を登録しました`)}catch(e){console.error("applyAllTypos error:",e);sSt("登録エラー: "+e.message)}};
 const runHistTypoCheck=async()=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setHistTypoLd(true);setTypoTarget("hist");sSt(`🔬 スキャン中... (${selected.length}件)`);try{const combined=selected.map(r=>[r.input_text||"",r.output_text||""].filter(Boolean).join("\n")).join("\n---\n");const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:combined,dictionary:dict.map(([from,to])=>({from,to}))})});if(!r.ok){sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const registeredFroms=new Set(dict.map(([f])=>f));const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(newCorrections);sSt("校正候補が見つかりました")}catch(e){sSt("校正エラー: "+e.message)}finally{setHistTypoLd(false)}};
+const runNoiseScan=async()=>{
+  const recentText=[inp,minInp].filter(Boolean).join("\n---\n");
+  if(!recentText.trim()){sSt("書き起こしテキストがありません");return}
+  setNoiseScanLd(true);sSt("🔍 ノイズ候補を分析中...");
+  try{
+    const res=await fetch("/api/scan-noise",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text:recentText,registered:noisePatterns})
+    });
+    const d=await res.json();
+    if(d.error){sSt("エラー: "+d.error);return}
+    if(!d.candidates||d.candidates.length===0){sSt("✓ 新しいノイズ候補は見つかりませんでした");return}
+    setNoiseCandidates(d.candidates);
+    setNoiseModal(true);
+    sSt("ノイズ候補が見つかりました");
+  }catch(e){sSt("エラー: "+e.message)}
+  finally{setNoiseScanLd(false)}
+};
+const addNoisePattern=(pattern)=>{
+  if(!pattern||!pattern.trim())return;
+  const p=pattern.trim();
+  if(noisePatterns.includes(p)){sSt("既に登録されています");return}
+  const updated=[...noisePatterns,p];
+  setNoisePatterns(updated);
+  saveNoisePatternsLocal(updated);
+  sSt("✓ ノイズパターンを登録しました: "+p);
+};
+const removeNoisePattern=(idx)=>{
+  const updated=noisePatterns.filter((_,i)=>i!==idx);
+  setNoisePatterns(updated);
+  saveNoisePatternsLocal(updated);
+};
 const BULK_MODES=[{id:"treatment",label:"🏥 疾患別治療説明・プランまとめ"},{id:"patient",label:"👤 患者説明文の自動生成"},{id:"protocol",label:"📋 治療プロトコル抽出"},{id:"faq",label:"❓ よくある質問FAQ生成"},{id:"training",label:"📚 スタッフ向け研修資料生成"}];
 const runBulkAnalyze=async(mode)=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setBulkMenu(false);setBulkLd(true);const modeLabel=BULK_MODES.find(m=>m.id===mode)?.label||mode;sSt(`⏳ 分析中... (${selected.length}件)`);try{const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));const r=await fetch("/api/bulk-analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records,mode})});if(!r.ok){sSt("分析エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("分析エラー: "+d.error);return}setBulkResult({title:modeLabel,content:d.result||""});sSt("分析完了")}catch(e){sSt("分析エラー: "+e.message)}finally{setBulkLd(false)}};
 
@@ -2909,6 +2957,67 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <span style={{color:C.g400,fontSize:11}}>→</span>
 <span style={{flex:1,fontSize:12,color:C.g900,fontWeight:600}}>{d[1]}</span>
 <button onClick={()=>dictDelEntry(i)} style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:C.err,fontFamily:"inherit",cursor:"pointer"}}>✕</button></div>))}</div></div>
+
+{/* ノイズフィルター管理 */}
+<div style={{marginTop:24,padding:16,borderRadius:14,border:`1px solid ${C.g200}`,background:C.g50}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+    <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>🚫 書き起こしノイズフィルター（{noisePatterns.length}件）</h3>
+    <button onClick={runNoiseScan} disabled={noiseScanLd} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.p}`,background:noiseScanLd?C.g200:C.pLL,fontSize:12,fontWeight:600,color:noiseScanLd?C.g400:C.pD,fontFamily:"inherit",cursor:noiseScanLd?"wait":"pointer"}}>
+      {noiseScanLd?"🔍 分析中...":"🔍 AIノイズ候補をピックアップ"}
+    </button>
+  </div>
+  <p style={{fontSize:12,color:C.g500,marginBottom:12}}>登録したフレーズは書き起こし時に自動除去されます。AIが候補を自動検出することもできます。</p>
+
+  {/* 手動追加 */}
+  <div style={{display:"flex",gap:6,marginBottom:12}}>
+    <input
+      type="text"
+      value={newNoiseInput}
+      onChange={e=>setNewNoiseInput(e.target.value)}
+      onKeyDown={e=>{if(e.key==="Enter"&&newNoiseInput.trim()){addNoisePattern(newNoiseInput);setNewNoiseInput("")}}}
+      placeholder="除去したいフレーズを入力（例：次の映像でお会いしましょう）"
+      style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:13,fontFamily:"inherit",outline:"none"}}
+    />
+    <button onClick={()=>{addNoisePattern(newNoiseInput);setNewNoiseInput("")}} disabled={!newNoiseInput.trim()} style={{padding:"8px 14px",borderRadius:10,border:"none",background:newNoiseInput.trim()?C.p:C.g200,color:newNoiseInput.trim()?C.w:C.g400,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:newNoiseInput.trim()?"pointer":"default"}}>＋ 追加</button>
+  </div>
+
+  {/* 登録済みパターン一覧 */}
+  {noisePatterns.length>0?(
+    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+      {noisePatterns.map((p,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:8,background:"#fee2e2",border:"1px solid #fca5a5"}}>
+          <span style={{fontSize:12,color:"#991b1b"}}>{p}</span>
+          <button onClick={()=>removeNoisePattern(i)} style={{padding:"0 4px",border:"none",background:"none",color:"#dc2626",fontSize:14,cursor:"pointer",lineHeight:1}}>×</button>
+        </div>
+      ))}
+    </div>
+  ):(
+    <p style={{fontSize:12,color:C.g400,margin:0}}>登録済みのパターンはありません。AIピックアップまたは手動で追加してください。</p>
+  )}
+</div>
+
+{/* ノイズ候補モーダル */}
+{noiseModal&&noiseCandidates.length>0&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setNoiseModal(false)}>
+  <div style={{background:"#fff",borderRadius:16,padding:20,maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{fontSize:15,fontWeight:700,color:C.pDD}}>🚫 ノイズ候補（{noiseCandidates.length}件）</div>
+      <button onClick={()=>setNoiseModal(false)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+    </div>
+    <p style={{fontSize:12,color:C.g500,marginBottom:12}}>AIが検出したノイズ候補です。登録するとこのフレーズを含む行が書き起こしから自動除去されます。</p>
+    {noiseCandidates.map((c,i)=>(
+      <div key={i} style={{marginBottom:10,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50}}>
+        <div style={{fontSize:13,fontWeight:600,color:"#dc2626",marginBottom:4}}>🚫 {c.text}</div>
+        <div style={{fontSize:11,color:C.g500,marginBottom:8}}>💡 {c.reason}</div>
+        <button onClick={()=>{addNoisePattern(c.text);setNoiseCandidates(prev=>prev.filter((_,j)=>j!==i));if(noiseCandidates.length<=1)setNoiseModal(false)}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 登録する</button>
+      </div>
+    ))}
+    <div style={{marginTop:12,display:"flex",gap:8}}>
+      <button onClick={()=>{noiseCandidates.forEach(c=>addNoisePattern(c.text));setNoiseModal(false);setNoiseCandidates([])}} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:C.p,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ すべて登録（{noiseCandidates.length}件）</button>
+      <button onClick={()=>{setNoiseModal(false);setNoiseCandidates([])}} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>スキップ</button>
+    </div>
+  </div>
+</div>}
+
 <div style={{...card,marginTop:12}}>
 <h3 style={{fontSize:mob?14:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🔤 フォント選択</h3>
 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
