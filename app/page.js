@@ -1390,7 +1390,7 @@ const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済
 
 // PiP
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("Chrome 116以降で利用可能です");return}
-const pw=await window.documentPictureInPicture.requestWindow({width:270,height:175});
+const pw=await window.documentPictureInPicture.requestWindow({width:270,height:220});
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
 const pipTheme=localStorage.getItem('mk_theme')||'pearl';
@@ -1400,30 +1400,85 @@ const pipBorderMap={'pearl':'rgba(160,220,100,0.4)','ultra-cream':'#ece4d4','sof
 const pipBg=pipBgMap[pipTheme]||pipBgMap['pearl'];
 const pipText=pipTextMap[pipTheme]||pipTextMap['pearl'];
 const pipBorder=pipBorderMap[pipTheme]||pipBorderMap['pearl'];
-pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:${pipBg};color:${pipText};padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;border:1px solid ${pipBorder}">
-<div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;opacity:.5">${rmName}</span>
-<input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:1px 5px;border-radius:4px;border:1px solid ${pipBorder};font-size:9px;background:rgba(255,255,255,0.6);color:${pipText};outline:none"/>
-<span id="pip-status" style="font-size:9px;font-weight:600;color:${pipText}88">停止</span></div>
-<div style="display:flex;align-items:center;gap:6px"><div id="pip-timer" style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">00:00</div>
-<div style="flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden"><div id="pip-level" style="width:0%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.15s"></div></div></div>
-<div id="pip-transcript" style="height:18px;overflow:hidden;border-radius:4px;background:rgba(0,0,0,.06);padding:1px 6px;font-size:9px;color:${pipText};white-space:nowrap;text-overflow:ellipsis"></div>
-<div id="pip-tpl" style="display:flex;gap:3px;justify-content:center;margin-bottom:2px">
-<button id="pip-tpl-soap" style="padding:2px 8px;border-radius:6px;border:1px solid ${pipBorder};background:rgba(255,255,255,0.5);color:${pipText};font-size:9px;font-weight:600;cursor:pointer">詳細</button>
-<button id="pip-tpl-std" style="padding:2px 8px;border-radius:6px;border:2px solid ${pipText};background:rgba(255,255,255,0.7);color:${pipText};font-size:9px;font-weight:700;cursor:pointer">標準</button>
-<button id="pip-tpl-min" style="padding:2px 8px;border-radius:6px;border:1px solid ${pipBorder};background:rgba(255,255,255,0.5);color:${pipText};font-size:9px;font-weight:600;cursor:pointer">簡潔</button>
+pw.document.body.innerHTML=`<div id="pip-root" style="font-family:sans-serif;background:${pipBg};color:${pipText};padding:6px 10px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;border:1px solid ${pipBorder};transition:background 0.3s">
+<div style="display:flex;align-items:center;gap:4px">
+<span style="font-size:9px;opacity:.5">${rmName}</span>
+<input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:2px 6px;border-radius:4px;border:1px solid ${pipBorder};font-size:9px;background:rgba(255,255,255,0.6);color:${pipText};outline:none"/>
+<span id="pip-status" style="font-size:9px;font-weight:600;color:${pipText}88">待機中</span>
 </div>
-<div style="display:flex;gap:4px;justify-content:center">
-<button id="pip-rec" style="padding:2px 14px;border-radius:8px;border:2px solid ${pipText};background:rgba(255,255,255,0.6);color:${pipText};font-size:13px;font-weight:700;cursor:pointer">開始</button>
-<button id="pip-resume" style="padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(34,197,94,.3);color:#fff;font-size:10px;font-weight:700;cursor:pointer;display:none">▶再開</button>
-<button id="pip-pause" style="padding:2px 10px;border-radius:8px;border:none;background:#fbbf24;color:#78350f;font-size:13px;font-weight:700;cursor:pointer;display:none">一時停止</button>
-<button id="pip-sum" style="padding:2px 10px;border-radius:8px;border:none;background:${pipText};color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約</button>
-<button id="pip-stop" style="padding:2px 10px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">停止</button>
-<button id="pip-next" style="padding:2px 12px;border-radius:8px;border:2px solid ${pipText};background:rgba(255,255,255,0.6);color:${pipText};font-size:12px;font-weight:700;cursor:pointer">次へ▶</button></div>
-<div id="pip-shortcuts" style="display:flex;gap:3px;flex-wrap:wrap;overflow:hidden;max-height:24px;margin-top:2px;padding-top:2px;border-top:1px solid ${pipBorder}"></div>
-<div id="pip-snippets" style="display:flex;gap:4px;flex-wrap:wrap;overflow:hidden;max-height:28px;margin-top:4px;padding-top:4px;border-top:1px solid ${pipBorder}"></div></div>`;
+<div style="display:flex;align-items:center;gap:6px">
+<div id="pip-timer" style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">00:00</div>
+<div style="flex:1;height:3px;border-radius:2px;background:rgba(0,0,0,.08);overflow:hidden"><div id="pip-level" style="width:0%;height:100%;background:#22c55e;border-radius:2px;transition:width 0.15s"></div></div>
+</div>
+<div id="pip-transcript" style="height:36px;overflow:hidden;border-radius:4px;background:rgba(0,0,0,.05);padding:3px 6px;font-size:9px;color:${pipText};line-height:1.5;transition:background 0.3s"></div>
+<div id="pip-tpl" style="display:flex;gap:3px;justify-content:center">
+<button id="pip-tpl-soap" style="padding:2px 8px;border-radius:5px;border:1px solid ${pipBorder};background:rgba(255,255,255,0.5);color:${pipText};font-size:9px;font-weight:600;cursor:pointer">詳細</button>
+<button id="pip-tpl-std" style="padding:2px 8px;border-radius:5px;border:2px solid ${pipText};background:rgba(255,255,255,0.7);color:${pipText};font-size:9px;font-weight:700;cursor:pointer">標準</button>
+<button id="pip-tpl-min" style="padding:2px 8px;border-radius:5px;border:1px solid ${pipBorder};background:rgba(255,255,255,0.5);color:${pipText};font-size:9px;font-weight:600;cursor:pointer">簡潔</button>
+</div>
+<div id="pip-btn-area" style="display:flex;flex-direction:column;gap:3px">
+<button id="pip-rec" style="width:100%;padding:6px;border-radius:8px;border:2px solid ${pipText};background:rgba(255,255,255,0.6);color:${pipText};font-size:13px;font-weight:700;cursor:pointer">録音開始</button>
+<button id="pip-sum" style="width:100%;padding:6px;border-radius:8px;border:none;background:${pipText};color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:none">要約して次へ ▶</button>
+<button id="pip-pause" style="width:100%;padding:5px;border-radius:8px;border:none;background:#fbbf24;color:#78350f;font-size:11px;font-weight:700;cursor:pointer;display:none">⏸ 一時停止</button>
+<button id="pip-resume" style="width:100%;padding:5px;border-radius:8px;border:none;background:#22c55e;color:#fff;font-size:11px;font-weight:700;cursor:pointer;display:none">▶ 再開</button>
+</div>
+<div id="pip-done-area" style="display:none;flex-direction:column;gap:3px">
+<div id="pip-done-text" style="font-size:9px;background:rgba(37,99,235,0.08);border-radius:4px;padding:4px 6px;color:#1e3a8a;line-height:1.5;height:50px;overflow:hidden"></div>
+<div id="pip-auto-bar-wrap" style="height:3px;background:rgba(0,0,0,0.08);border-radius:2px;overflow:hidden"><div id="pip-auto-bar" style="height:100%;width:100%;background:#3b82f6;border-radius:2px;transition:width linear"></div></div>
+<div id="pip-auto-label" style="font-size:9px;color:#1e40af;text-align:center"></div>
+<div style="display:flex;gap:4px">
+<button id="pip-next-now" style="flex:1;padding:5px;border-radius:7px;border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.1);color:#1e40af;font-size:11px;font-weight:700;cursor:pointer">今すぐ次へ</button>
+<button id="pip-wait" style="flex:1;padding:5px;border-radius:7px;border:1px solid rgba(0,0,0,0.1);background:transparent;color:#6b7280;font-size:11px;font-weight:600;cursor:pointer">待機</button>
+</div>
+</div>
+<div id="pip-snippets" style="display:flex;gap:3px;flex-wrap:wrap;padding-top:3px;border-top:1px solid ${pipBorder}"></div>
+</div>`;
 pw.document.head.innerHTML=`<style>::placeholder{color:${pipText}88}</style>`;
 const pipPiEl=pw.document.getElementById("pip-pid");if(pipPiEl){pipPiEl.value=pId;pipPiEl.addEventListener("input",e=>{sPId(e.target.value)})}
-const pipBtnUpdate=()=>{const d=pipRef.current;if(!d)return;const r=rsRef.current;const rb=d.getElementById("pip-rec"),pb=d.getElementById("pip-pause"),sb=d.getElementById("pip-stop"),smb=d.getElementById("pip-sum");if(!rb)return;rb.style.display=r==="inactive"?"inline-block":"none";pb.style.display=r!=="inactive"?"inline-block":"none";if(r==="recording"){pb.textContent="一時停止";pb.style.background="#fbbf24";pb.style.color="#78350f";pb.style.border="none"}else if(r==="paused"){pb.textContent="再開";pb.style.background="#d8f4a8";pb.style.color="#2a5018";pb.style.border="2px solid #2a5018"}sb.style.display=r!=="inactive"?"inline-block":"none";smb.style.display=r!=="inactive"?"inline-block":"none";const resumeBtn=d.getElementById("pip-resume");if(resumeBtn){if(r==="recording"){resumeBtn.style.display="none"}else if(iR.current&&iR.current.trim()){resumeBtn.style.display="inline-block"}else{resumeBtn.style.display="none"}}};
+let pipAutoTimer=null;
+const pipBtnUpdate=()=>{
+  const d=pipRef.current;if(!d)return;
+  const r=rsRef.current;
+  const root=d.getElementById("pip-root");
+  const recBtn=d.getElementById("pip-rec");
+  const sumBtn=d.getElementById("pip-sum");
+  const pauseBtn=d.getElementById("pip-pause");
+  const resumeBtn=d.getElementById("pip-resume");
+  const btnArea=d.getElementById("pip-btn-area");
+  const doneArea=d.getElementById("pip-done-area");
+  const statusEl=d.getElementById("pip-status");
+  const tplArea=d.getElementById("pip-tpl");
+  if(!recBtn)return;
+
+  if(r==="inactive"){
+    root.style.background=pipBg;
+    btnArea.style.display="flex";
+    doneArea.style.display="none";
+    recBtn.style.display="block";
+    sumBtn.style.display="none";
+    pauseBtn.style.display="none";
+    resumeBtn.style.display="none";
+    if(statusEl)statusEl.textContent="待機中";
+  }else if(r==="recording"){
+    root.style.background="linear-gradient(135deg,#d1fae5,#a7f3d0)";
+    btnArea.style.display="flex";
+    doneArea.style.display="none";
+    recBtn.style.display="none";
+    sumBtn.style.display="block";
+    pauseBtn.style.display="block";
+    resumeBtn.style.display="none";
+    if(statusEl){statusEl.textContent="録音中";statusEl.style.color="#065f46"}
+  }else if(r==="paused"){
+    root.style.background="linear-gradient(135deg,#fef9c3,#fde68a)";
+    btnArea.style.display="flex";
+    doneArea.style.display="none";
+    recBtn.style.display="none";
+    sumBtn.style.display="block";
+    pauseBtn.style.display="none";
+    resumeBtn.style.display="block";
+    if(statusEl){statusEl.textContent="一時停止";statusEl.style.color="#92400e"}
+  }
+};
 const pipTplUpdate=()=>{const d2=pipRef.current;if(!d2)return;const soapB=d2.getElementById("pip-tpl-soap");const stdB=d2.getElementById("pip-tpl-std");const minB=d2.getElementById("pip-tpl-min");if(!soapB||!stdB||!minB)return;const cur=tidRef.current;[{btn:soapB,id:"soap"},{btn:stdB,id:"soap-std"},{btn:minB,id:"soap-min"}].forEach(({btn,id})=>{if(cur===id){btn.style.border=`2px solid ${pipText}`;btn.style.background="rgba(255,255,255,0.8)";btn.style.fontWeight="700";btn.style.color=pipText}else{btn.style.border=`1px solid ${pipBorder}`;btn.style.background="rgba(255,255,255,0.5)";btn.style.fontWeight="600";btn.style.color=pipText}})};
 pw.document.getElementById("pip-tpl-soap").onclick=()=>{sTid("soap");setTimeout(pipTplUpdate,100)};
 pw.document.getElementById("pip-tpl-std").onclick=()=>{sTid("soap-std");setTimeout(pipTplUpdate,100)};
@@ -1432,9 +1487,34 @@ pipTplUpdate();
 pw.document.getElementById("pip-rec").onclick=()=>{if(iR.current&&iR.current.trim()){const d=pipRef.current;if(d){try{const old=d.getElementById("pip-alert");if(old)old.remove()}catch{}const div=d.createElement("div");div.id="pip-alert";div.style.cssText="position:fixed;top:6px;left:50%;transform:translateX(-50%);width:90%;background:#f59e0b;color:#fff;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:700;z-index:9999;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3)";div.textContent="⚠️ 前のカルテが残っています → 次へで消去";d.body.appendChild(div)}return}go();setTimeout(pipBtnUpdate,500)};
 pw.document.getElementById("pip-pause").onclick=()=>{if(rsRef.current==="recording"){pause()}else{resume()}setTimeout(pipBtnUpdate,300)};
 pw.document.getElementById("pip-resume").onclick=()=>{go();setTimeout(pipBtnUpdate,500)};
-pw.document.getElementById("pip-stop").onclick=()=>{stop();setTimeout(pipBtnUpdate,300)};
-pw.document.getElementById("pip-sum").onclick=()=>{const d=pipRef.current;if(!d)return;sumDoneRef.current=false;try{const old=d.getElementById("pip-alert");if(old)old.remove();const oldBar=d.getElementById("pip-progress");if(oldBar)oldBar.remove()}catch{};const bar=d.createElement("div");bar.id="pip-progress";bar.style.cssText="position:fixed;top:0;left:0;width:100%;height:5px;z-index:9999;background:#e7e5e4";const inner=d.createElement("div");inner.style.cssText="height:100%;width:5%;background:linear-gradient(90deg,#84cc16,#22c55e);border-radius:2px;transition:width 0.3s ease";bar.appendChild(inner);d.body.appendChild(bar);const loading=d.createElement("div");loading.id="pip-loading";loading.style.cssText="position:fixed;top:4px;right:4px;width:auto;max-width:60%;background:#f59e0b;color:#fff;padding:6px 10px;border-radius:10px;font-size:10px;font-weight:700;z-index:9999;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3)";loading.textContent="⏳ 要約中...";d.body.appendChild(loading);stopSum();setTimeout(pipBtnUpdate,500);let pct=5;const progI=setInterval(()=>{if(sumDoneRef.current){pct=100;inner.style.width="100%";clearInterval(progI)}else if(pct<90){pct+=2;inner.style.width=pct+"%"}},300);const checkDone=setInterval(()=>{if(sumDoneRef.current){clearInterval(checkDone);clearInterval(progI);inner.style.width="100%";try{const ld=d.getElementById("pip-loading");if(ld)ld.remove()}catch{};setTimeout(()=>{try{bar.remove()}catch{};const outputText=oR.current||"";try{const old2=d.getElementById("pip-alert");if(old2)old2.remove()}catch{};try{const ta=document.createElement('textarea');ta.value=outputText;ta.style.cssText='position:fixed;left:-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta)}catch{try{navigator.clipboard.writeText(outputText)}catch{}}const alertDiv=d.createElement("div");alertDiv.id="pip-alert";alertDiv.style.cssText="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.85);color:#fff;z-index:9999;display:flex;flex-direction:column;padding:8px;box-sizing:border-box;overflow:hidden";const header=d.createElement("div");header.style.cssText="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-shrink:0";const title=d.createElement("div");title.style.cssText="font-size:11px;font-weight:700;color:#22c55e";title.textContent="✅ 要約完了";const closeBtn=d.createElement("button");closeBtn.style.cssText="padding:2px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:10px;font-weight:700;cursor:pointer";closeBtn.textContent="✕ 閉じる";closeBtn.onclick=()=>{alertDiv.remove()};header.appendChild(title);header.appendChild(closeBtn);alertDiv.appendChild(header);const content=d.createElement("div");content.style.cssText="flex:1;overflow-y:auto;font-size:10px;line-height:1.5;color:#e5e7eb;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,.08);border-radius:6px;padding:6px;margin-bottom:4px";content.textContent=outputText||"（要約なし）";alertDiv.appendChild(content);const btnRow=d.createElement("div");btnRow.style.cssText="display:flex;gap:4px;flex-shrink:0";const copyBtn2=d.createElement("button");copyBtn2.style.cssText="flex:1;padding:4px;border-radius:6px;border:none;background:#22c55e;color:#fff;font-size:10px;font-weight:700;cursor:pointer";copyBtn2.textContent="📋 コピー";copyBtn2.onclick=()=>{try{const ta=document.createElement('textarea');ta.value=outputText;ta.style.cssText='position:fixed;left:-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);copyBtn2.textContent='✅ コピー済み';copyBtn2.style.background='#16a34a'}catch{try{navigator.clipboard.writeText(outputText)}catch{}}};btnRow.appendChild(copyBtn2);const nextBtn2=d.createElement("button");nextBtn2.style.cssText="flex:1;padding:4px;border-radius:6px;border:2px solid #fff;background:rgba(255,255,255,.15);color:#fff;font-size:10px;font-weight:700;cursor:pointer";nextBtn2.textContent="次へ ▶";nextBtn2.onclick=()=>{alertDiv.remove();const nb=d.getElementById('pip-next');if(nb)nb.click()};btnRow.appendChild(nextBtn2);alertDiv.appendChild(btnRow);d.body.appendChild(alertDiv)},1000)}},500)};
-pw.document.getElementById("pip-next").onclick=()=>{clr();const d=pipRef.current;if(d){const pi=d.getElementById("pip-pid");if(pi)pi.value="";try{const al=d.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pb=d.getElementById("pip-progress");if(pb)pb.remove()}catch{}}setTimeout(pipBtnUpdate,300)};
+pw.document.getElementById("pip-sum").onclick=()=>{const d=pipRef.current;if(!d)return;sumDoneRef.current=false;try{const old=d.getElementById("pip-alert");if(old)old.remove();const oldBar=d.getElementById("pip-progress");if(oldBar)oldBar.remove()}catch{};const bar=d.createElement("div");bar.id="pip-progress";bar.style.cssText="position:fixed;top:0;left:0;width:100%;height:5px;z-index:9999;background:#e7e5e4";const inner=d.createElement("div");inner.style.cssText="height:100%;width:5%;background:linear-gradient(90deg,#84cc16,#22c55e);border-radius:2px;transition:width 0.3s ease";bar.appendChild(inner);d.body.appendChild(bar);const loading=d.createElement("div");loading.id="pip-loading";loading.style.cssText="position:fixed;top:4px;right:4px;width:auto;max-width:60%;background:#f59e0b;color:#fff;padding:6px 10px;border-radius:10px;font-size:10px;font-weight:700;z-index:9999;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3)";loading.textContent="⏳ 要約中...";d.body.appendChild(loading);stopSum();setTimeout(pipBtnUpdate,500);let pct=5;const progI=setInterval(()=>{if(sumDoneRef.current){pct=100;inner.style.width="100%";clearInterval(progI)}else if(pct<90){pct+=2;inner.style.width=pct+"%"}},300);const checkDone=setInterval(()=>{if(sumDoneRef.current){clearInterval(checkDone);clearInterval(progI);inner.style.width="100%";try{const ld=d.getElementById("pip-loading");if(ld)ld.remove()}catch{};setTimeout(()=>{try{bar.remove()}catch{};// 要約完了状態を表示
+const d2=pipRef.current;if(!d2)return;
+const root2=d2.getElementById("pip-root");
+const btnArea2=d2.getElementById("pip-btn-area");
+const doneArea=d2.getElementById("pip-done-area");
+const doneText=d2.getElementById("pip-done-text");
+const autoBar=d2.getElementById("pip-auto-bar");
+const autoLabel=d2.getElementById("pip-auto-label");
+const nextNow=d2.getElementById("pip-next-now");
+const waitBtn=d2.getElementById("pip-wait");
+if(!doneArea)return;
+root2.style.background="linear-gradient(135deg,#eff6ff,#dbeafe)";
+btnArea2.style.display="none";
+doneArea.style.display="flex";
+const summaryPreview=(oR.current||"").split("\n").slice(0,4).join("\n");
+doneText.textContent=summaryPreview||"（要約完了）";
+// クリップボードコピー
+try{const ta=document.createElement('textarea');ta.value=oR.current||"";ta.style.cssText='position:fixed;left:-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta)}catch{try{navigator.clipboard.writeText(oR.current||"")}catch{}}
+// 5秒カウントダウン
+let count=5;
+autoLabel.textContent=`${count}秒後に次の患者へ自動移行...`;
+autoBar.style.width="100%";
+autoBar.style.transition="width 5s linear";
+setTimeout(()=>{autoBar.style.width="0%"},50);
+const countdown=setInterval(()=>{count--;autoLabel.textContent=count>0?`${count}秒後に次の患者へ自動移行...`:"移行中...";if(count<=0){clearInterval(countdown);const nb=d2.getElementById('pip-next-now');if(nb)nb.click()}},1000);
+pipAutoTimer=countdown;
+nextNow.onclick=()=>{clearInterval(countdown);clr();const pi=d2.getElementById("pip-pid");if(pi)pi.value="";root2.style.background=pipBg;btnArea2.style.display="flex";doneArea.style.display="none";rsRef.current="inactive";pipBtnUpdate()};
+waitBtn.onclick=()=>{clearInterval(countdown);autoLabel.textContent="待機中（手動で「今すぐ次へ」を押してください）";autoBar.style.transition="none";autoBar.style.width="0%"}},1000)}},500)};
 const renderPipSnippets=()=>{const d=pipRef.current;if(!d)return;const c=d.getElementById("pip-snippets");if(!c)return;const sn=snippetsRef.current;const ids=pipSnippetsRef.current;let html="";ids.forEach(idx=>{if(idx<sn.length){html+=`<button data-sn-idx="${idx}" style="padding:1px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.15);color:#fff;font-size:9px;font-weight:600;cursor:pointer">${sn[idx].title}</button>`}});c.innerHTML=html;c.querySelectorAll("button").forEach(b=>{b.onclick=()=>{const idx=parseInt(b.getAttribute("data-sn-idx"));const t=snippetsRef.current[idx];if(t){sOut(o=>o+(o?"\n":"")+t.text);navigator.clipboard.writeText(t.text).catch(()=>{})}}})};
 renderPipSnippets();
 const renderPipShortcuts=()=>{const d=pipRef.current;if(!d)return;const c=d.getElementById("pip-shortcuts");if(!c)return;
