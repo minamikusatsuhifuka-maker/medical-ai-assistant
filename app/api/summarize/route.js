@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 30;
 
-const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書です。以下の音声書き起こしテキストを簡潔に要約してください。`;
+const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書です。以下の音声書き起こしテキストを簡潔に要約してください。
+
+【重要ルール】
+- 「提供された会話は〜」「音声認識の精度が〜」「判別困難な箇所が〜」などの前置き・注釈・免責文は一切書かない
+- 要約内容のみを出力する
+- 書き起こしが不明瞭・短い場合でも、わかる範囲で要約を出力する
+- 要約できない場合は空白のまま返す（説明文は不要）`;
 
 async function callGemini(text, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
