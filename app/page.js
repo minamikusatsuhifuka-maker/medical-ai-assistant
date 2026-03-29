@@ -1210,58 +1210,31 @@ const filteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const dat
 const filterTranscriptNoise=(text)=>{
   if(!text||!text.trim())return "";
 
-  // 1行ずつ判定してノイズ行を除去
   const lines=text.split("\n");
   const filtered=lines.filter(line=>{
     const t=line.trim();
     if(!t)return false;
+
     // カスタム登録パターンチェック（完全一致・部分一致）
     for(const np of noisePatterns){
       if(!np)continue;
-      try{
-        if(t===np||t.includes(np))return false;
-      }catch{}
+      try{if(t===np||t.includes(np))return false}catch{}
     }
 
-    // ===== 動画・映像系フレーズ =====
+    // 動画・映像系のみ除去（診察内容は除去しない）
     const videoPatterns=[
-      /次の映像で/,/また.*映像で/,/映像でお会い/,
-      /ご視聴/,/チャンネル登録/,/高評価/,/通知をオン/,
-      /subscribe/i,/like.*share/i,/see you next/i,
-      /次回もよろしく/,/また.*お会い/,/バイバイ/,
-      /エンディング/,/オープニング/,
+      /次の映像でお会いしましょう/,
+      /ご視聴ありがとう/,
+      /チャンネル登録/,
+      /高評価.*チャンネル/,
+      /subscribe/i,
+      /see you next time/i,
+      /次回もよろしく.*チャンネル/,
     ];
 
-    // ===== SNS・ネット系 =====
-    const snsPatterns=[
-      /フォロー.*ください/,/リツイート/,/シェアして/,
-      /インスタ/,/ツイッター/,/ユーチューブ/,/ティックトック/,
-    ];
-
-    // ===== 完全に無関係な会話パターン =====
-    const irrelevantPatterns=[
-      /^お風呂ですか[？?]?\s*お風呂ですか[？?]?$/,  // 繰り返し
-      /^少々お待ちください$/,
-      /^はい、では大丈夫です$/,
-      /^こんな感じです。?$/,
-      /^分かりました$/,
-      /^前髪を/,
-      /先輩からの結婚/,
-      /後輩育て/,
-      /1ページ前/,
-      /公選用事/,/選挙/,
-      /ママは思い出す/,
-    ];
-
-    // ===== 繰り返しノイズ（同じ内容が2回以上） =====
-    const repeatPattern=/^(.{4,})[？?！!。、\s]*\1[？?！!。、\s]*$/;
-
-    // パターンマッチチェック
-    const allPatterns=[...videoPatterns,...snsPatterns,...irrelevantPatterns];
-    for(const p of allPatterns){
+    for(const p of videoPatterns){
       if(p.test(t))return false;
     }
-    if(repeatPattern.test(t))return false;
 
     return true;
   });
