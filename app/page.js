@@ -2857,9 +2857,33 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <button onClick={()=>{setAsrEngine("whisper");localStorage.setItem("mk_asrEngine","whisper")}} style={{flex:1,padding:"8px",borderRadius:10,border:asrEngine==="whisper"?`2px solid ${C.pD}`:`1px solid ${C.g200}`,background:asrEngine==="whisper"?C.pLL:C.w,fontSize:12,fontWeight:asrEngine==="whisper"?700:500,color:asrEngine==="whisper"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>
 🤖 Whisper<br/><span style={{fontSize:10,fontWeight:400}}>OpenAI（現在の標準）</span>
 </button>
-<button onClick={()=>{setAsrEngine("qwen");localStorage.setItem("mk_asrEngine","qwen")}} style={{flex:1,padding:"8px",borderRadius:10,border:asrEngine==="qwen"?`2px solid #f97316`:`1px solid ${C.g200}`,background:asrEngine==="qwen"?"#fff7ed":C.w,fontSize:12,fontWeight:asrEngine==="qwen"?700:500,color:asrEngine==="qwen"?"#c2410c":C.g500,fontFamily:"inherit",cursor:"pointer"}}>
-⚡ Qwen3-ASR<br/><span style={{fontSize:10,fontWeight:400}}>Alibaba（高精度・最新）</span>
+<div style={{flex:1,display:"flex",flexDirection:"column",gap:4}}>
+<button disabled style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:"#f3f4f6",fontSize:12,fontWeight:500,color:C.g400,fontFamily:"inherit",cursor:"not-allowed",opacity:0.6}}>
+⚡ Qwen3-ASR<br/><span style={{fontSize:10,fontWeight:400}}>Alibaba（現在利用不可）</span>
 </button>
+<details style={{fontSize:11,color:C.g500}}>
+<summary style={{cursor:"pointer",userSelect:"none",padding:"2px 4px",borderRadius:4,color:C.g400}}>⚠️ 使用できない理由</summary>
+<div style={{marginTop:6,padding:8,borderRadius:8,background:"#fef9c3",border:"1px solid #fde68a",fontSize:11,color:"#92400e",lineHeight:1.7}}>
+<b>Qwen3-ASRがこのアプリで動作しない技術的理由：</b><br/>
+<br/>
+① <b>OpenAI互換エンドポイント</b><br/>
+　`/compatible-mode/v1/audio/transcriptions` はパブリックURLのみ対応。<br/>
+　ブラウザから直接録音した音声ファイル（ローカルファイル）は送信不可。<br/>
+<br/>
+② <b>multimodal-generationエンドポイント</b><br/>
+　base64形式での音声送信を試みたが404エラーが発生。<br/>
+　DashScope Singapore リージョンでこの形式は非対応。<br/>
+<br/>
+③ <b>WebSocket方式（リアルタイム版）</b><br/>
+　Vercelはサーバーレス環境のため長時間のWebSocket接続が維持できない。<br/>
+<br/>
+<b>将来的な解決策：</b><br/>
+　・Alibaba CloudのFunction Computeに独自サーバーを立てる<br/>
+　・Qwen3-ASR-Toolkitを使った音声をSupabase経由で渡す仕組みを構築する<br/>
+　・DashScopeのAPI仕様が更新され直接ファイル送信に対応した場合
+</div>
+</details>
+</div>
 <button onClick={()=>{setAsrEngine("gemini");localStorage.setItem("mk_asrEngine","gemini")}} style={{flex:1,padding:"8px",borderRadius:10,border:asrEngine==="gemini"?`2px solid #1d4ed8`:`1px solid ${C.g200}`,background:asrEngine==="gemini"?"#eff6ff":C.w,fontSize:12,fontWeight:asrEngine==="gemini"?700:500,color:asrEngine==="gemini"?"#1d4ed8":C.g500,fontFamily:"inherit",cursor:"pointer"}}>
 🔷 Gemini 3.1<br/><span style={{fontSize:10,fontWeight:400}}>Google（追加設定不要）</span>
 </button>
