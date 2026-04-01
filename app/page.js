@@ -888,6 +888,11 @@ if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.
 if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
 if(minMR.current&&minMR.current.state==="recording")minMR.current.stop();
 setMinRS("inactive");minSR.current="inactive";xAM();
+// 録音停止時もドラフトを削除
+if(minDraftId&&supabase){
+  supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
+  setMinDraftId(null);
+}
 // 音声保存ONの場合、停止時に保存
 if(minAudioSave&&minAllAudioChunks.current.length>0){
 const blob=new Blob(minAllAudioChunks.current,{type:"audio/webm"});
@@ -1101,7 +1106,12 @@ importance: 1=低 2=やや低 3=やや高 4=高
 
 議事録（先頭3000字）:
 `;try{const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました")}else{console.warn("extract-tasks: no tasks or empty",td)}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
-const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}setMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
+const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
+// ドラフトをSupabaseから削除
+if(minDraftId&&supabase){
+  supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
+}
+setMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
@@ -2623,7 +2633,7 @@ finally{setMinTypoLd(false)}
 <button onClick={()=>setSelMinutes([])} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button></>}
 <button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🔄 更新</button></div></div>
 {mergeLd&&<div style={{textAlign:"center",padding:16}}><div style={{width:28,height:28,border:"3px solid #e5e7eb",borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:"#6b7280",fontSize:12}}>AIが議事録をまとめ中...</span></div>}
-{minHist.map(m=>{const sel=selMinutes.includes(m.id);return(<div key={m.id} style={{padding:10,borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,marginBottom:6,background:sel?C.pLL:C.g50}}>
+{minHist.filter(m=>m.output_text!=="（録音中・未要約）").map(m=>{const sel=selMinutes.includes(m.id);return(<div key={m.id} style={{padding:10,borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,marginBottom:6,background:sel?C.pLL:C.g50}}>
 <div onClick={()=>setOpenMinId(openMinId===m.id?null:m.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,cursor:"pointer"}}>
 <div style={{display:"flex",alignItems:"center",gap:6}}>
 <input type="checkbox" checked={sel} onChange={(e)=>{e.stopPropagation();setSelMinutes(prev=>prev.includes(m.id)?prev.filter(x=>x!==m.id):[...prev,m.id])}} style={{cursor:"pointer",accentColor:C.p}}/>
@@ -2633,7 +2643,7 @@ finally{setMinTypoLd(false)}
 {openMinId===m.id?<div style={{marginBottom:4}}>{(()=>{try{const src=JSON.parse(m.input_text);if(src&&src.source_titles){return(<div style={{padding:6,borderRadius:6,background:"#f5f3ff",border:"1px solid #c4b5fd",marginBottom:6,fontSize:11}}>
 <span style={{fontWeight:700,color:"#7c3aed"}}>📎 まとめ元:</span>
 {src.source_titles.map((s,i)=>(<span key={i} style={{marginLeft:4,padding:"1px 6px",borderRadius:4,background:"#ede9fe",color:"#6d28d9"}}>{s.date} {s.title}</span>))}
-</div>)}}catch{}return null})()}<div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button><button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button>
+</div>)}}catch{}return null})()}<div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button>{m.output_text&&m.output_text!=="（録音中・未要約）"&&<button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button>}
 {m.input_text&&m.input_text!=="（録音中・未要約）"&&<details style={{marginTop:8}}>
 <summary style={{fontSize:11,color:C.g400,cursor:"pointer",userSelect:"none"}}>📝 書き起こし全文を表示（{Math.ceil((m.input_text||"").length/40)}行）</summary>
 <pre style={{fontSize:11,color:C.g600,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:6,padding:8,borderRadius:8,background:C.g50,maxHeight:200,overflowY:"auto",lineHeight:1.6,fontFamily:"inherit"}}>{m.input_text}</pre>
