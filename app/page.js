@@ -627,6 +627,8 @@ const[openQuadrant,setOpenQuadrant]=useState(null);
 const[todos,setTodos]=useState([]);
 const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
+const[minOutFontSize,setMinOutFontSize]=useState(14);
+const[minOutHeight,setMinOutHeight]=useState(300);
 const[minTypoLd,setMinTypoLd]=useState(false);
 const[minDraftId,setMinDraftId]=useState(null);
 const[minAutoSaving,setMinAutoSaving]=useState(false);
@@ -2602,9 +2604,19 @@ finally{setMinTypoLd(false)}
 <textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:120,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 {minLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが議事録を作成中...</span></div>}
 {minOut&&<div>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録</span>
+<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+<div style={{display:"flex",alignItems:"center",gap:4}}>
+<span style={{fontSize:11,color:C.g500}}>文字</span>
+{[11,13,14,16,18].map(s=><button key={s} onClick={()=>setMinOutFontSize(s)} style={{padding:"2px 7px",borderRadius:6,border:minOutFontSize===s?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minOutFontSize===s?C.pLL:C.w,fontSize:10,fontWeight:minOutFontSize===s?700:500,color:minOutFontSize===s?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{s}</button>)}
+</div>
+<div style={{display:"flex",alignItems:"center",gap:4}}>
+<span style={{fontSize:11,color:C.g500}}>高さ</span>
+{[[200,"小"],[300,"中"],[500,"大"],[800,"特大"]].map(([h,label])=><button key={h} onClick={()=>setMinOutHeight(h)} style={{padding:"2px 7px",borderRadius:6,border:minOutHeight===h?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minOutHeight===h?C.pLL:C.w,fontSize:10,fontWeight:minOutHeight===h?700:500,color:minOutHeight===h?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{label}</button>)}
+</div>
 <button onClick={()=>{navigator.clipboard.writeText(minOut)}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+</div>
 <button onClick={async()=>{
 const t=minOut;
 if(!t||!t.trim()){sSt("議事録テキストがありません");return}
@@ -2626,7 +2638,7 @@ finally{setMinTypoLd(false)}
 }} disabled={minTypoLd} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#5a3e8a",fontFamily:"inherit",cursor:minTypoLd?"wait":"pointer"}}>
 {minTypoLd?"🔍 校正中...":"🔬 専門用語スキャン"}
 </button></div>
-<textarea value={minOut} onChange={e=>setMinOut(e.target.value)} style={{width:"100%",height:300,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
+<textarea value={minOut} onChange={e=>setMinOut(e.target.value)} style={{width:"100%",height:minOutHeight,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:minOutFontSize,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
 </div>}
 <div style={{...card,marginTop:16}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
