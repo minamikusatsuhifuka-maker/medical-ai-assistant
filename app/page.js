@@ -629,6 +629,8 @@ const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[minOutFontSize,setMinOutFontSize]=useState(14);
 const[minOutHeight,setMinOutHeight]=useState(300);
+const[minHistFontSize,setMinHistFontSize]=useState(12);
+const[minHistHeight,setMinHistHeight]=useState(300);
 const[minTypoLd,setMinTypoLd]=useState(false);
 const[minDraftId,setMinDraftId]=useState(null);
 const[minAutoSaving,setMinAutoSaving]=useState(false);
@@ -2661,6 +2663,16 @@ finally{setMinTypoLd(false)}
 {prog>0&&<div style={{textAlign:"center",fontSize:11,color:"#6b7280",marginBottom:8}}>{st}</div>}
 <div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴</span>
+<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+  <div style={{display:"flex",alignItems:"center",gap:3}}>
+    <span style={{fontSize:10,color:C.g500}}>文字</span>
+    {[10,12,13,14,16].map(s=><button key={s} onClick={()=>setMinHistFontSize(s)} style={{padding:"1px 6px",borderRadius:5,border:minHistFontSize===s?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minHistFontSize===s?C.pLL:C.w,fontSize:10,fontWeight:minHistFontSize===s?700:500,color:minHistFontSize===s?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{s}</button>)}
+  </div>
+  <div style={{display:"flex",alignItems:"center",gap:3}}>
+    <span style={{fontSize:10,color:C.g500}}>高さ</span>
+    {[[150,"小"],[300,"中"],[500,"大"],[900,"全"]].map(([h,label])=><button key={h} onClick={()=>setMinHistHeight(h)} style={{padding:"1px 6px",borderRadius:5,border:minHistHeight===h?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minHistHeight===h?C.pLL:C.w,fontSize:10,fontWeight:minHistHeight===h?700:500,color:minHistHeight===h?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{label}</button>)}
+  </div>
+</div>
 <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
 {selMinutes.length>0&&<><button onClick={generateTasksFromSelected} style={{padding:"4px 10px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 選択({selMinutes.length})からタスク生成</button>
 <button onClick={analyzeSelectedMinutes} disabled={taskAnalLd} style={{padding:"4px 10px",borderRadius:8,border:"none",background:taskAnalLd?C.g200:`linear-gradient(135deg,#7c3aed,#a78bfa)`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{taskAnalLd?"⏳ 分析中...":"📊 時系列分析"}</button>
@@ -2702,7 +2714,7 @@ finally{setMinTypoLd(false)}
   </div>
 ):(
   <div>
-    <div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div>
+    <div style={{fontSize:minHistFontSize,color:C.g600,whiteSpace:"pre-wrap",maxHeight:minHistHeight,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`,lineHeight:1.7}}>{m.output_text||""}</div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
       <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={(e)=>{e.stopPropagation();setEditMinId(m.id);setEditMinText(m.output_text||"");setEditMinTitle(m.title||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️ 編集</button>
