@@ -609,6 +609,10 @@ const[taskView,setTaskView]=useState("matrix");
 const[taskAnalysis,setTaskAnalysis]=useState("");
 const[taskAnalLd,setTaskAnalLd]=useState(false);
 const[openMinId,setOpenMinId]=useState(null);
+const[editMinId,setEditMinId]=useState(null);
+const[editMinText,setEditMinText]=useState("");
+const[editMinTitle,setEditMinTitle]=useState("");
+const[editMinSaving,setEditMinSaving]=useState(false);
 const[manualMinText,setManualMinText]=useState("");
 const[manualMinTitle,setManualMinTitle]=useState("");
 const[manualMinMode,setManualMinMode]=useState("text");
@@ -901,6 +905,25 @@ saveMinAudio(blob,minTitle);
 }
 };
 const loadMinHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(50);if(data)setMinHist(data)}catch{}};
+const saveMinEdit=async()=>{
+  if(!supabase||!editMinId)return;
+  setEditMinSaving(true);
+  try{
+    await supabase.from("minutes").update({
+      title:editMinTitle,
+      output_text:editMinText
+    }).eq("id",editMinId);
+    await loadMinHist();
+    setEditMinId(null);
+    setEditMinText("");
+    setEditMinTitle("");
+    sSt("✓ 議事録を保存しました");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }finally{
+    setEditMinSaving(false);
+  }
+};
 const saveManualMinute=async()=>{
 if(!supabase||!manualMinText.trim())return;
 setProg(10);sSt("議事録を保存中...");
@@ -2643,7 +2666,38 @@ finally{setMinTypoLd(false)}
 {openMinId===m.id?<div style={{marginBottom:4}}>{(()=>{try{const src=JSON.parse(m.input_text);if(src&&src.source_titles){return(<div style={{padding:6,borderRadius:6,background:"#f5f3ff",border:"1px solid #c4b5fd",marginBottom:6,fontSize:11}}>
 <span style={{fontWeight:700,color:"#7c3aed"}}>📎 まとめ元:</span>
 {src.source_titles.map((s,i)=>(<span key={i} style={{marginLeft:4,padding:"1px 6px",borderRadius:4,background:"#ede9fe",color:"#6d28d9"}}>{s.date} {s.title}</span>))}
-</div>)}}catch{}return null})()}<div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div><button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",marginRight:4}}>📋 コピー</button>{m.output_text&&m.output_text!=="（録音中・未要約）"&&<button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 この議事録からタスク生成</button>}
+</div>)}}catch{}return null})()}{editMinId===m.id?(
+  <div onClick={e=>e.stopPropagation()}>
+    <input
+      value={editMinTitle}
+      onChange={e=>setEditMinTitle(e.target.value)}
+      style={{width:"100%",padding:"6px 10px",borderRadius:8,border:`1.5px solid ${C.p}`,background:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",outline:"none",marginBottom:6,boxSizing:"border-box"}}
+      placeholder="タイトル"
+    />
+    <textarea
+      value={editMinText}
+      onChange={e=>setEditMinText(e.target.value)}
+      style={{width:"100%",height:300,padding:8,borderRadius:8,border:`1.5px solid ${C.p}`,background:C.w,fontSize:12,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box",outline:"none"}}
+    />
+    <div style={{display:"flex",gap:6,marginTop:6}}>
+      <button onClick={saveMinEdit} disabled={editMinSaving} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:editMinSaving?"wait":"pointer"}}>
+        {editMinSaving?"保存中...":"💾 保存"}
+      </button>
+      <button onClick={()=>{setEditMinId(null);setEditMinText("");setEditMinTitle("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>
+        キャンセル
+      </button>
+    </div>
+  </div>
+):(
+  <div>
+    <div style={{fontSize:12,color:C.g600,whiteSpace:"pre-wrap",maxHeight:300,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{m.output_text||""}</div>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+      <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+      <button onClick={(e)=>{e.stopPropagation();setEditMinId(m.id);setEditMinText(m.output_text||"");setEditMinTitle(m.title||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️ 編集</button>
+      {m.output_text&&m.output_text!=="（録音中・未要約）"&&<button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 タスク生成</button>}
+    </div>
+  </div>
+)}
 {m.input_text&&m.input_text!=="（録音中・未要約）"&&<details style={{marginTop:8}}>
 <summary style={{fontSize:11,color:C.g400,cursor:"pointer",userSelect:"none"}}>📝 書き起こし全文を表示（{Math.ceil((m.input_text||"").length/40)}行）</summary>
 <pre style={{fontSize:11,color:C.g600,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:6,padding:8,borderRadius:8,background:C.g50,maxHeight:200,overflowY:"auto",lineHeight:1.6,fontFamily:"inherit"}}>{m.input_text}</pre>
