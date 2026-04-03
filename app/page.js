@@ -474,6 +474,9 @@ const[dailyNoiseProgress,setDailyNoiseProgress]=useState("");
 const[histTypoLd,setHistTypoLd]=useState(false);
 const[histNoiseLd,setHistNoiseLd]=useState(false);
 const[bulkMenu,setBulkMenu]=useState(false);
+const[treatModal,setTreatModal]=useState(false);
+const[treatLd,setTreatLd]=useState(false);
+const[treatResult,setTreatResult]=useState(null);
 const[bulkLd,setBulkLd]=useState(false);
 const[bulkResult,setBulkResult]=useState(null);
 const[bulkFavModal,setBulkFavModal]=useState(false);
@@ -1406,6 +1409,27 @@ const removeNoisePattern=async(idx)=>{
 const BULK_MODES=[{id:"treatment",label:"🏥 疾患別治療説明・プランまとめ"},{id:"patient",label:"👤 患者説明文の自動生成"},{id:"protocol",label:"📋 治療プロトコル抽出"},{id:"faq",label:"❓ よくある質問FAQ生成"},{id:"training",label:"📚 スタッフ向け研修資料生成"}];
 const runBulkAnalyze=async(mode)=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setBulkMenu(false);setBulkLd(true);const modeLabel=BULK_MODES.find(m=>m.id===mode)?.label||mode;sSt(`⏳ 分析中... (${selected.length}件)`);try{const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));const r=await fetch("/api/bulk-analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records,mode})});if(!r.ok){sSt("分析エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("分析エラー: "+d.error);return}setBulkResult({title:modeLabel,content:d.result||""});sSt("分析完了")}catch(e){sSt("分析エラー: "+e.message)}finally{setBulkLd(false)}};
 
+const runTreatmentMaterial=async()=>{
+  const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));
+  if(!selected.length)return;
+  setTreatLd(true);
+  setTreatModal(true);
+  setTreatResult(null);
+  sSt(`⏳ 治療資料を生成中... (${selected.length}件)`);
+  try{
+    const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));
+    const res=await fetch("/api/treatment-material",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records})});
+    const d=await res.json();
+    if(d.error){sSt("エラー: "+d.error);return}
+    setTreatResult(d);
+    sSt("✓ 治療資料の生成が完了しました");
+  }catch(e){
+    sSt("エラー: "+e.message);
+  }finally{
+    setTreatLd(false);
+  }
+};
+
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
@@ -1739,6 +1763,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 {BULK_MODES.map(m=><button key={m.id} onClick={()=>runBulkAnalyze(m.id)} style={{display:"block",width:"100%",padding:"8px 12px",borderRadius:7,border:"none",background:C.w,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}} onMouseEnter={e=>e.target.style.background="#eff6ff"} onMouseLeave={e=>e.target.style.background=C.w}>{m.label}</button>)}
 </div>}
 </div>
+<button onClick={runTreatmentMaterial} disabled={!selectedHistIds.size||treatLd} title="選択した履歴から疾患別治療資料を生成" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #a78bfa`,background:!selectedHistIds.size||treatLd?"#e5e7eb":"#f5f3ff",fontSize:11,fontWeight:600,color:!selectedHistIds.size||treatLd?C.g400:"#7c3aed",fontFamily:"inherit",cursor:!selectedHistIds.size||treatLd?"default":"pointer",whiteSpace:"nowrap"}}>{treatLd?"⏳ 生成中...":"📚 治療資料を生成"}</button>
 <button onClick={()=>setBulkFavModal(true)} disabled={!selectedHistIds.size} title="選択した履歴をお気に入りに一括登録" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #f59e0b`,background:!selectedHistIds.size?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size?"default":"pointer"}}>⭐ お気に入り一括登録</button>
 </div>
 {bulkFavModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkFavModal(false)}>
@@ -1851,6 +1876,24 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <div style={{flex:1,overflow:"auto",padding:16}}>
 <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{bulkResult.content}</pre>
 </div></div></div>}
+{treatModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setTreatModal(false)}>
+<div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:740,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:"1px solid #e5e7eb",background:"#f5f3ff",borderRadius:"16px 16px 0 0"}}>
+<span style={{fontSize:15,fontWeight:700,color:"#6d28d9"}}>📚 疾患別治療資料</span>
+<button onClick={()=>setTreatModal(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e5e7eb",background:"#fff",fontSize:12,fontWeight:600,color:"#6b7280",fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{treatLd?<div style={{textAlign:"center",padding:40}}><div style={{width:32,height:32,border:"3px solid #e5e7eb",borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><span style={{color:"#6b7280",fontSize:13}}>AIが診察記録を分析中...</span></div>:treatResult&&<div>
+<pre style={{fontSize:13,color:"#374151",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.9,fontFamily:"inherit"}}>{treatResult.material}</pre>
+</div>}
+</div>
+{treatResult&&!treatLd&&<div style={{padding:"10px 16px",borderTop:"1px solid #e5e7eb",display:"flex",gap:8,flexWrap:"wrap"}}>
+<button onClick={()=>{navigator.clipboard.writeText(treatResult.material||"");sSt("📋 治療資料をコピーしました")}} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#7c3aed",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 治療資料をコピー</button>
+<button onClick={()=>{navigator.clipboard.writeText(treatResult.gensparkPrompt||"");sSt("✨ Gensparkプロンプトをコピーしました")}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>✨ Gensparkプロンプトをコピー</button>
+<button onClick={()=>{saveFavorite("治療資料","[治療資料] "+new Date().toLocaleDateString("ja-JP"),treatResult.material||"","");setTreatModal(false)}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:12,fontWeight:700,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+</div>}
+</div>
+</div>}
 {/* 履歴用お気に入りグループ選択モーダル */}
 {favModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFavModal(null)}>
 <div style={{background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",borderRadius:14,padding:20,maxWidth:320,width:"100%",border:"1px solid rgba(160,220,100,0.2)"}} onClick={e=>e.stopPropagation()}>
