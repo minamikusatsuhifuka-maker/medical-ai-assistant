@@ -2038,11 +2038,11 @@ if(page==="favs"){const gFavs=favorites.filter(f=>f.group_name===favGroup);retur
 </div>
 </div></div>}
 {/* FAQ生成モーダル */}
-{faqModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{if(!faqLoading)setFaqModal(false)}}>
+{faqModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setFaqModal(false);setFaqLoading(false)}}>
 <div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
 <span style={{fontSize:14,fontWeight:700,color:"#7c3aed"}}>❓ FAQ自動生成（{favGroup}）</span>
-<button onClick={()=>{if(!faqLoading)setFaqModal(false)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+<button onClick={()=>{setFaqModal(false);setFaqLoading(false)}} style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
 </div>
 <div style={{flex:1,overflow:"auto",padding:16}}>
 {faqLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:28,height:28,border:`3px solid ${C.g200}`,borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:C.g500,fontSize:12}}>FAQ生成中...</span></div>}
