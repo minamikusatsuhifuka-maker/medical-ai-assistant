@@ -460,6 +460,8 @@ const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
 const[histPopup,setHistPopup]=useState(null);
+const[badgePopup,setBadgePopup]=useState(null);
+const[badgeLd,setBadgeLd]=useState(false);
 const[selectedHistIds,setSelectedHistIds]=useState(new Set());
 const[openDates,setOpenDates]=useState(new Set());
 const[dailyMenu,setDailyMenu]=useState(null);
@@ -1280,6 +1282,34 @@ const filterTranscriptNoise=(text)=>{
   return filtered.join("\n").trim();
 };
 
+// 履歴カードのコンテンツバッジ判定
+const detectContentBadges=(inputText,outputText)=>{
+  const text=(inputText||"")+(outputText||"");
+  const badges=[];
+  const externalKeywords=["1日2回","1日1回","1日3回","朝晩","入浴後","就寝前","塗布","外用","軟膏","クリーム","ゲル","ローション","塗り方","薄く","擦り込","塗って","患部に","フィンガーチップ","FTU","プロアクティブ","リアクティブ","保湿","スキンケア","ステップ","重ね塗り","混合","希釈"];
+  if(externalKeywords.some(k=>text.includes(k)))badges.push({key:"external",label:"💊外用",color:"#0369a1",bg:"#e0f2fe",prompt:"この診察記録の外用薬の使い方・塗り方の説明を詳しくまとめてください。"});
+  const sideEffectKeywords=["副作用","リスク","注意","刺激感","赤み","かぶれ","アレルギー","過敏","皮膚萎縮","ステロイド副作用","毛包炎","酒さ様","依存","反跳","離脱","肝斑","光過敏","紫外線","日焼け","SPF","日焼け止め"];
+  if(sideEffectKeywords.some(k=>text.includes(k)))badges.push({key:"sideeffect",label:"⚠️副作用",color:"#b45309",bg:"#fef9c3",prompt:"この診察記録の副作用・リスク・注意事項の説明を詳しくまとめてください。"});
+  const treatmentKeywords=["治療方針","プラン","ステップ","段階","まず","次に","その後","経過","再診","2週間後","1ヶ月後","継続","増量","減量","変更","切り替え","追加","中止","様子をみ","悪化時","改善しない場合","目標","完治","寛解","コントロール","維持療法","積極的治療"];
+  if(treatmentKeywords.some(k=>text.includes(k)))badges.push({key:"treatment",label:"📋治療",color:"#6d28d9",bg:"#f5f3ff",prompt:"この診察記録の治療方針・治療計画を詳しくまとめてください。"});
+  return badges;
+};
+
+const runBadgeAnalysis=async(record,badge)=>{
+  setBadgePopup({title:badge.label,content:"",color:badge.color,bg:badge.bg});
+  setBadgeLd(true);
+  try{
+    const text=(record.input_text||"")+(record.output_text||"");
+    const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.substring(0,3000),mode:"gemini",prompt:badge.prompt})});
+    const d=await r.json();
+    setBadgePopup({title:badge.label,content:d.summary||"内容を取得できませんでした",color:badge.color,bg:badge.bg});
+  }catch(e){
+    setBadgePopup({title:badge.label,content:"エラー: "+e.message,color:badge.color,bg:badge.bg});
+  }finally{
+    setBadgeLd(false);
+  }
+};
+
 // Dict
 const toKatakana=(s)=>s.replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96));
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else{r=r.split(from).join(to)}}return r};
@@ -1738,6 +1768,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{time}{pid?" | "+pid:""}</span>
 </div>
 <div style={{fontSize:mob?14:13,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
+{(()=>{const badges=detectContentBadges(r.input_text,r.output_text);return badges.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:3}}>{badges.map(b=><button key={b.key} onClick={e=>{e.stopPropagation();runBadgeAnalysis(r,b)}} style={{padding:"1px 6px",borderRadius:5,border:`1px solid ${b.color}44`,background:b.bg,fontSize:10,fontWeight:700,color:b.color,fontFamily:"inherit",cursor:"pointer"}}>{b.label}</button>)}</div>})()}
 <div style={{display:"flex",gap:3}}>
 <button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date:time,pid})} title="書き起こし内容を表示" onMouseEnter={e=>showTip(e,"書き起こし内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
 <button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date:time,pid})} title="要約内容を表示" onMouseEnter={e=>showTip(e,"要約内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.p}`,background:C.pLL,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
@@ -1775,6 +1806,20 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <div style={{flex:1,overflow:"auto",padding:16}}>
 <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{histPopup.content}</pre>
 </div>
+</div>
+</div>}
+{badgePopup&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBadgePopup(null)}>
+<div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:"1px solid #e5e7eb",background:badgePopup.bg,borderRadius:"16px 16px 0 0"}}>
+<span style={{fontSize:15,fontWeight:700,color:badgePopup.color}}>{badgePopup.title} 詳細解説</span>
+<button onClick={()=>setBadgePopup(null)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e5e7eb",background:"#fff",fontSize:12,fontWeight:600,color:"#6b7280",fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{badgeLd?<div style={{textAlign:"center",padding:32}}><div style={{width:28,height:28,border:"3px solid #e5e7eb",borderTop:`3px solid ${badgePopup.color}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#6b7280",fontSize:13}}>AI解析中...</span></div>:<pre style={{fontSize:13,color:"#374151",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.8,fontFamily:"inherit"}}>{badgePopup.content}</pre>}
+</div>
+{!badgeLd&&badgePopup.content&&<div style={{padding:"10px 16px",borderTop:"1px solid #e5e7eb"}}>
+<button onClick={()=>{navigator.clipboard.writeText(badgePopup.content);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:8,border:"none",background:badgePopup.color,color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+</div>}
 </div>
 </div>}
 {/* 品質チェックモーダル */}
