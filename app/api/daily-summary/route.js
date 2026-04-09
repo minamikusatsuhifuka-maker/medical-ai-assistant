@@ -29,7 +29,7 @@ export async function POST(request) {
       `--- 記録${i + 1}${r.patient_id ? " (ID:" + r.patient_id + ")" : ""} ---\n${r.input_text ? "【書き起こし】\n" + r.input_text + "\n" : ""}${r.output_text ? "【要約】\n" + r.output_text : ""}`
     ).join("\n\n");
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,7 +49,7 @@ export async function POST(request) {
     const data = await res.json();
     const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
 
-    return NextResponse.json({ result: content, model: "gemini-2.5-flash" });
+    return NextResponse.json({ result: content, model: "gemini-2.5-pro" });
   } catch (e) {
     console.error("daily-summary error:", e);
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -5,7 +5,7 @@ const CHUNK_SIZE = 4000;
 async function callGemini(text, prompt, retries = 2) {
   const apiKey = process.env.GEMINI_API_KEY;
   // 速いモデルを優先
-  const models = ["gemini-2.0-flash", "gemini-2.5-flash"];
+  const models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
   let lastError = null;
   for (const model of models) {
     for (let attempt = 0; attempt <= retries; attempt++) {
