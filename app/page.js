@@ -1249,6 +1249,8 @@ const importPastFile=async(file)=>{if(!file)return;setPastLd(true);setPastMsg("�
 useEffect(()=>{loadPastCount()},[]);
 
 const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
+const openPatientHistory=async(pid)=>{if(!pid||!supabase)return;try{const{data}=await supabase.from("records").select("*").eq("patient_id",pid).order("created_at",{ascending:false}).limit(100);if(data&&data.length>0)setPatientModal({pid,records:data})}catch(e){console.error("Patient history error:",e)}};
+const runMonthlyReport=async()=>{if(!supabase)return;setMonthlyLd(true);setMonthlyModal(true);setMonthlyResult("");const now=new Date();const year=now.getFullYear();const month=now.getMonth();const start=new Date(year,month,1);const end=new Date(year,month+1,0,23,59,59);const utcStart=new Date(start.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(end.getTime()-9*60*60*1000).toISOString();const monthLabel=`${year}年${month+1}月`;setMonthlyTarget(monthLabel);try{const{data}=await supabase.from("records").select("output_text,created_at").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setMonthlyResult("データが不足しています（最低3件必要）");return}const res=await fetch("/api/monthly-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,month:monthLabel})});const d=await res.json();if(d.error){setMonthlyResult("エラー: "+d.error);return}setMonthlyResult(d.report||"")}catch(e){setMonthlyResult("エラー: "+e.message)}finally{setMonthlyLd(false)}};
 const searchHist=async(query)=>{if(!supabase||!query.trim())return;try{const q=query.trim();const dateMatch=q.match(/^(\d{1,2})\/(\d{1,2})(?:\s+(\d{2}))?$/);if(dateMatch){const month=parseInt(dateMatch[1]);const day=parseInt(dateMatch[2]);const hour=dateMatch[3]?parseInt(dateMatch[3]):null;const year=new Date().getFullYear();const jstStart=hour!==null?new Date(year,month-1,day,hour,0,0):new Date(year,month-1,day,0,0,0);const jstEnd=hour!==null?new Date(year,month-1,day,hour,59,59):new Date(year,month-1,day,23,59,59);const utcStart=new Date(jstStart.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(jstEnd.getTime()-9*60*60*1000).toISOString();const{data}=await supabase.from("records").select("*").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}else{const{data}=await supabase.from("records").select("*").or(`output_text.ilike.%${q}%,input_text.ilike.%${q}%,patient_id.ilike.%${q}%`).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}}catch(e){console.error("Search error:",e)}};
 const delRecord=async(id)=>{if(!supabase)return;try{await supabase.from("records").delete().eq("id",id);sHist(h=>h.filter(r=>r.id!==id))}catch(e){console.error("Delete error:",e)}};
 const filteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const dateMatch=s.match(/^(\d{1,2})\/(\d{1,2})/);if(dateMatch){const dateStr=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";return dateStr.startsWith(s)||dateStr.includes(s)}const dateStr2=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";return dateStr2.includes(s)||(r.output_text||"").toLowerCase().includes(s)||(r.input_text||"").toLowerCase().includes(s)||(r.patient_id||"").toLowerCase().includes(s)}):hist;
@@ -1336,6 +1338,11 @@ const[typoLdOut,setTypoLdOut]=useState(false);
 const[typoTarget,setTypoTarget]=useState("inp");
 const[typoSelections,setTypoSelections]=useState({});
 const[typoCustomInputs,setTypoCustomInputs]=useState({});
+const[patientModal,setPatientModal]=useState(null);
+const[monthlyModal,setMonthlyModal]=useState(false);
+const[monthlyLd,setMonthlyLd]=useState(false);
+const[monthlyResult,setMonthlyResult]=useState("");
+const[monthlyTarget,setMonthlyTarget]=useState("");
 const runTypoCheck=async()=>{const t=iR.current;if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}setTypoTarget("inp");setTypoLd(true);sSt("🔍 AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});if(!r.ok){const errText=await r.text();console.error("AI校正 fetch error:",r.status,errText);sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){console.error("AI校正 API error:",d.error);sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const registeredFroms=new Set(dict.map(([f])=>f));const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length>0&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(newCorrections);sSt("校正候補が見つかりました")}catch(e){console.error("AI校正 error:",e);sSt("校正エラー: "+e.message)}finally{setTypoLd(false)}};
 const runTypoCheckOut=async()=>{const t=out;if(!t||!t.trim()){sSt("要約テキストがありません");return}setTypoTarget("out");setTypoLdOut(true);sSt("🔍 要約AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});if(!r.ok){const errText=await r.text();console.error("AI校正 fetch error:",r.status,errText);sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){console.error("AI校正 API error:",d.error);sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 要約の医療用語の誤りは見つかりませんでした");return}const registeredFroms=new Set(dict.map(([f])=>f));const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length>0&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(newCorrections);sSt("校正候補が見つかりました")}catch(e){console.error("AI校正 error:",e);sSt("校正エラー: "+e.message)}finally{setTypoLdOut(false)}};
 const applyTypoCorrection=(idx,candidateIdx)=>{try{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates?.[candidateIdx];if(!candidate){console.error("applyTypoCorrection: invalid candidate",{idx,candidateIdx,c});return}if(typoTarget==="out"){sOut(prev=>prev.split(c.from).join(candidate.to))}else if(typoTarget==="minOut"){setMinOut(prev=>prev.split(c.from).join(candidate.to))}else if(typoTarget==="minInp"){setMinInp(prev=>prev.split(c.from).join(candidate.to))}else{sInp(prev=>prev.split(c.from).join(candidate.to))}dictAddEntry(c.from,candidate.to)}catch(e){console.error("applyTypoCorrection error:",e)}};
@@ -1790,6 +1797,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 </div>}
 </div>
 <button onClick={runTreatmentMaterial} disabled={!selectedHistIds.size||treatLd} title="選択した履歴から疾患別治療資料を生成" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #a78bfa`,background:!selectedHistIds.size||treatLd?"#e5e7eb":"#f5f3ff",fontSize:11,fontWeight:600,color:!selectedHistIds.size||treatLd?C.g400:"#7c3aed",fontFamily:"inherit",cursor:!selectedHistIds.size||treatLd?"default":"pointer",whiteSpace:"nowrap"}}>{treatLd?"⏳ 生成中...":"📚 治療資料を生成"}</button>
+<button onClick={runMonthlyReport} disabled={monthlyLd} style={{padding:"3px 10px",borderRadius:7,border:"1px solid #0369a1",background:"#e0f2fe",fontSize:11,fontWeight:600,color:"#0369a1",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{monthlyLd?"⏳ 生成中...":"📊 月次レポート"}</button>
 <button onClick={()=>setBulkFavModal(true)} disabled={!selectedHistIds.size} title="選択した履歴をお気に入りに一括登録" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #f59e0b`,background:!selectedHistIds.size?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size?"default":"pointer"}}>⭐ お気に入り一括登録</button>
 </div>
 {bulkFavModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkFavModal(false)}>
@@ -1816,7 +1824,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 {lines20&&<span style={{position:"absolute",top:2,right:2,background:"#7c3aed",color:"#fff",fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:4,lineHeight:1.3}}>📄20+</span>}
 <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:2}}>
 <input type="checkbox" checked={checked} onChange={toggleSel} style={{width:14,height:14,accentColor:C.p,cursor:"pointer",flexShrink:0}}/>
-<span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{time}{pid?" | "+pid:""}</span>
+<span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{time}{pid&&<span onClick={e=>{e.stopPropagation();openPatientHistory(pid)}} style={{color:C.pD,textDecoration:"underline",cursor:"pointer",marginLeft:4}}>{pid}</span>}</span>
 </div>
 <div style={{fontSize:mob?14:13,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 {(()=>{const badges=detectContentBadges(r.input_text,r.output_text);return badges.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:3}}>{badges.map(b=><button key={b.key} onClick={e=>{e.stopPropagation();runBadgeAnalysis(r,b)}} style={{padding:"1px 6px",borderRadius:5,border:`1px solid ${b.color}44`,background:b.bg,fontSize:10,fontWeight:700,color:b.color,fontFamily:"inherit",cursor:"pointer"}}>{b.label}</button>)}</div>})()}
@@ -3356,7 +3364,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pDD}}>📝 書き起こし</span>
-<div style={{display:"flex",gap:4,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} title="AIが書き起こしの医療用語誤字を検出" onMouseEnter={e=>showTip(e,"AIが医療用語の誤字を検出")} onMouseLeave={hideTip} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬...":"🔬"}</button>{!mob&&<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>}</div>
+<div style={{display:"flex",gap:4,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} title="AIが書き起こしの医療用語誤字を検出" onMouseEnter={e=>showTip(e,"AIが医療用語の誤字を検出")} onMouseLeave={hideTip} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬...":"🔬"}</button>{!mob&&<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>}{rs==="recording"&&<span style={{fontSize:10,color:C.g400,marginLeft:8}}>{inp.length}文字{el>0&&<span style={{marginLeft:6,color:C.g400}}>/ 録音{Math.floor(el/60)>0?Math.floor(el/60)+"分":""}{el%60}秒</span>}{el>10&&inp.length>0&&<span style={{marginLeft:6,color:lv>50?"#22c55e":lv>20?"#f59e0b":"#ef4444"}}>{lv>50?"🎤 明瞭":lv>20?"🎤 普通":"🎤 小さい"}</span>}</span>}</div>
 </div>
 <textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
@@ -3438,6 +3446,42 @@ const fn=actions[sc.id];if(fn)fn();
 </div>
 <button onClick={()=>setDictModal(false)} style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:10}}>閉じる</button>
 </div></div>}
+{patientModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setPatientModal(null)}>
+<div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:700,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g200}`,borderRadius:"16px 16px 0 0",background:C.pLL,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<div>
+  <span style={{fontSize:15,fontWeight:700,color:C.pD}}>👤 患者ID: {patientModal.pid}</span>
+  <span style={{fontSize:12,color:C.g500,marginLeft:8}}>計{patientModal.records.length}件の診察記録</span>
+</div>
+<button onClick={()=>setPatientModal(null)} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+{patientModal.records.map((r,i)=>{
+  const date=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"";
+  return(<div key={r.id||i} style={{padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50}}>
+    <div style={{fontSize:11,color:C.g400,marginBottom:4}}>{date} — {r.room||""} {r.template||""}</div>
+    <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit"}}>{r.output_text||"（要約なし）"}</pre>
+    {r.input_text&&<details style={{marginTop:6}}><summary style={{fontSize:11,color:C.g400,cursor:"pointer"}}>📝 書き起こしを表示</summary><pre style={{fontSize:11,color:C.g500,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:"4px 0 0",lineHeight:1.6,fontFamily:"inherit",padding:8,background:"#fff",borderRadius:6,border:`1px solid ${C.g200}`}}>{r.input_text}</pre></details>}
+  </div>)
+})}
+</div>
+</div>
+</div>}
+{monthlyModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setMonthlyModal(false)}>
+<div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:740,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+<div style={{padding:"12px 16px",borderBottom:"1px solid #e0f2fe",background:"#e0f2fe",borderRadius:"16px 16px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:15,fontWeight:700,color:"#0369a1"}}>📊 {monthlyTarget} 月次診療レポート</span>
+<button onClick={()=>setMonthlyModal(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #bae6fd",background:"#fff",fontSize:12,fontWeight:600,color:"#0369a1",fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{monthlyLd?<div style={{textAlign:"center",padding:40}}><div style={{width:32,height:32,border:"3px solid #e0f2fe",borderTop:"3px solid #0369a1",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 12px"}}/><span style={{color:"#0369a1",fontSize:13}}>AIが今月のデータを分析中...</span></div>:<pre style={{fontSize:13,color:"#374151",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.9,fontFamily:"inherit"}}>{monthlyResult}</pre>}
+</div>
+{monthlyResult&&!monthlyLd&&<div style={{padding:"10px 16px",borderTop:"1px solid #e5e7eb",display:"flex",gap:8}}>
+<button onClick={()=>{navigator.clipboard.writeText(monthlyResult);sSt("📋 月次レポートをコピーしました")}} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#0369a1",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{saveFavorite("月次レポート",monthlyTarget,monthlyResult,"");setMonthlyModal(false)}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+</div>}
+</div>
+</div>}
 {/* AI誤字スキャンモーダル */}
 {typoModalEl}
 </div></div>);}
