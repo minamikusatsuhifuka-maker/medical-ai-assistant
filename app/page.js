@@ -488,7 +488,7 @@ const ib={padding:mob?"7px 10px":"8px 12px",borderRadius:mob?10:12,border:`1.5px
 const card={borderRadius:14,border:`1px solid ${theme.cardBorder}`,padding:mob?14:20,background:theme.cardBg,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",marginBottom:mob?12:16,boxShadow:"0 1px 4px rgba(0,0,0,.03)"};
 const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
 const[tplOrder,setTplOrder]=useState(null);
 const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
@@ -881,6 +881,7 @@ console.error("Minutes audio save error:",e);
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef(""),oR=useRef(""),sumDoneRef=useRef(false);
 const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef(""),snippetsRef=useRef(DEFAULT_SNIPPETS),pipSnippetsRef=useRef([0,1,2,3,4]);
 const tidRef=useRef("soap-std");
+const autoTplRef=useRef(false);
 const histDatesInitRef=useRef(false);
 useEffect(()=>{iR.current=inp},[inp]);
 useEffect(()=>{oR.current=out},[out]);
@@ -1283,6 +1284,18 @@ setPastMsg(`✓ ${total}件のカルテを保存しました`);setPastInput("");
 const importPastFile=async(file)=>{if(!file)return;setPastLd(true);setPastMsg("ファイル読み込み中...");try{const text=await file.text();setPastInput(text);setPastMsg(`ファイル読み込み完了（${Math.round(text.length/1024)}KB）- 内容を確認して「保存」を押してください`)}catch(e){setPastMsg("ファイル読み込みエラー: "+e.message)}finally{setPastLd(false)}};
 useEffect(()=>{loadPastCount()},[]);
 
+const detectTemplate=(text)=>{
+if(!text||text.length<30)return null;
+const t=text.toLowerCase();
+const cosmeticKw=["ボトックス","ヒアルロン","レーザー","美容","施術","パラメータ","フォトフェイシャル","ピーリング","ダーマペン","ポテンツァ","メソナ","ノーリス","agnes","プラズマ","脱毛","シミ取り","肝斑","トーニング","ニキビ治療","ケミカル","リフト","たるみ","しわ","くすみ","美白","保湿注射","水光注射"];
+if(cosmeticKw.some(k=>t.includes(k)))return"cosmetic";
+const procedureKw=["切除","縫合","麻酔","局所麻酔","生検","切開","排膿","液体窒素","冷凍凝固","焼灼","電気焼灼","くり抜き","トレパン","抜糸","デブリ","ドレッシング","処置","手術","オペ"];
+if(procedureKw.some(k=>t.includes(k)))return"procedure";
+const diseaseOnlyKw=["病名","診断","疾患"];
+if(diseaseOnlyKw.some(k=>t.includes(k))&&text.length<100)return"disease";
+if(text.length>500&&(t.includes("---")||/s[）)]\s/.test(t)))return"soap";
+return null;
+};
 const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
 const openPatientHistory=async(pid)=>{if(!pid||!supabase)return;try{const{data}=await supabase.from("records").select("*").eq("patient_id",pid).order("created_at",{ascending:false}).limit(100);if(data&&data.length>0)setPatientModal({pid,records:data})}catch(e){console.error("Patient history error:",e)}};
 const runMonthlyReport=async()=>{if(!supabase)return;setMonthlyLd(true);setMonthlyModal(true);setMonthlyResult("");const now=new Date();const year=now.getFullYear();const month=now.getMonth();const start=new Date(year,month,1);const end=new Date(year,month+1,0,23,59,59);const utcStart=new Date(start.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(end.getTime()-9*60*60*1000).toISOString();const monthLabel=`${year}年${month+1}月`;setMonthlyTarget(monthLabel);try{const{data}=await supabase.from("records").select("output_text,created_at").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setMonthlyResult("データが不足しています（最低3件必要）");return}const res=await fetch("/api/monthly-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,month:monthLabel})});const d=await res.json();if(d.error){setMonthlyResult("エラー: "+d.error);return}setMonthlyResult(d.report||"")}catch(e){setMonthlyResult("エラー: "+e.message)}finally{setMonthlyLd(false)}};
@@ -1487,7 +1500,20 @@ const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:se
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
 const tc=async(b)=>{if(b.size<500)return;
 // 音声レベルが低すぎる場合はスキップ（無音チャンク対策）
-if(lvRef.current<8){return;}if(audioSaveRef.current)allAudioChunks.current.push(b);sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>p+(p?"\n":"")+fixed);sSt(`録音中 ✓ [${asrEngine==="qwen"?"Qwen3":asrEngine==="gemini"?"Gemini":"Whisper"}]`)}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
+if(lvRef.current<8){return;}if(audioSaveRef.current)allAudioChunks.current.push(b);sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>{
+const newInp=p+(p?"\n":"")+fixed;
+// 自動テンプレート判定（まだ発動していない場合のみ）
+if(!autoTplRef.current&&newInp.length>50){
+const detected=detectTemplate(newInp);
+if(detected&&detected!==tidRef.current){
+autoTplRef.current=true;
+sTid(detected);
+const tplNames={"cosmetic":"✨ 美容","procedure":"🔧 処置","disease":"🏥 疾患名","soap":"📋 詳細","soap-std":"📋 標準","soap-min":"📋 簡潔"};
+setAutoTplMsg(`🎯 ${tplNames[detected]||detected}テンプレに自動切替`);
+setTimeout(()=>setAutoTplMsg(""),4000);
+}}
+return newInp;
+});sSt(`録音中 ✓ [${asrEngine==="qwen"?"Qwen3":asrEngine==="gemini"?"Gemini":"Whisper"}]`)}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
 const vcRef=useRef(null);
 const voiceCmdRef=useRef(false);
@@ -1495,7 +1521,7 @@ useEffect(()=>{voiceCmdRef.current=voiceCmd},[voiceCmd]);
 const startVoiceCommand=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){sSt("音声コマンドはChrome専用です");return}const sr=new SR();sr.lang="ja-JP";sr.continuous=true;sr.interimResults=false;sr.onresult=(e)=>{const txt=e.results[e.results.length-1][0].transcript.trim();setVcStatus("🎤 「"+txt+"」");if(/次へ|次の患者|クリア/.test(txt)){clr();setVcStatus("✓ 次の患者へ")}else if(/要約|まとめ|カルテ/.test(txt)){sum();setVcStatus("✓ 要約開始")}else if(/録音|開始|スタート/.test(txt)){if(rs==="inactive")go();setVcStatus("✓ 録音開始")}else if(/停止|ストップ|終了/.test(txt)){if(rs!=="inactive")stop();setVcStatus("✓ 録音停止")}else if(/一時停止|ポーズ/.test(txt)){if(rs==="recording")pause();setVcStatus("✓ 一時停止")}else if(/再開|レジューム/.test(txt)){if(rs==="paused")resume();setVcStatus("✓ 再開")}else if(/コピー/.test(txt)){if(out)navigator.clipboard.writeText(out);setVcStatus("✓ コピー完了")}setTimeout(()=>setVcStatus(""),2000)};sr.onerror=(e)=>{if(e.error!=="no-speech"){setVcStatus("エラー: "+e.error)}};sr.onend=()=>{if(voiceCmdRef.current){try{sr.start()}catch{}}};vcRef.current=sr;try{sr.start();setVcStatus("待機中...")}catch(e){sSt("音声コマンド開始エラー: "+e.message)}};
 const stopVoiceCommand=()=>{if(vcRef.current){try{vcRef.current.stop()}catch{}}vcRef.current=null;setVcStatus("")};
 useEffect(()=>{if(voiceCmd){startVoiceCommand()}else{stopVoiceCommand()}return()=>{stopVoiceCommand()}},[voiceCmd]);
-const go=async()=>{const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},10000)};
+const go=async()=>{autoTplRef.current=false;setAutoTplMsg("");const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},10000)};
 const stop=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;xAM();sRS("inactive");sSt("待機中");if(audioSaveRef.current&&allAudioChunks.current.length>0){const blob=new Blob(allAudioChunks.current,{type:"audio/webm"});saveAudio(blob);allAudioChunks.current=[]}};
 const pause=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();sRS("paused");sSt("一時停止")};
 const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(msR.current);m2.start();mR.current=m2}},10000)};
@@ -1530,7 +1556,7 @@ if(json.done){setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;awai
 const stopSum=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());const ft=iR.current+(iR.current?"\n":"")+(noise?applyDict(noise):"");sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;xAM();sRS("inactive")};
 const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:pId}};
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
-const clr=()=>{saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");setFeedback(null);setFeedbackNote("");setLastRecordId(null);try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
+const clr=()=>{saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");setFeedback(null);setFeedbackNote("");setLastRecordId(null);try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 
 // PiP
@@ -3378,13 +3404,17 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 </select>
 <button onClick={loadMics} style={{padding:"2px 5px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.w,fontSize:9,cursor:"pointer"}}>🔄</button>
 </div>
+{autoTplMsg&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:8,background:"#f0fdf4",border:"1px solid #86efac",fontSize:11,fontWeight:600,color:"#16a34a",marginBottom:4,animation:"fadeIn 0.3s ease"}}>
+<span>{autoTplMsg}</span>
+<button onClick={()=>setAutoTplMsg("")} style={{marginLeft:"auto",background:"none",border:"none",fontSize:10,color:"#16a34a",cursor:"pointer",padding:"0 2px"}}>✕</button>
+</div>}
 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>{(()=>{const vis=tplVisible||DEFAULT_VISIBLE_TPLS;const ordered=tplOrder?tplOrder.map(id=>T.find(t=>t.id===id)).filter(Boolean):T;return ordered.filter(t=>vis.includes(t.id))})().map((t,idx)=>(<button key={t.id}
 draggable
 onDragStart={e=>{setDragTpl(idx);e.dataTransfer.effectAllowed="move"}}
 onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect="move"}}
 onDrop={e=>{e.preventDefault();if(dragTpl===null||dragTpl===idx)return;const order=tplOrder?[...tplOrder]:T.map(x=>x.id);const[item]=order.splice(dragTpl,1);order.splice(idx,0,item);setTplOrder(order);setDragTpl(null);try{localStorage.setItem("mk_tplOrder",JSON.stringify(order))}catch{}}}
 onDragEnd={()=>setDragTpl(null)}
-onClick={()=>sTid(t.id)}
+onClick={()=>{sTid(t.id);autoTplRef.current=true;setAutoTplMsg("")}}
 style={{padding:mob?"4px 8px":"5px 12px",borderRadius:10,border:tid===t.id?`2px solid ${C.p}`:`1.5px solid ${C.g200}`,background:tid===t.id?C.pLL:C.w,fontSize:mob?11:12,fontWeight:tid===t.id?700:500,color:tid===t.id?C.pD:C.g600,fontFamily:"inherit",cursor:"grab",boxShadow:dragTpl===idx?"0 4px 12px rgba(0,0,0,.3)":"0 1px 4px rgba(0,0,0,.1)",opacity:dragTpl===idx?0.5:1,transition:"all 0.15s ease",transform:dragTpl===idx?"scale(1.05)":"scale(1)",whiteSpace:"nowrap"}}>{t.name}</button>))}</div>
 {shortcuts.some(s=>s.showOnTop&&s.enabled)&&!(mob&&mobileHideItems.shortcuts)&&<div style={{display:"flex",gap:4,marginBottom:10,flexWrap:mob?"nowrap":"wrap",padding:"8px 12px",borderRadius:14,background:"linear-gradient(135deg,#f7fee7,#ecfccb)",border:"1px solid #ecfccb",overflowX:mob?"auto":"visible"}}>
 <span style={{fontSize:10,color:C.pD,fontWeight:600,alignSelf:"center",marginRight:4}}>⌨️</span>
