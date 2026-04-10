@@ -454,7 +454,7 @@ const ib={padding:mob?"7px 10px":"8px 12px",borderRadius:mob?10:12,border:`1.5px
 const card={borderRadius:14,border:`1px solid ${theme.cardBorder}`,padding:mob?14:20,background:theme.cardBg,backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",marginBottom:mob?12:16,boxShadow:"0 1px 4px rgba(0,0,0,.03)"};
 const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,transition:"all 0.2s ease",boxShadow:"0 2px 8px rgba(0,0,0,.08)"};
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
 const[tplOrder,setTplOrder]=useState(null);
 const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
@@ -894,7 +894,9 @@ setProg(50);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPrompt,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
 
 const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
-const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
+const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
+// 議事録も無音スキップ（音声レベル参照）
+if(lvRef.current<8)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
 // 10分ごとの自動保存タイマー開始
 if(minAutoSaveRef.current)clearInterval(minAutoSaveRef.current);
 minAutoSaveRef.current=setInterval(()=>{saveMinDraft(true)},10*60*1000)};
@@ -1435,20 +1437,42 @@ const runTreatmentMaterial=async()=>{
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
-const tc=async(b)=>{if(b.size<500)return;if(audioSaveRef.current)allAudioChunks.current.push(b);sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>p+(p?"\n":"")+fixed);sSt(`録音中 ✓ [${asrEngine==="qwen"?"Qwen3":asrEngine==="gemini"?"Gemini":"Whisper"}]`)}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
+const tc=async(b)=>{if(b.size<500)return;
+// 音声レベルが低すぎる場合はスキップ（無音チャンク対策）
+if(lvRef.current<8){return;}if(audioSaveRef.current)allAudioChunks.current.push(b);sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>p+(p?"\n":"")+fixed);sSt(`録音中 ✓ [${asrEngine==="qwen"?"Qwen3":asrEngine==="gemini"?"Gemini":"Whisper"}]`)}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
 const go=async()=>{const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(s);m2.start();mR.current=m2}},10000)};
 const stop=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;xAM();sRS("inactive");sSt("待機中");if(audioSaveRef.current&&allAudioChunks.current.length>0){const blob=new Blob(allAudioChunks.current,{type:"audio/webm"});saveAudio(blob);allAudioChunks.current=[]}};
 const pause=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();sRS("paused");sSt("一時停止")};
 const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();const m2=cMR(msR.current);m2.start();mR.current=m2}},10000)};
+const extractRx=async(summaryText)=>{
+if(!summaryText||!summaryText.trim())return;
+setRxLd(true);
+try{
+const r=await fetch("/api/extract-rx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:summaryText})});
+const d=await r.json();
+if(d.items&&d.items.length>0){setRxItems(d.items);setRxOpen(true)}
+else{setRxItems([])}
+}catch{setRxItems([])}
+finally{setRxLd(false)}
+};
 const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}const t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");return}sumDoneRef.current=false;sLd(true);setProg(10);sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 2.5 Flash で要約中...");try{
 let pastExamples="";if(supabase){try{const{data}=await supabase.from("records").select("output_text,template").order("created_at",{ascending:false}).limit(100);if(data){const sameTpl=data.filter(r=>r.template===tid&&r.output_text).slice(0,5);if(sameTpl.length>0){pastExamples="\n\n【当院の過去の要約例（同テンプレート）- この書式・表現を参考にして統一感を出してください】\n"+sameTpl.map((r,i)=>`例${i+1}:\n${r.output_text}`).join("\n---\n")}}
 const{data:pastData}=await supabase.from("past_records").select("content").order("created_at",{ascending:false}).limit(30);if(pastData&&pastData.length>0){pastExamples+="\n\n【当院の過去のカルテ記録（参考）- 当院の用語・薬剤名・表現方法を参考にしてください】\n"+pastData.slice(0,10).map(r=>r.content).join("\n---\n")}
 }catch(e){console.error("History fetch error:",e)}}
 const enhancedPrompt=ct.prompt+pastExamples;
 setProg(40);
-const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:md,prompt:enhancedPrompt,model_preference:summaryModel})});
-const d=await r.json();if(d.error){sOut("エラー: "+d.error)}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;await saveRecord(iR.current,d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"gemini"}]`)}catch{sSt(`要約完了 [${d.model||"gemini"}]`)}}}catch{sSt("エラーが発生しました")}finally{sLd(false);setProg(0)}};
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
+if(summaryModel==="claude"){
+const d=await r.json();if(d.error){sOut("エラー: "+d.error)}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;await saveRecord(iR.current,d.summary);extractRx(d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"claude"}]`)}catch{sSt(`要約完了 [${d.model||"claude"}]`)}}
+}else{
+const reader=r.body.getReader();const decoder=new TextDecoder();let buffer="";let finalSummary="";let usedModel="";
+while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop()||"";
+for(const line of lines){if(!line.startsWith("data: "))continue;try{const json=JSON.parse(line.slice(6));
+if(json.error){sOut("エラー: "+json.error);return}
+if(json.chunk){finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
+if(json.done){setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;await saveRecord(iR.current,finalSummary);extractRx(finalSummary);try{await navigator.clipboard.writeText(finalSummary);sSt(`要約完了 ✓ [${usedModel}]`)}catch{sSt(`要約完了 [${usedModel}]`)}}}catch{}}}}
+}catch{sSt("エラーが発生しました")}finally{sLd(false);setProg(0)}};
 const stopSum=()=>{clearInterval(cR.current);if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());const ft=iR.current+(iR.current?"\n":"")+(noise?applyDict(noise):"");sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;xAM();sRS("inactive")};
 const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:pId}};
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
@@ -3344,6 +3368,24 @@ const fn=actions[sc.id];if(fn)fn();
 <button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button></div>}
 </div>
 <textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+{rxItems.length>0&&<div style={{marginTop:8,padding:10,borderRadius:10,border:"1px solid #a78bfa",background:"#f5f3ff"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+<span style={{fontSize:12,fontWeight:700,color:"#6d28d9"}}>💊 処方チェックリスト（{rxItems.length}件）</span>
+<button onClick={()=>{setRxOpen(v=>!v)}} style={{fontSize:10,color:"#6d28d9",background:"none",border:"none",cursor:"pointer"}}>{rxOpen?"▲ 閉じる":"▼ 開く"}</button>
+</div>
+{rxOpen&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
+{rxItems.map((item,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"6px 8px",borderRadius:8,background:"rgba(255,255,255,0.7)",border:"1px solid #c4b5fd"}}>
+<input type="checkbox" style={{marginTop:2,accentColor:"#7c3aed",cursor:"pointer",flexShrink:0}}/>
+<div style={{flex:1}}>
+<div style={{fontSize:12,fontWeight:700,color:"#4c1d95"}}>{item.name}</div>
+<div style={{fontSize:11,color:"#6d28d9"}}>{item.usage}{item.duration?" / "+item.duration:""}</div>
+</div>
+<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:item.type==="外用"?"#dbeafe":item.type==="内服"?"#dcfce7":"#fef9c3",color:item.type==="外用"?"#1e40af":item.type==="内服"?"#166534":"#854d0e",flexShrink:0}}>{item.type}</span>
+</div>)}
+<button onClick={()=>{const t=rxItems.map(it=>`☐ ${it.name}（${it.usage}${it.duration?" / "+it.duration:""}）`).join("\n");navigator.clipboard.writeText(t);sSt("💊 処方リストをコピーしました")}} style={{marginTop:4,padding:"4px 10px",borderRadius:7,border:"1px solid #a78bfa",background:"#fff",fontSize:11,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>📋 リストをコピー</button>
+</div>}
+</div>}
+{rxLd&&<div style={{marginTop:6,fontSize:11,color:"#6d28d9",textAlign:"center"}}>💊 処方リスト抽出中...</div>}
 </div>
 </div>
 {snippets.length>0&&<div style={{marginTop:8}}>
