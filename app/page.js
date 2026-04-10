@@ -494,6 +494,23 @@ const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
 const[hist,sHist]=useState([]),[search,setSearch]=useState(""),[pName,sPName]=useState(""),[pId,sPId]=useState(""),[histTab,setHistTab]=useState({});
 const[histPopup,setHistPopup]=useState(null);
+const[hlMode,setHlMode]=useState(false);
+const[todayStats,setTodayStats]=useState(null);
+const[statsOpen,setStatsOpen]=useState(false);
+const[calView,setCalView]=useState("list");
+const[calYear,setCalYear]=useState(new Date().getFullYear());
+const[calMonth,setCalMonth]=useState(new Date().getMonth());
+const[qModal,setQModal]=useState(false);
+const[qDisease,setQDisease]=useState("");
+const[qFirstVisit,setQFirstVisit]=useState(true);
+const[qResult,setQResult]=useState("");
+const[qLd,setQLd]=useState(false);
+const[visitType,setVisitType]=useState("");
+const[prevRecord,setPrevRecord]=useState(null);
+const[docLang,setDocLang]=useState("ja");
+const[usageGuide,setUsageGuide]=useState("");
+const[usageGuideLd,setUsageGuideLd]=useState(false);
+const[usageGuideModal,setUsageGuideModal]=useState(false);
 const[badgePopup,setBadgePopup]=useState(null);
 const[badgeLd,setBadgeLd]=useState(false);
 const[selectedHistIds,setSelectedHistIds]=useState(new Set());
@@ -531,6 +548,7 @@ useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);co
 useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}
 // ノイズパターンをSupabaseから読み込む
 try{const{data:npData}=await supabase.from("noise_patterns").select("pattern").order("created_at",{ascending:false});if(npData&&npData.length>0){const patterns=npData.map(r=>r.pattern);setNoisePatterns(patterns);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(patterns))}catch{}}}catch(e){console.error("noise_patterns load error:",e)}
+loadTodayStats();
 })()},[]);
 useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.documentElement.style.fontSize=sizes[fontSize]||"14px";const zooms={small:"0.85",medium:"1",large:"1.2"};document.documentElement.style.zoom=zooms[fontSize]||"1";localStorage.setItem("mk_fontSize",fontSize)},[fontSize]);
 useEffect(()=>{document.documentElement.style.fontFamily=`'${fontFamily}', sans-serif`;document.body.style.fontFamily=`'${fontFamily}', sans-serif`;localStorage.setItem("mk_fontFamily",fontFamily)},[fontFamily]);
@@ -926,8 +944,10 @@ ${docFreePrompt?`【追加指示】${docFreePrompt}\n`:""}${histText?"【当院�
 ※美容施術の場合はカウンセリング用に効果・ダウンタイム・施術間隔も含める
 ※外用方法が関係する場合はFTU（1FTU=約0.5g）、塗布順序（保湿剤→ステロイド等）、プロアクティブ療法についても記載
 ※手術後の注意点が関係する場合はシャワー・入浴・抜糸・出血時の対応も記載`;
+const langInst=docLang==="en"?"\n\nPlease write the patient explanation in English.":docLang==="zh"?"\n\n请用中文（简体）为患者写说明资料。":docLang==="ko"?"\n\n환자를 위한 설명 자료를 한국어로 작성해 주세요。":docLang==="th"?"\n\nกรุณาเขียนเอกสารอธิบายสำหรับผู้ป่วยเป็นภาษาไทย":"";
+const sysPromptFinal=sysPrompt+langInst;
 setProg(50);
-const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPrompt,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPromptFinal,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
 
 const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
 const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
@@ -1297,6 +1317,47 @@ if(text.length>500&&(t.includes("---")||/s[）)]\s/.test(t)))return"soap";
 return null;
 };
 const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
+const loadTodayStats=async()=>{
+if(!supabase)return;
+const now=new Date();
+const jstStart=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0);
+const jstEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+const utcStart=new Date(jstStart.getTime()-9*60*60*1000).toISOString();
+const utcEnd=new Date(jstEnd.getTime()-9*60*60*1000).toISOString();
+try{
+const{data}=await supabase.from("records").select("output_text,created_at,room").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false});
+if(!data)return;
+const diseases={};
+data.forEach(r=>{const matches=(r.output_text||"").match(/^#\s+([^\n（(]+)/gm);if(matches)matches.forEach(m=>{const d=m.replace(/^#\s+/,"").trim().substring(0,10);diseases[d]=(diseases[d]||0)+1})});
+const topDiseases=Object.entries(diseases).sort((a,b)=>b[1]-a[1]).slice(0,5);
+const rooms={};data.forEach(r=>{rooms[r.room||"不明"]=(rooms[r.room||"不明"]||0)+1});
+setTodayStats({count:data.length,diseases:topDiseases,rooms,lastTime:data[0]?.created_at});
+}catch(e){console.error("stats error:",e)}
+};
+const checkVisitType=async(pid)=>{
+if(!pid||!supabase){setVisitType("");setPrevRecord(null);return}
+try{
+const{data}=await supabase.from("records").select("*").eq("patient_id",pid).order("created_at",{ascending:false}).limit(2);
+if(!data||data.length===0){setVisitType("first");setPrevRecord(null)}
+else if(data.length===1){
+const today=new Date().toLocaleDateString("ja-JP");
+const recDate=toJSTDate(data[0].created_at);
+if(today===recDate){setVisitType("first");setPrevRecord(null)}
+else{setVisitType("revisit");setPrevRecord(data[0])}
+}else{setVisitType("revisit");setPrevRecord(data[1])}
+}catch{setVisitType("");setPrevRecord(null)}
+};
+const generateQuestionnaire=async()=>{
+if(!qDisease.trim())return;
+setQLd(true);setQResult("");
+try{
+const r=await fetch("/api/generate-questionnaire",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({disease:qDisease,isFirstVisit:qFirstVisit})});
+const d=await r.json();
+if(d.error){setQResult("エラー: "+d.error);return}
+setQResult(d.questionnaire||"");
+}catch(e){setQResult("エラー: "+e.message)}
+finally{setQLd(false)}
+};
 const openPatientHistory=async(pid)=>{if(!pid||!supabase)return;try{const{data}=await supabase.from("records").select("*").eq("patient_id",pid).order("created_at",{ascending:false}).limit(100);if(data&&data.length>0)setPatientModal({pid,records:data})}catch(e){console.error("Patient history error:",e)}};
 const runMonthlyReport=async()=>{if(!supabase)return;setMonthlyLd(true);setMonthlyModal(true);setMonthlyResult("");const now=new Date();const year=now.getFullYear();const month=now.getMonth();const start=new Date(year,month,1);const end=new Date(year,month+1,0,23,59,59);const utcStart=new Date(start.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(end.getTime()-9*60*60*1000).toISOString();const monthLabel=`${year}年${month+1}月`;setMonthlyTarget(monthLabel);try{const{data}=await supabase.from("records").select("output_text,created_at").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setMonthlyResult("データが不足しています（最低3件必要）");return}const res=await fetch("/api/monthly-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,month:monthLabel})});const d=await res.json();if(d.error){setMonthlyResult("エラー: "+d.error);return}setMonthlyResult(d.report||"")}catch(e){setMonthlyResult("エラー: "+e.message)}finally{setMonthlyLd(false)}};
 const searchHist=async(query)=>{if(!supabase||!query.trim())return;try{const q=query.trim();const dateMatch=q.match(/^(\d{1,2})\/(\d{1,2})(?:\s+(\d{2}))?$/);if(dateMatch){const month=parseInt(dateMatch[1]);const day=parseInt(dateMatch[2]);const hour=dateMatch[3]?parseInt(dateMatch[3]):null;const year=new Date().getFullYear();const jstStart=hour!==null?new Date(year,month-1,day,hour,0,0):new Date(year,month-1,day,0,0,0);const jstEnd=hour!==null?new Date(year,month-1,day,hour,59,59):new Date(year,month-1,day,23,59,59);const utcStart=new Date(jstStart.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(jstEnd.getTime()-9*60*60*1000).toISOString();const{data}=await supabase.from("records").select("*").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}else{const{data}=await supabase.from("records").select("*").or(`output_text.ilike.%${q}%,input_text.ilike.%${q}%,patient_id.ilike.%${q}%`).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}}catch(e){console.error("Search error:",e)}};
@@ -1343,6 +1404,20 @@ const filterTranscriptNoise=(text)=>{
 const detectContentBadges=(inputText,outputText)=>{
   const text=(inputText||"")+(outputText||"");
   const badges=[];
+  // 疾患名バッジ（出力テキストの # 見出しから抽出）
+  const diseaseMatches=(outputText||"").match(/^#\s+([^\n]+)/gm);
+  if(diseaseMatches){
+    diseaseMatches.slice(0,3).forEach(m=>{
+      const name=m.replace(/^#\s+/,"").trim();
+      const display=name.replace(/（[^）]+）/,"").trim().substring(0,8);
+      if(display){
+        badges.push({key:"disease_"+display,label:"🏥"+display,color:"#065f46",bg:"#d1fae5",prompt:`この診察記録の「${name}」について、疾患の特徴・治療・経過を詳しくまとめてください。`});
+      }
+    });
+  }
+  // 美容施術バッジ
+  const cosmeticKw=["ボトックス","ヒアルロン","レーザー","ピーリング","ダーマペン","ポテンツァ","脱毛","フォト","トーニング"];
+  if(cosmeticKw.some(k=>text.includes(k)))badges.push({key:"cosmetic",label:"✨美容",color:"#9d174d",bg:"#fce7f3",prompt:"この診察記録の美容施術の内容・パラメータ・注意事項を詳しくまとめてください。"});
   const externalKeywords=["1日2回","1日1回","1日3回","朝晩","入浴後","就寝前","塗布","外用","軟膏","クリーム","ゲル","ローション","塗り方","薄く","擦り込","塗って","患部に","フィンガーチップ","FTU","プロアクティブ","リアクティブ","保湿","スキンケア","ステップ","重ね塗り","混合","希釈"];
   if(externalKeywords.some(k=>text.includes(k)))badges.push({key:"external",label:"💊外用",color:"#0369a1",bg:"#e0f2fe",prompt:"この診察記録の外用薬の使い方・塗り方の説明を詳しくまとめてください。"});
   const sideEffectKeywords=["副作用","リスク","注意","刺激感","赤み","かぶれ","アレルギー","過敏","皮膚萎縮","ステロイド副作用","毛包炎","酒さ様","依存","反跳","離脱","肝斑","光過敏","紫外線","日焼け","SPF","日焼け止め"];
@@ -1369,6 +1444,16 @@ const runBadgeAnalysis=async(record,badge)=>{
 
 // Dict
 const toKatakana=(s)=>s.replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96));
+const highlightSummary=(text)=>{
+if(!text)return text;
+let h=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+h=h.replace(/^(#\s+)([^\n]+)/gm,(m,p1,p2)=>`${p1}<span style="color:#065f46;font-weight:700;background:#d1fae5;padding:1px 6px;border-radius:4px">${p2}</span>`);
+h=h.replace(/([ァ-ヶー]{3,}(?:軟膏|クリーム|ローション|液|ゲル|錠|散|カプセル|シャンプー|スプレー|テープ)?)/g,'<span style="color:#0369a1;background:#dbeafe;padding:1px 4px;border-radius:3px">$1</span>');
+h=h.replace(/(⚠️[^\n]+|注意[：:][^\n]+|禁忌[：:][^\n]+)/g,'<span style="color:#b45309;background:#fef9c3;padding:1px 4px;border-radius:3px">$1</span>');
+h=h.replace(/^([SOPC]\uff09|^患者情報\uff09)/gm,'<span style="color:#6d28d9;font-weight:700">$&</span>');
+h=h.replace(/^(■[^　\n]+)/gm,'<span style="color:#0369a1;font-weight:700">$1</span>');
+return h;
+};
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else{r=r.split(from).join(to)}}return r};
 const saveDictLocal=(d)=>{try{localStorage.setItem("mk_dict",JSON.stringify(d))}catch{}};
 const saveNoisePatternsLocal=(patterns)=>{
@@ -1535,6 +1620,38 @@ if(d.items&&d.items.length>0){setRxItems(d.items);setRxOpen(true)}
 else{setRxItems([])}
 }catch{setRxItems([])}
 finally{setRxLd(false)}
+};
+const generateUsageGuide=async()=>{
+if(!rxItems.length)return;
+setUsageGuideLd(true);setUsageGuideModal(true);setUsageGuide("");
+const meds=rxItems.filter(i=>i.type==="外用"||i.type==="内服");
+const medList=meds.map(i=>`・${i.name}（${i.usage||""}）`).join("\n");
+try{
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+text:medList,mode:"gemini",
+prompt:`以下の処方薬について、患者向けのわかりやすい使い方説明書を作成してください。
+
+【出力形式】
+# 薬の使い方ガイド
+
+## 各薬の使い方
+（薬ごとに以下を記載）
+### 薬剤名
+- いつ使う：
+- どこに使う：
+- どのくらい使う：（FTUの目安も含める）
+- 塗り方のコツ：
+
+## 注意事項
+- 使ってはいけない場合：
+- こんな時は受診を：
+
+患者が自宅で読んでわかる平易な言葉で。`
+})});
+const d=await r.json();
+setUsageGuide(d.summary||"");
+}catch(e){setUsageGuide("エラー: "+e.message)}
+finally{setUsageGuideLd(false)}
 };
 const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}const t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");return}sumDoneRef.current=false;sLd(true);setProg(10);sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 2.5 Flash で要約中...");try{
 let pastExamples="";if(supabase){try{const{data}=await supabase.from("records").select("output_text,template").order("created_at",{ascending:false}).limit(100);if(data){const sameTpl=data.filter(r=>r.template===tid&&r.output_text).slice(0,5);if(sameTpl.length>0){pastExamples="\n\n【当院の過去の要約例（同テンプレート）- この書式・表現を参考にして統一感を出してください】\n"+sameTpl.map((r,i)=>`例${i+1}:\n${r.output_text}`).join("\n---\n")}}
@@ -1855,6 +1972,10 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <h2 style={{fontSize:18,fontWeight:700,color:C.pDD,margin:0,whiteSpace:"nowrap"}}>📂 履歴</h2>
 <input value={search||""} onChange={e=>{const v=e.target.value;setSearch(v);if(!v.trim()){loadHist()}else if(v.trim().length>=2&&!v.trim().match(/^\d{1,2}\//)){clearTimeout(window._histSearchTimer);window._histSearchTimer=setTimeout(()=>searchHist(v),500)}}} placeholder="検索 例: アトピー / 3/9 / 3/9 11" style={{flex:1,minWidth:100,height:36,padding:"0 14px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}}/>
 <span style={{fontSize:12,color:C.g400,whiteSpace:"nowrap"}}>{filteredHist.length}件</span>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>setCalView("list")} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${calView==="list"?C.pD:C.g200}`,background:calView==="list"?C.pLL:"#fff",fontSize:11,fontWeight:600,color:calView==="list"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>📋 リスト</button>
+<button onClick={()=>setCalView("calendar")} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${calView==="calendar"?C.pD:C.g200}`,background:calView==="calendar"?C.pLL:"#fff",fontSize:11,fontWeight:600,color:calView==="calendar"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>📅 カレンダー</button>
+</div>
 <button onClick={()=>{loadFavorites();setPage("favs")}} style={{height:36,padding:"0 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:14,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ お気に入り</button>
 <button onClick={()=>setPage("main")} style={{...btn(C.p,C.pDD),height:36,padding:"0 14px",fontSize:14}}>✕ 閉じる</button>
 </div>
@@ -1879,6 +2000,40 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 {FAV_GROUPS.map(g=><button key={g} onClick={()=>{bulkSaveFavorites(g);setBulkFavModal(false)}} style={{display:"block",width:"100%",padding:"10px 14px",marginBottom:6,borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}}>{g}</button>)}
 <button onClick={()=>setBulkFavModal(false)} style={{width:"100%",padding:"8px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer",marginTop:4}}>キャンセル</button>
 </div></div>}
+{calView==="calendar"&&<div style={{marginBottom:12}}>
+<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+<button onClick={()=>{if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1)}else setCalMonth(m=>m-1)}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:"#fff",fontSize:13,cursor:"pointer"}}>◀</button>
+<span style={{fontSize:14,fontWeight:700,color:C.pD,flex:1,textAlign:"center"}}>{calYear}年{calMonth+1}月</span>
+<button onClick={()=>{if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1)}else setCalMonth(m=>m+1)}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:"#fff",fontSize:13,cursor:"pointer"}}>▶</button>
+</div>
+<div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+{["日","月","火","水","木","金","土"].map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:C.g400,padding:"2px 0"}}>{d}</div>)}
+</div>
+<div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+{(()=>{
+const firstDay=new Date(calYear,calMonth,1).getDay();
+const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+const cells=[];
+for(let i=0;i<firstDay;i++)cells.push(<div key={"e"+i}/>);
+for(let d=1;d<=daysInMonth;d++){
+const dateStr=new Date(calYear,calMonth,d).toLocaleDateString("ja-JP");
+const dayRecords=hist.filter(r=>{
+if(!r.created_at)return false;
+return toJSTDate(r.created_at)===`${calYear}/${String(calMonth+1).padStart(2,"0")}/${String(d).padStart(2,"0")}`;
+});
+const count=dayRecords.length;
+const isToday=new Date().toLocaleDateString("ja-JP")===dateStr;
+cells.push(
+<div key={d} onClick={()=>{if(count>0){setSearch(String(calMonth+1)+"/"+String(d))}}} style={{padding:"4px 2px",borderRadius:6,border:`1px solid ${isToday?C.pD:count>0?C.g200:"transparent"}`,background:isToday?C.pLL:count>0?"#f9fafb":"transparent",cursor:count>0?"pointer":"default",textAlign:"center",minHeight:36}}>
+<div style={{fontSize:11,color:isToday?C.pD:C.g600,fontWeight:isToday?700:400}}>{d}</div>
+{count>0&&<div style={{fontSize:10,fontWeight:700,color:C.pD}}>{count}件</div>}
+</div>
+);
+}
+return cells;
+})()}
+</div>
+</div>}
 {(()=>{const DAYS=["日","月","火","水","木","金","土"];const grouped={};filteredHist.forEach(r=>{const dk=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"}):"不明";if(!grouped[dk])grouped[dk]=[];grouped[dk].push(r)});const dateKeys=Object.keys(grouped);if(!histDatesInitRef.current&&dateKeys.length>0){histDatesInitRef.current=true;setTimeout(()=>setOpenDates(new Set([dateKeys[0]])),0)}return dateKeys.map(dk=>{const recs=grouped[dk];const isOpen=openDates.has(dk);const d=recs[0]?.created_at?new Date(recs[0].created_at):null;const dayStr=d?DAYS[d.getDay()]:"";const toggleDate=()=>setOpenDates(prev=>{const n=new Set(prev);if(n.has(dk))n.delete(dk);else n.add(dk);return n});const DAILY_MODES=[{id:"summary",label:"📋 日次まとめ"},{id:"staff_manual",label:"👥 スタッフ指導マニュアル"},{id:"patient_material",label:"👤 患者向け説明資料ベース"},{id:"analysis",label:"📈 診療データ分析"}];const runDaily=async(mode)=>{setDailyMenu(null);setDailyLd(true);setDailyResult(null);try{const res=await fetch("/api/daily-summary",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:recs.map(r=>({input_text:r.input_text||"",output_text:r.output_text||"",patient_id:r.patient_id||""})),date:dk,mode})});const data=await res.json();if(data.error)throw new Error(data.error);setDailyResult({title:DAILY_MODES.find(m=>m.id===mode)?.label||"分析結果",date:dk,content:data.result||""})}catch(e){setDailyResult({title:"エラー",date:dk,content:"エラー: "+e.message})}finally{setDailyLd(false)}};return<div key={dk} style={{marginBottom:8}}>
 <div onClick={toggleDate} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(160,220,100,0.2)",borderRadius:12,padding:"10px 16px",cursor:"pointer",userSelect:"none"}}>
 <span style={{fontWeight:700,color:"#2a5018",fontSize:14}}>📅 {dk}（{dayStr}）- {recs.length}件</span>
@@ -2725,7 +2880,13 @@ if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padd
 <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
 {["アトピー性皮膚炎","ざ瘡（ニキビ）","蕁麻疹","乾癬","帯状疱疹","尋常性疣贅","脂漏性皮膚炎","円形脱毛症","白斑","酒さ","シミ・肝斑","医療脱毛","ポテンツァ","ノーリス（IPL）","ゼオスキン","ピーリング","外用方法の説明","皮膚腫瘍切除術後の注意点","レーザー施術後の注意点","ピーリング後の注意点"].map(d=>(<button key={d} onClick={()=>{setDocDisease(d)}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:500,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{d}</button>))}
 </div>
-<textarea value={docFreePrompt} onChange={e=>setDocFreePrompt(e.target.value)} placeholder="追加指示（任意）：例「小児向けに平易な表現で」「治療費の目安欄も追加して」「英語併記で」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:12,resize:"vertical",boxSizing:"border-box"}}/>
+<div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+{[{v:"ja",l:"🇯🇵 日本語"},{v:"en",l:"🇺🇸 English"},{v:"zh",l:"🇨🇳 中文"},{v:"ko",l:"🇰🇷 한국어"},{v:"th",l:"🇹🇭 ไทย"}].map(({v,l})=>(
+<button key={v} onClick={()=>setDocLang(v)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${docLang===v?C.pD:C.g200}`,background:docLang===v?C.pLL:"#fff",fontSize:11,fontWeight:600,color:docLang===v?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{l}</button>
+))}
+<button onClick={()=>setQModal(true)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:"#fff",fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer",marginLeft:"auto"}}>📄 問診票生成</button>
+</div>
+<textarea value={docFreePrompt} onChange={e=>setDocFreePrompt(e.target.value)} placeholder="追加指示（任意）：例「小児向けに平易な表現で」「治療費の目安欄も追加して」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:12,resize:"vertical",boxSizing:"border-box"}}/>
 {docLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが履歴を分析して説明資料を作成中...</span></div>}
 {docOut&&<div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -3404,6 +3565,32 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 </select>
 <button onClick={loadMics} style={{padding:"2px 5px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.w,fontSize:9,cursor:"pointer"}}>🔄</button>
 </div>
+{todayStats&&<div style={{margin:"0 0 10px",padding:"8px 12px",borderRadius:10,background:C.pLL,border:`1px solid ${C.g200}`,cursor:"pointer"}} onClick={()=>setStatsOpen(v=>!v)}>
+<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+<span style={{fontSize:12,fontWeight:700,color:C.pD}}>📊 本日の診察</span>
+<span style={{fontSize:20,fontWeight:700,color:C.pD}}>{todayStats.count}<span style={{fontSize:11,fontWeight:400,color:C.g500}}>件</span></span>
+{todayStats.diseases.slice(0,3).map(([d,n])=>(
+<span key={d} style={{fontSize:10,padding:"2px 7px",borderRadius:6,background:"#d1fae5",color:"#065f46",fontWeight:600}}>{d} {n}</span>
+))}
+<span style={{fontSize:10,color:C.g400,marginLeft:"auto"}}>{statsOpen?"▲":"▼"}</span>
+</div>
+{statsOpen&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.g200}`,display:"flex",gap:16,flexWrap:"wrap"}}>
+<div>
+<div style={{fontSize:11,color:C.g500,marginBottom:4}}>疾患ランキング</div>
+{todayStats.diseases.map(([d,n],i)=>(
+<div key={d} style={{fontSize:12,color:C.g700,display:"flex",gap:6,alignItems:"center"}}>
+<span style={{fontSize:10,color:C.g400}}>{i+1}.</span><span>{d}</span><span style={{fontSize:10,color:C.pD,fontWeight:600}}>{n}件</span>
+</div>
+))}
+</div>
+<div>
+<div style={{fontSize:11,color:C.g500,marginBottom:4}}>診察室別</div>
+{Object.entries(todayStats.rooms).map(([r,n])=>(
+<div key={r} style={{fontSize:12,color:C.g700}}>{r}: {n}件</div>
+))}
+</div>
+</div>}
+</div>}
 {autoTplMsg&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:8,background:"#f0fdf4",border:"1px solid #86efac",fontSize:11,fontWeight:600,color:"#16a34a",marginBottom:4,animation:"fadeIn 0.3s ease"}}>
 <span>{autoTplMsg}</span>
 <button onClick={()=>setAutoTplMsg("")} style={{marginLeft:"auto",background:"none",border:"none",fontSize:10,color:"#16a34a",cursor:"pointer",padding:"0 2px"}}>✕</button>
@@ -3431,7 +3618,9 @@ const fn=actions[sc.id];if(fn)fn();
 <span style={{fontSize:18}}>🌟</span><span style={{fontSize:9}}>{pipActive?"OFF":"小窓"}</span></button>}
 <div style={{display:"flex",alignItems:"center",gap:mob?4:8,marginBottom:8,paddingRight:70}}>
 <span style={{fontSize:13}}>🔢</span>
-<input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value}} placeholder="患者ID" style={{width:mob?60:80,padding:"6px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:mob?12:13,fontFamily:"inherit",textAlign:"center",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}} maxLength={6}/>
+<input value={pId} onChange={e=>{sPId(e.target.value);pIdRef.current=e.target.value;clearTimeout(window._visitTimer);window._visitTimer=setTimeout(()=>checkVisitType(e.target.value),500)}} placeholder="患者ID" style={{width:mob?60:80,padding:"6px 8px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:mob?12:13,fontFamily:"inherit",textAlign:"center",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}} maxLength={6}/>
+{visitType==="first"&&<span style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"#dcfce7",color:"#166534",fontWeight:700}}>🔰 初診</span>}
+{visitType==="revisit"&&prevRecord&&<span onClick={()=>setHistPopup(prevRecord)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"#dbeafe",color:"#1e40af",fontWeight:700,cursor:"pointer"}}>🔄 再診（前回:{toJSTDate(prevRecord.created_at).substring(5)}）</span>}
 <button onClick={()=>{loadHist();setPage("hist")}} title="診療履歴を表示" onMouseEnter={e=>showTip(e,"診療履歴を表示")} onMouseLeave={hideTip} style={{padding:mob?"4px 8px":"6px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?11:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>📂 履歴</button>
 <button onClick={()=>setDictModal(true)} title="誤字脱字辞書を管理" onMouseEnter={e=>showTip(e,"誤字脱字辞書を管理")} onMouseLeave={hideTip} style={{padding:mob?"4px 8px":"6px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?11:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)",whiteSpace:"nowrap"}}>📖辞書</button>
 <button onClick={()=>{loadFavorites();setPage("favs")}} title="お気に入りを表示" onMouseEnter={e=>showTip(e,"お気に入りを表示")} onMouseLeave={hideTip} style={{padding:mob?"4px 8px":"6px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,background:C.w,fontSize:mob?11:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.06)",whiteSpace:"nowrap"}}>⭐お気に入り</button>
@@ -3439,6 +3628,10 @@ const fn=actions[sc.id];if(fn)fn();
 {[["small","小"],["medium","中"],["large","大"]].map(([v,l])=><button key={v} onClick={()=>setFontSize(v)} title={`文字サイズ: ${l}`} onMouseEnter={e=>showTip(e,`文字サイズ: ${l}`)} onMouseLeave={hideTip} style={{padding:"2px 8px",borderRadius:7,border:"none",background:fontSize===v?"#22c55e":"#d1d5db",color:fontSize===v?"#fff":"#57534e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,.1)",transition:"all 0.15s"}}>{l}</button>)}
 </div>}
 </div>
+{visitType==="revisit"&&prevRecord?.output_text&&<div style={{marginBottom:4,padding:"6px 10px",borderRadius:7,background:"#eff6ff",border:"1px solid #bfdbfe",display:"flex",alignItems:"center",gap:8}}>
+<span style={{fontSize:11,color:"#1e40af"}}>📋 前回の要約を参照しますか？</span>
+<button onClick={()=>{sInp(p=>p+(p?"\n\n":"")+"【前回参照】\n"+(prevRecord.output_text||"").substring(0,300));sSt("✓ 前回要約を追加しました")}} style={{padding:"2px 8px",borderRadius:5,border:"none",background:"#1e40af",color:"#fff",fontSize:10,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>追加</button>
+</div>}
 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:16}}>
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:C.g200,overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${C.rG},${C.p})`,borderRadius:3,transition:"width 0.1s"}}/></div>}
@@ -3471,9 +3664,12 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果</span>
 {out&&<div style={{display:"flex",gap:3,whiteSpace:"nowrap",flexWrap:"wrap"}}><button onClick={runTypoCheckOut} disabled={typoLdOut} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLdOut?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLdOut?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLdOut?"wait":"pointer"}}>{typoLdOut?"🔬...":"🔬"}</button><button onClick={()=>cp(out)} title="要約をコピー" onMouseEnter={e=>showTip(e,"要約をコピー")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
-<button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button></div>}
+<button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
+{out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}
+</div>}
 </div>
-<textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+<textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box",display:hlMode?"none":undefined}}/>
+{out&&hlMode&&<div style={{width:"100%",minHeight:120,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fafafa",fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"inherit",overflowY:"auto",maxHeight:400}} dangerouslySetInnerHTML={{__html:highlightSummary(out)}}/>}
 {out&&lastRecordId&&<div style={{marginTop:6,display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,background:C.g50,border:`1px solid ${C.g200}`}}>
 <span style={{fontSize:11,color:C.g500}}>この要約は：</span>
 <button onClick={()=>saveFeedback("good")} disabled={feedbackSaving} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${feedback==="good"?"#16a34a":C.g200}`,background:feedback==="good"?"#dcfce7":"#fff",fontSize:11,fontWeight:600,color:feedback==="good"?"#16a34a":C.g500,fontFamily:"inherit",cursor:"pointer"}}>👍 良い</button>
@@ -3494,7 +3690,10 @@ const fn=actions[sc.id];if(fn)fn();
 </div>
 <span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:item.type==="外用"?"#dbeafe":item.type==="内服"?"#dcfce7":"#fef9c3",color:item.type==="外用"?"#1e40af":item.type==="内服"?"#166534":"#854d0e",flexShrink:0}}>{item.type}</span>
 </div>)}
-<button onClick={()=>{const t=rxItems.map(it=>`☐ ${it.name}（${it.usage}${it.duration?" / "+it.duration:""}）`).join("\n");navigator.clipboard.writeText(t);sSt("💊 処方リストをコピーしました")}} style={{marginTop:4,padding:"4px 10px",borderRadius:7,border:"1px solid #a78bfa",background:"#fff",fontSize:11,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>📋 リストをコピー</button>
+<div style={{display:"flex",gap:6,marginTop:4}}>
+<button onClick={()=>{const t=rxItems.map(it=>`☐ ${it.name}（${it.usage}${it.duration?" / "+it.duration:""}）`).join("\n");navigator.clipboard.writeText(t);sSt("💊 処方リストをコピーしました")}} style={{padding:"4px 10px",borderRadius:7,border:"1px solid #a78bfa",background:"#fff",fontSize:11,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>📋 リストをコピー</button>
+<button onClick={generateUsageGuide} style={{padding:"4px 10px",borderRadius:7,border:"1px solid #7c3aed",background:"#f5f3ff",fontSize:11,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>📖 塗り方説明書を生成</button>
+</div>
 </div>}
 </div>}
 {rxLd&&<div style={{marginTop:6,fontSize:11,color:"#6d28d9",textAlign:"center"}}>💊 処方リスト抽出中...</div>}
@@ -3583,6 +3782,50 @@ const fn=actions[sc.id];if(fn)fn();
 {monthlyResult&&!monthlyLd&&<div style={{padding:"10px 16px",borderTop:"1px solid #e5e7eb",display:"flex",gap:8}}>
 <button onClick={()=>{navigator.clipboard.writeText(monthlyResult);sSt("📋 月次レポートをコピーしました")}} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#0369a1",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{saveFavorite("月次レポート",monthlyTarget,monthlyResult,"");setMonthlyModal(false)}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:700,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ 保存</button>
+</div>}
+</div>
+</div>}
+{/* 問診票生成モーダル */}
+{qModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setQModal(false)}>
+<div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"90vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+<div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g200}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:15,fontWeight:700,color:C.pD}}>📄 AI問診票生成</span>
+<button onClick={()=>setQModal(false)} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{padding:16,flex:1,overflow:"auto"}}>
+<div style={{marginBottom:12}}>
+<label style={{fontSize:12,color:C.g600,display:"block",marginBottom:4}}>疾患名・症状</label>
+<input value={qDisease} onChange={e=>setQDisease(e.target.value)} placeholder="例：アトピー性皮膚炎、ニキビ、水虫..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+</div>
+<div style={{display:"flex",gap:8,marginBottom:12}}>
+<button onClick={()=>setQFirstVisit(true)} style={{flex:1,padding:"6px",borderRadius:8,border:`2px solid ${qFirstVisit?C.pD:C.g200}`,background:qFirstVisit?C.pLL:"#fff",fontSize:12,fontWeight:600,color:qFirstVisit?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🔰 初診</button>
+<button onClick={()=>setQFirstVisit(false)} style={{flex:1,padding:"6px",borderRadius:8,border:`2px solid ${!qFirstVisit?C.pD:C.g200}`,background:!qFirstVisit?C.pLL:"#fff",fontSize:12,fontWeight:600,color:!qFirstVisit?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🔄 再診</button>
+</div>
+<button onClick={generateQuestionnaire} disabled={qLd||!qDisease.trim()} style={{width:"100%",padding:"8px",borderRadius:8,border:"none",background:C.pD,color:"#fff",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,boxSizing:"border-box"}}>{qLd?"⏳ 生成中...":"✨ 問診票を生成"}</button>
+{qResult&&<div>
+<pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.8,padding:12,background:C.g50,borderRadius:8,border:`1px solid ${C.g200}`}}>{qResult}</pre>
+<div style={{display:"flex",gap:8,marginTop:8}}>
+<button onClick={()=>navigator.clipboard.writeText(qResult).then(()=>sSt("📋 問診票をコピーしました"))} style={{flex:1,padding:"6px",borderRadius:7,border:"none",background:C.pD,color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>{window.print()}} style={{flex:1,padding:"6px",borderRadius:7,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,fontWeight:700,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>🖨️ 印刷</button>
+</div>
+</div>}
+</div>
+</div>
+</div>}
+{/* 塗り方説明書モーダル */}
+{usageGuideModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setUsageGuideModal(false)}>
+<div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"90vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+<div style={{padding:"12px 16px",borderBottom:`1px solid ${C.g200}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f5f3ff",borderRadius:"16px 16px 0 0"}}>
+<span style={{fontSize:15,fontWeight:700,color:"#6d28d9"}}>📖 塗り方説明書</span>
+<button onClick={()=>setUsageGuideModal(false)} style={{padding:"3px 10px",borderRadius:7,border:"1px solid #c4b5fd",background:"#fff",fontSize:12,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{usageGuideLd?<div style={{textAlign:"center",padding:32,color:"#6d28d9"}}>⏳ 説明書を生成中...</div>:
+<pre style={{fontSize:13,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.9,fontFamily:"inherit"}}>{usageGuide}</pre>}
+</div>
+{usageGuide&&!usageGuideLd&&<div style={{padding:"10px 16px",borderTop:`1px solid ${C.g200}`,display:"flex",gap:8}}>
+<button onClick={()=>navigator.clipboard.writeText(usageGuide).then(()=>sSt("📋 説明書をコピーしました"))} style={{flex:1,padding:"6px",borderRadius:7,border:"none",background:"#6d28d9",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>window.print()} style={{flex:1,padding:"6px",borderRadius:7,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:700,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>🖨️ 印刷</button>
 </div>}
 </div>
 </div>}
