@@ -373,6 +373,15 @@ P）リンデロン-VG 1日2回`},
 ];
 
 const R=[{id:"r1",l:"診察室1",i:"1"},{id:"r2",l:"診察室2",i:"2"},{id:"r3",l:"診察室3",i:"3"},{id:"r4",l:"施術室1",i:"①"},{id:"r5",l:"施術室2",i:"②"},{id:"r6",l:"施術室3",i:"③"},{id:"r7",l:"カウンセリング",i:"💬"}];
+const ROOM_COLORS={
+r1:{bg:"#dbeafe",text:"#1e40af",border:"#93c5fd",accent:"#3b82f6",name:"診察1"},
+r2:{bg:"#dcfce7",text:"#166534",border:"#86efac",accent:"#22c55e",name:"診察2"},
+r3:{bg:"#fce7f3",text:"#9d174d",border:"#f9a8d4",accent:"#ec4899",name:"診察3"},
+r4:{bg:"#fef9c3",text:"#854d0e",border:"#fde047",accent:"#eab308",name:"施術1"},
+r5:{bg:"#ffedd5",text:"#9a3412",border:"#fdba74",accent:"#f97316",name:"施術2"},
+r6:{bg:"#f3e8ff",text:"#6b21a8",border:"#d8b4fe",accent:"#a855f7",name:"施術3"},
+r7:{bg:"#e0f2fe",text:"#0c4a6e",border:"#7dd3fc",accent:"#0ea5e9",name:"カウンセリング"},
+};
 
 const DEFAULT_SHORTCUTS=[
 {id:"rec",label:"🎙 録音開始/停止",key:"F1",enabled:true,showOnTop:true},
@@ -511,6 +520,7 @@ const[docLang,setDocLang]=useState("ja");
 const[usageGuide,setUsageGuide]=useState("");
 const[usageGuideLd,setUsageGuideLd]=useState(false);
 const[usageGuideModal,setUsageGuideModal]=useState(false);
+const[roomFilter,setRoomFilter]=useState("all");
 const[badgePopup,setBadgePopup]=useState(null);
 const[badgeLd,setBadgeLd]=useState(false);
 const[selectedHistIds,setSelectedHistIds]=useState(new Set());
@@ -1362,7 +1372,8 @@ const openPatientHistory=async(pid)=>{if(!pid||!supabase)return;try{const{data}=
 const runMonthlyReport=async()=>{if(!supabase)return;setMonthlyLd(true);setMonthlyModal(true);setMonthlyResult("");const now=new Date();const year=now.getFullYear();const month=now.getMonth();const start=new Date(year,month,1);const end=new Date(year,month+1,0,23,59,59);const utcStart=new Date(start.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(end.getTime()-9*60*60*1000).toISOString();const monthLabel=`${year}年${month+1}月`;setMonthlyTarget(monthLabel);try{const{data}=await supabase.from("records").select("output_text,created_at").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setMonthlyResult("データが不足しています（最低3件必要）");return}const res=await fetch("/api/monthly-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:data,month:monthLabel})});const d=await res.json();if(d.error){setMonthlyResult("エラー: "+d.error);return}setMonthlyResult(d.report||"")}catch(e){setMonthlyResult("エラー: "+e.message)}finally{setMonthlyLd(false)}};
 const searchHist=async(query)=>{if(!supabase||!query.trim())return;try{const q=query.trim();const dateMatch=q.match(/^(\d{1,2})\/(\d{1,2})(?:\s+(\d{2}))?$/);if(dateMatch){const month=parseInt(dateMatch[1]);const day=parseInt(dateMatch[2]);const hour=dateMatch[3]?parseInt(dateMatch[3]):null;const year=new Date().getFullYear();const jstStart=hour!==null?new Date(year,month-1,day,hour,0,0):new Date(year,month-1,day,0,0,0);const jstEnd=hour!==null?new Date(year,month-1,day,hour,59,59):new Date(year,month-1,day,23,59,59);const utcStart=new Date(jstStart.getTime()-9*60*60*1000).toISOString();const utcEnd=new Date(jstEnd.getTime()-9*60*60*1000).toISOString();const{data}=await supabase.from("records").select("*").gte("created_at",utcStart).lte("created_at",utcEnd).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}else{const{data}=await supabase.from("records").select("*").or(`output_text.ilike.%${q}%,input_text.ilike.%${q}%,patient_id.ilike.%${q}%`).order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}}catch(e){console.error("Search error:",e)}};
 const delRecord=async(id)=>{if(!supabase)return;try{await supabase.from("records").delete().eq("id",id);sHist(h=>h.filter(r=>r.id!==id))}catch(e){console.error("Delete error:",e)}};
-const filteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const dateMatch=s.match(/^(\d{1,2})\/(\d{1,2})/);if(dateMatch){const dateStr=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";return dateStr.startsWith(s)||dateStr.includes(s)}const dateStr2=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";return dateStr2.includes(s)||(r.output_text||"").toLowerCase().includes(s)||(r.input_text||"").toLowerCase().includes(s)||(r.patient_id||"").toLowerCase().includes(s)}):hist;
+const baseFilteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const dateMatch=s.match(/^(\d{1,2})\/(\d{1,2})/);if(dateMatch){const dateStr=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";return dateStr.startsWith(s)||dateStr.includes(s)}const dateStr2=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";return dateStr2.includes(s)||(r.output_text||"").toLowerCase().includes(s)||(r.input_text||"").toLowerCase().includes(s)||(r.patient_id||"").toLowerCase().includes(s)}):hist;
+const filteredHist=roomFilter==="all"?baseFilteredHist:baseFilteredHist.filter(r=>r.room===roomFilter);
 
 // 書き起こしノイズフィルター（TV・動画・環境音由来のテキストを除去）
 const filterTranscriptNoise=(text)=>{
@@ -1685,9 +1696,10 @@ const pipTheme=localStorage.getItem('mk_theme')||'pearl';
 const pipBgMap={'pearl':'linear-gradient(135deg,#e8f8e0,#d8f4a8)','ultra-cream':'#fffefc','soft-linen':'#fefdf8','morning-cream':'#fffefc'};
 const pipTextMap={'pearl':'#2a5018','ultra-cream':'#6a6050','soft-linen':'#584840','morning-cream':'#3a6828'};
 const pipBorderMap={'pearl':'rgba(160,220,100,0.4)','ultra-cream':'#ece4d4','soft-linen':'#e8dece','morning-cream':'#d8ecd0'};
-const pipBg=pipBgMap[pipTheme]||pipBgMap['pearl'];
-const pipText=pipTextMap[pipTheme]||pipTextMap['pearl'];
-const pipBorder=pipBorderMap[pipTheme]||pipBorderMap['pearl'];
+const currentRC=ROOM_COLORS[rid];
+const pipBg=currentRC?currentRC.bg:(pipBgMap[pipTheme]||pipBgMap['pearl']);
+const pipText=currentRC?currentRC.text:(pipTextMap[pipTheme]||pipTextMap['pearl']);
+const pipBorder=currentRC?currentRC.border:(pipBorderMap[pipTheme]||pipBorderMap['pearl']);
 pw.document.body.innerHTML=`<div style="font-family:sans-serif;background:${pipBg};color:${pipText};padding:5px 8px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;border:1px solid ${pipBorder}">
 <div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px;opacity:.5">${rmName}</span>
 <input id="pip-pid" placeholder="患者ID" value="" style="flex:1;padding:1px 5px;border-radius:4px;border:1px solid ${pipBorder};font-size:9px;background:rgba(255,255,255,0.6);color:${pipText};outline:none"/>
@@ -1980,6 +1992,10 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>setPage("main")} style={{...btn(C.p,C.pDD),height:36,padding:"0 14px",fontSize:14}}>✕ 閉じる</button>
 </div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
+<button onClick={()=>setRoomFilter("all")} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${roomFilter==="all"?C.pD:C.g200}`,background:roomFilter==="all"?C.pLL:"#fff",fontSize:10,fontWeight:600,color:roomFilter==="all"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>全て</button>
+{R.map(rm=>{const rc=ROOM_COLORS[rm.id]||{bg:"#f3f4f6",text:"#6b7280",border:"#e5e7eb",accent:"#6b7280"};const isSel=roomFilter===rm.id;return(<button key={rm.id} onClick={()=>setRoomFilter(isSel?"all":rm.id)} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${isSel?rc.accent:rc.border}`,background:isSel?rc.bg:"#fff",fontSize:10,fontWeight:600,color:isSel?rc.text:"#6b7280",fontFamily:"inherit",cursor:"pointer"}}>{rm.i}{rm.l}</button>)})}
+</div>
 <button onClick={()=>{const ids=new Set(filteredHist.map(r=>r.id));setSelectedHistIds(ids)}} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>すべて選択</button>
 <button onClick={()=>setSelectedHistIds(new Set())} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button>
 <span style={{fontSize:11,color:C.pD,fontWeight:600}}>{selectedHistIds.size}件選択中</span>
@@ -2053,6 +2069,7 @@ return cells;
 <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:2}}>
 <input type="checkbox" checked={checked} onChange={toggleSel} style={{width:14,height:14,accentColor:C.p,cursor:"pointer",flexShrink:0}}/>
 <span style={{fontSize:mob?10:11,color:"#111",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{time}{pid&&<span onClick={e=>{e.stopPropagation();openPatientHistory(pid)}} style={{color:C.pD,textDecoration:"underline",cursor:"pointer",marginLeft:4}}>{pid}</span>}</span>
+{(()=>{const roomColor=ROOM_COLORS[r.room]||{bg:"#f3f4f6",text:"#6b7280",border:"#e5e7eb"};const roomInfo=R.find(rm=>rm.id===r.room);return roomInfo?<span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:roomColor.bg,color:roomColor.text,border:`1px solid ${roomColor.border}`,flexShrink:0,whiteSpace:"nowrap"}}>{roomInfo.i}{roomInfo.l}</span>:null})()}
 </div>
 <div style={{fontSize:mob?14:13,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 {(()=>{const badges=detectContentBadges(r.input_text,r.output_text);return badges.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:3}}>{badges.map(b=><button key={b.key} onClick={e=>{e.stopPropagation();runBadgeAnalysis(r,b)}} style={{padding:"1px 6px",borderRadius:5,border:`1px solid ${b.color}44`,background:b.bg,fontSize:10,fontWeight:700,color:b.color,fontFamily:"inherit",cursor:"pointer"}}>{b.label}</button>)}</div>})()}
@@ -3557,7 +3574,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 2.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル",f:()=>window.open('/manual.pdf','_blank')}].filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh])).map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
-<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"5px 10px",borderRadius:10,fontSize:12,fontFamily:"inherit",cursor:"pointer",border:rid===rm.id?`2px solid ${C.pD}`:`1.5px solid ${C.g200}`,background:rid===rm.id?C.pL:C.w,fontWeight:rid===rm.id?700:500,color:rid===rm.id?C.pDD:C.g500,whiteSpace:"nowrap",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>{rm.l}</button>))}</div>
+<div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>{const rc=ROOM_COLORS[rm.id]||{bg:"#f3f4f6",text:"#374151",border:"#d1d5db",accent:"#6b7280"};const isSel=rid===rm.id;return(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"4px 10px",borderRadius:8,border:`2px solid ${isSel?rc.accent:rc.border}`,background:isSel?rc.bg:"#fff",color:isSel?rc.text:"#6b7280",fontSize:mob?11:12,fontWeight:isSel?700:500,fontFamily:"inherit",cursor:"pointer",transition:"all 0.15s",boxShadow:isSel?`0 0 0 2px ${rc.accent}33`:"none",whiteSpace:"nowrap",flexShrink:0}}>{rm.i} {rm.l}</button>)})}</div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
 <span style={{fontSize:10,color:C.g400}}>🎙</span>
 <select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"3px 6px",borderRadius:6,border:`1px solid ${C.g200}`,fontSize:9,color:C.g500,fontFamily:"inherit",background:C.w,maxWidth:200}}>
@@ -3585,9 +3602,15 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 </div>
 <div>
 <div style={{fontSize:11,color:C.g500,marginBottom:4}}>診察室別</div>
-{Object.entries(todayStats.rooms).map(([r,n])=>(
-<div key={r} style={{fontSize:12,color:C.g700}}>{r}: {n}件</div>
-))}
+{Object.entries(todayStats.rooms).map(([r,n])=>{
+const rc=ROOM_COLORS[r]||{bg:"#f3f4f6",text:"#6b7280",border:"#e5e7eb"};
+const roomInfo=R.find(rm=>rm.id===r);
+return(
+<div key={r} style={{display:"flex",alignItems:"center",gap:4,fontSize:12}}>
+<span style={{padding:"1px 6px",borderRadius:4,background:rc.bg,color:rc.text,border:`1px solid ${rc.border}`,fontSize:10,fontWeight:700}}>{roomInfo?.i}{roomInfo?.l||r}</span>
+<span style={{color:C.g700,fontWeight:600}}>{n}件</span>
+</div>
+)})}
 </div>
 </div>}
 </div>}
