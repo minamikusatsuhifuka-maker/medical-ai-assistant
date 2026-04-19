@@ -1,6 +1,6 @@
 export const maxDuration = 300;
 
-const CHUNK_SIZE = 3000;
+const CHUNK_SIZE = 8000;
 
 async function callGemini(text, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -14,7 +14,7 @@ async function callGemini(text, prompt) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt + "\n\n" + text }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
         }),
       });
       if (!res.ok) { lastError = `${model}: HTTP ${res.status}`; continue; }
@@ -40,16 +40,22 @@ export async function POST(request) {
     const basePrompt = prompt || `あなたは優秀な議事録作成者です。以下の会議の書き起こしを議事録形式でまとめてください。
 
 【出力形式】
-## 日時・参加者
-## 議題
-## 決定事項
-## アクションアイテム（担当者・期限付き）
-## 次回予定
+## 議事録
+**会議名:** （書き起こしから判断）
+**出席者:** （書き起こしから判断）
+**目的:** （書き起こしから判断）
+
+## 主な議題と内容
+（重要な発言・決定事項を箇条書き）
+
+## 決定事項・アクションアイテム
+（担当者・期限があれば記載）
 
 【ルール】
 - 重要な発言・決定のみ抽出
 - 冗長な表現は省く
-- 担当者名が出たら必ず記録する`;
+- 「[記載なし]」は使わず、不明な場合は省略する
+- 絶対に途中で止めない・必ず完成させる`;
 
     // 短いテキストはそのまま処理
     if (text.length <= CHUNK_SIZE) {
@@ -57,24 +63,26 @@ export async function POST(request) {
       return Response.json({ summary: result.summary, model: result.model, chunks: 1 });
     }
 
-    // 長いテキストはチャンク分割して逐次処理（並列ではなく順次）
+    // 長いテキストはチャンク分割して逐次処理
     const chunks = [];
     for (let i = 0; i < text.length; i += CHUNK_SIZE) {
       chunks.push(text.slice(i, i + CHUNK_SIZE));
     }
 
-    // 並列ではなく逐次処理でタイムアウトを防ぐ
     const chunkSummaries = [];
     for (let i = 0; i < chunks.length; i++) {
-      const chunkPrompt = `以下は長い会議の書き起こしの第${i + 1}部（全${chunks.length}部）です。この部分の重要な内容を箇条書きでまとめてください：`;
-      const result = await callGemini(chunks[i], chunkPrompt);
-      chunkSummaries.push(result.summary);
+      const chunkPrompt = `以下は会議の書き起こしの第${i + 1}部（全${chunks.length}部）です。重要な発言・決定事項を簡潔な箇条書きでまとめてください：`;
+      try {
+        const result = await callGemini(chunks[i], chunkPrompt);
+        chunkSummaries.push(result.summary);
+      } catch (e) {
+        chunkSummaries.push(`（第${i + 1}部の処理中にエラー）`);
+      }
     }
 
     // 最終まとめ
     const mergedText = chunkSummaries.join("\n\n");
-    const finalPrompt = `以下は会議の書き起こしを${chunks.length}パートに分けて要約したものです。これを統合して正式な議事録を作成してください：\n\n${basePrompt}`;
-    const finalResult = await callGemini(mergedText, finalPrompt);
+    const finalResult = await callGemini(mergedText, basePrompt);
 
     return Response.json({
       summary: finalResult.summary,
