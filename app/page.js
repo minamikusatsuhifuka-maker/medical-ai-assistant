@@ -984,6 +984,32 @@ saveMinAudio(blob,minTitle);
 }
 };
 const loadMinHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(50);if(data)setMinHist(data)}catch{}};
+const saveMinInputOnly=async()=>{
+  if(!supabase||!minIR.current?.trim()){
+    sSt("書き起こしがありません");return;
+  }
+  try{
+    const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（書き起こしのみ）";
+    if(minDraftId){
+      await supabase.from("minutes").update({
+        title,
+        input_text:minIR.current,
+        output_text:"（要約未完了）"
+      }).eq("id",minDraftId);
+      setMinDraftId(null);
+    }else{
+      await supabase.from("minutes").insert({
+        title,
+        input_text:minIR.current,
+        output_text:"（要約未完了）"
+      });
+    }
+    await loadMinHist();
+    sSt("✓ 書き起こしを保存しました（要約は後で実行できます）");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }
+};
 const saveMinEdit=async()=>{
   if(!supabase||!editMinId)return;
   setEditMinSaving(true);
@@ -2934,6 +2960,7 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {minRS==="inactive"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={minGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>🎙 録音開始</button>
 {minInp.trim()&&!minOut&&<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✨ 要約作成</button>}
+{minInp.trim()&&!minLd&&<button onClick={saveMinInputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>💾 書き起こしのみ保存</button>}
 <button onClick={minNext} style={{padding:"10px 24px",borderRadius:14,border:"2px solid "+C.p,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.12)"}}>次へ ▶</button></div>
 :minRS==="paused"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={()=>{minMR.current&&minMR.current.state==="paused"&&minMR.current.resume();setMinRS("recording")}} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
@@ -2976,6 +3003,10 @@ finally{setMinTypoLd(false)}
 <span style={{fontSize:11,color:C.g400}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span></div></div>
 <textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:120,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 {minLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが議事録を作成中...</span></div>}
+{minOut.startsWith("エラー")&&minInp.trim()&&<div style={{marginTop:8,padding:"10px 14px",borderRadius:10,background:"#fef9c3",border:"1px solid #fde047",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+<span style={{fontSize:12,color:"#854d0e"}}>⚠️ 要約に失敗しました。書き起こし内容は保存できます。</span>
+<button onClick={saveMinInputOnly} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#854d0e",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 書き起こしのみ保存</button>
+</div>}
 {minOut&&<div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録</span>
