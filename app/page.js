@@ -697,6 +697,9 @@ const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minO
 const[minOutFontSize,setMinOutFontSize]=useState(14);
 const[minOutHeight,setMinOutHeight]=useState(300);
 const[minTruncated,setMinTruncated]=useState(false);
+const[minChunkSummaries,setMinChunkSummaries]=useState([]);
+const[minFinalIntegrationFailed,setMinFinalIntegrationFailed]=useState(false);
+const[minFinalIntegrationError,setMinFinalIntegrationError]=useState("");
 const[minHistFontSize,setMinHistFontSize]=useState(13);
 const[minHistHeight,setMinHistHeight]=useState(500);
 const[minTypoLd,setMinTypoLd]=useState(false);
@@ -1011,6 +1014,25 @@ const saveMinInputOnly=async()=>{
     sSt("保存エラー: "+e.message);
   }
 };
+// 対策4: チャンク要約連結を議事録として保存（最終統合失敗時のフォールバック）
+const saveMinPartial=async()=>{
+  if(!supabase||!minIR.current?.trim()){sSt("書き起こしがありません");return;}
+  if(!minChunkSummaries||minChunkSummaries.length===0){sSt("チャンク要約がありません");return;}
+  try{
+    const partialSummary="# ⚠️ 部分保存: 最終統合失敗のためチャンク要約を連結\n\n"+minChunkSummaries.join("\n\n---\n\n");
+    const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（部分保存）";
+    if(minDraftId){
+      await supabase.from("minutes").update({title,input_text:minIR.current,output_text:partialSummary}).eq("id",minDraftId);
+      setMinDraftId(null);
+    }else{
+      await supabase.from("minutes").insert({title,input_text:minIR.current,output_text:partialSummary});
+    }
+    await loadMinHist();
+    sSt("✓ チャンク要約で保存しました（"+minChunkSummaries.length+"チャンク分）");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }
+};
 const saveMinEdit=async()=>{
   if(!supabase||!editMinId)return;
   setEditMinSaving(true);
@@ -1196,7 +1218,7 @@ const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
 setProg(50);
-try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||""})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false)}else{setMinOut(d.summary);setMinTruncated(!!d.truncated);const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理）`:"";sSt("議事録作成完了 ✓"+chunkMsg+" → 次へで新規打合せ");setGeminiModel(d.model||"");if(supabase&&d.summary){try{let minData=null;
+try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||""})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("")}else{setMinOut(d.summary);setMinTruncated(!!d.truncated);setMinChunkSummaries(Array.isArray(d.chunkSummaries)?d.chunkSummaries:[]);setMinFinalIntegrationFailed(!!d.finalIntegrationFailed);setMinFinalIntegrationError(d.finalIntegrationError||"");const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理${d.midIntegrated?"・中間統合あり":""}）`:"";sSt((d.finalIntegrationFailed?"⚠️ 最終統合失敗（部分結果表示）":"議事録作成完了 ✓")+chunkMsg+(d.finalIntegrationFailed?"":" → 次へで新規打合せ"));setGeminiModel(d.model||"");if(supabase&&d.summary){try{let minData=null;
 if(minDraftId){
 const{data:updated}=await supabase.from("minutes").update({
 title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",
@@ -1240,7 +1262,7 @@ const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.curre
 if(minDraftId&&supabase){
   supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
 }
-setMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");setMinTruncated(false);if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
+setMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
@@ -3009,7 +3031,11 @@ finally{setMinTypoLd(false)}
 <button onClick={saveMinInputOnly} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#854d0e",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 書き起こしのみ保存</button>
 </div>}
 {minOut&&<div>
-{minTruncated&&!minOut.startsWith("エラー")&&<div style={{marginBottom:10,padding:"10px 14px",borderRadius:10,background:"#fef3c7",border:"1px solid #f59e0b",fontSize:12,color:"#92400e",lineHeight:1.6}}>⚠️ 要約が長すぎて途中で切れている可能性があります。AIモデルを「Gemini 2.5 Pro」または「Claude Sonnet 4.6」に切り替えて再生成してください。</div>}
+{minFinalIntegrationFailed&&<div style={{marginBottom:10,padding:"12px 14px",borderRadius:10,background:"#fef2f2",border:"2px solid #dc2626",fontSize:12,color:"#991b1b",lineHeight:1.6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+<div style={{flex:"1 1 auto",minWidth:200}}>🚨 最終統合処理に失敗しました。各チャンクの要約を連結したものを表示しています。<br/>Gemini 2.5 Pro または Claude Sonnet 4.6 に切り替えて再生成することを推奨します。{minFinalIntegrationError?<><br/><span style={{fontSize:11,opacity:0.8}}>エラー: {minFinalIntegrationError.substring(0,150)}</span></>:null}</div>
+<button onClick={saveMinPartial} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>💾 チャンク要約のみで保存</button>
+</div>}
+{minTruncated&&!minFinalIntegrationFailed&&!minOut.startsWith("エラー")&&<div style={{marginBottom:10,padding:"10px 14px",borderRadius:10,background:"#fef3c7",border:"1px solid #f59e0b",fontSize:12,color:"#92400e",lineHeight:1.6}}>⚠️ 要約が長すぎて途中で切れている可能性があります。AIモデルを「Gemini 2.5 Pro」または「Claude Sonnet 4.6」に切り替えて再生成してください。</div>}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録</span>
 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
