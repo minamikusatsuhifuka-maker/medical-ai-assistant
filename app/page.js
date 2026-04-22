@@ -705,6 +705,8 @@ const[minHistFontSize,setMinHistFontSize]=useState(13);
 const[minHistHeight,setMinHistHeight]=useState(500);
 const[minTypoLd,setMinTypoLd]=useState(false);
 const[minDraftId,setMinDraftId]=useState(null);
+const minDraftIdRef=useRef(null);
+const updateMinDraftId=(id)=>{setMinDraftId(id);minDraftIdRef.current=id;};
 const[minAutoSaving,setMinAutoSaving]=useState(false);
 const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
@@ -968,9 +970,11 @@ const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null
 const minGo=async()=>{const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
 if(lvRef.current<8)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
-// 10分ごとの自動保存タイマー開始
+// 30分ごとの自動下書き保存タイマー開始
 if(minAutoSaveRef.current)clearInterval(minAutoSaveRef.current);
-minAutoSaveRef.current=setInterval(()=>{saveMinDraft(true)},10*60*1000)};
+updateMinDraftId(null);
+console.log("[saveMinDraft] auto-save interval: 30 minutes");
+minAutoSaveRef.current=setInterval(()=>{saveMinDraft(true)},30*60*1000)};
 const minStop=()=>{
 if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
 if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
@@ -979,7 +983,7 @@ setMinRS("inactive");minSR.current="inactive";xAM();
 // 録音停止時もドラフトを削除
 if(minDraftId&&supabase){
   supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
-  setMinDraftId(null);
+  updateMinDraftId(null);
 }
 // 音声保存ONの場合、停止時に保存
 if(minAudioSave&&minAllAudioChunks.current.length>0){
@@ -1001,7 +1005,7 @@ const saveMinInputOnly=async()=>{
         input_text:minIR.current,
         output_text:"（要約未完了）"
       }).eq("id",minDraftId);
-      setMinDraftId(null);
+      updateMinDraftId(null);
     }else{
       await supabase.from("minutes").insert({
         title,
@@ -1024,7 +1028,7 @@ const saveMinPartial=async()=>{
     const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（部分保存）";
     if(minDraftId){
       await supabase.from("minutes").update({title,input_text:minIR.current,output_text:partialSummary}).eq("id",minDraftId);
-      setMinDraftId(null);
+      updateMinDraftId(null);
     }else{
       await supabase.from("minutes").insert({title,input_text:minIR.current,output_text:partialSummary});
     }
@@ -1214,20 +1218,26 @@ const saveMinDraft=async(isAuto=false)=>{
 if(!supabase||!minIR.current?.trim())return;
 try{
 setMinAutoSaving(true);
+const currentDraftId=minDraftIdRef.current;
 const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（録音中）";
-if(minDraftId){
+if(currentDraftId){
+console.log(`[saveMinDraft] updating existing draft: ${currentDraftId} (auto=${isAuto})`);
 await supabase.from("minutes").update({
 input_text:minIR.current||"",
 title,
 updated_at:new Date().toISOString()
-}).eq("id",minDraftId);
+}).eq("id",currentDraftId);
 }else{
+console.log(`[saveMinDraft] creating new draft (auto=${isAuto})`);
 const{data}=await supabase.from("minutes").insert({
 title,
 input_text:minIR.current||"",
 output_text:"（録音中・未要約）"
 }).select().single();
-if(data)setMinDraftId(data.id);
+if(data){
+updateMinDraftId(data.id);
+console.log(`[saveMinDraft] ⚠️ NEW record inserted: ${data.id}, title="${title}"`);
+}
 }
 if(!isAuto)sSt("💾 書き起こしを保存しました");
 await loadMinHist();
@@ -1250,7 +1260,7 @@ input_text:minIR.current||"",
 output_text:d.summary
 }).eq("id",minDraftId).select().single();
 minData=updated;
-setMinDraftId(null);
+updateMinDraftId(null);
 }else{
 const{data:inserted}=await supabase.from("minutes").insert({
 title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",
@@ -1286,7 +1296,7 @@ const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.curre
 if(minDraftId&&supabase){
   supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
 }
-setMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
+updateMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
@@ -3022,7 +3032,7 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {minAutoSaving?"💾 保存中...":"💾 今すぐ保存"}
 </button>}
 {minAutoSaving&&<span style={{fontSize:11,color:C.g400,fontWeight:600}}>💾 自動保存中...</span>}
-{minDraftId&&!minAutoSaving&&minRS!=="inactive"&&<span style={{fontSize:11,color:C.pD,fontWeight:600}}>✓ 保存済み（10分毎に自動更新）</span>}
+{minDraftId&&!minAutoSaving&&minRS!=="inactive"&&<span style={{fontSize:11,color:C.pD,fontWeight:600}}>✓ 保存済み（30分毎に自動更新）</span>}
 </div>
 <div style={{marginBottom:12}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}><span style={{fontSize:12,fontWeight:600,color:C.g500}}>書き起こし（10秒間隔）</span><div style={{display:"flex",alignItems:"center",gap:6}}>
