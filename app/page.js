@@ -1107,13 +1107,32 @@ const updateTask=async(id,field,value)=>{if(!supabase)return;await supabase.from
 const generateTasksFromMinute=async(minute)=>{
 if(!supabase||!minute.output_text)return;
 sSt("タスク生成中...");setProg(5);
+const maxClientRetries=2;
+let attempt=0;
+let td=null;
 try{
 setProg(15);
+while(attempt<=maxClientRetries){
 setProg(30);
 const tr=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minute.output_text||""})});
-const td=await tr.json();
+if(tr.status===429){
+if(attempt<maxClientRetries){
+const waitSec=(attempt+1)*10;
+sSt("⏳ レート制限中。"+waitSec+"秒後に再試行します...("+(attempt+1)+"/"+maxClientRetries+")");
+await new Promise(r=>setTimeout(r,waitSec*1000));
+attempt++;
+continue;
+}
+sSt("⏳ APIレート制限に達しました。議事録要約直後はAPIが混雑しています。1〜2分待ってから再度「タスク生成」を押してください。要約モデルをFlash↔Pro↔Claudeで切り替えると回避できることがあります。");
+setProg(0);return;
+}
+if(!tr.ok){sSt("タスク生成エラー: HTTP "+tr.status);setProg(0);return}
+td=await tr.json();
+break;
+}
+if(!td){setProg(0);return}
 setProg(55);
-if(td.error){sSt("タスク生成エラー: "+td.error);return}
+if(td.error&&(!td.tasks||td.tasks.length===0)){sSt("タスク生成エラー: "+td.error);setProg(0);return}
 if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){
 const parsed=td.tasks;
 setProg(70);
@@ -1135,13 +1154,17 @@ setProg(70+Math.floor(i/parsed.length*20));
 }
 await loadTasks();
 setProg(95);
-sSt("");setTimeout(()=>{const ok=window.confirm(count+"件のタスクを生成しました！\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300);
+let chunkMsg="";
+if(td.chunked){chunkMsg="（"+td.chunkCount+"チャンク分割処理";if(td.failedChunkCount>0)chunkMsg+="、"+td.failedChunkCount+"チャンク失敗";chunkMsg+="）"}
+sSt("");setTimeout(()=>{const ok=window.confirm(count+"件のタスクを生成しました！"+chunkMsg+"\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300);
 }else{
 sSt("タスクが抽出できませんでした");
 }
 }catch(e){
 console.error("Task gen error:",e);
-sSt("タスク生成エラー: "+e.message);
+const msg=e?.message||String(e);
+if(msg.includes("429")||msg.includes("レート制限")){sSt("⏳ APIレート制限に達しました。1〜2分待ってから再度「タスク生成」を押してください。")}
+else{sSt("タスク生成エラー: "+msg)}
 }finally{setProg(0)}
 };
 const generateTasksFromSelected=async()=>{if(selMinutes.length===0)return;for(const id of selMinutes){const m=minHist.find(x=>x.id===id);if(m)await generateTasksFromMinute(m)}setSelMinutes([]);sSt("");setTimeout(()=>{const ok=window.confirm("選択した議事録からタスクを生成しました！\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300)};
@@ -1256,7 +1279,7 @@ urgency: 1=低 2=やや低 3=やや高 4=高
 importance: 1=低 2=やや低 3=やや高 4=高
 
 議事録（先頭3000字）:
-`;try{const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました")}else{console.warn("extract-tasks: no tasks or empty",td)}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
+`;try{console.log("[page] waiting 3s before auto task extraction to avoid rate limit");await new Promise(r=>setTimeout(r,3000));const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});if(tr2.status===429){console.warn("[page] auto extract-tasks rate-limited, skipping (user can retry via manual button)");sSt("⏳ 要約後のタスク自動抽出がレート制限に達しました。少し待ってから「📋 タスク生成」ボタンで手動実行してください。")}else{const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}let chunkMsg="";if(td.chunked)chunkMsg="（"+td.chunkCount+"チャンク分割）";sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました"+chunkMsg)}else{console.warn("extract-tasks: no tasks or empty",td)}}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
 const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
 // ドラフトをSupabaseから削除
 if(minDraftId&&supabase){
