@@ -669,6 +669,7 @@ if(matchKey(cfg)){e.preventDefault();sc.fn();return;}
 window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[out,shortcuts]);
 const[minTitle,setMinTitle]=useState("");
 const[minHist,setMinHist]=useState([]);
+const[minHistTotal,setMinHistTotal]=useState(0);
 const[tasks,setTasks]=useState([]);
 const[staffList,setStaffList]=useState([]);
 const[selMinutes,setSelMinutes]=useState([]);
@@ -987,7 +988,7 @@ minAllAudioChunks.current=[];
 saveMinAudio(blob,minTitle);
 }
 };
-const loadMinHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(50);if(data)setMinHist(data)}catch{}};
+const loadMinHist=async()=>{if(!supabase)return;try{const[{data},{count}]=await Promise.all([supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(500),supabase.from("minutes").select("*",{count:"exact",head:true})]);if(data)setMinHist(data);if(typeof count==="number")setMinHistTotal(count);console.log(`[minHist] fetched: ${data?.length||0}件 / total: ${count||0}件`)}catch(e){console.error("[minHist] load error:",e)}};
 const saveMinInputOnly=async()=>{
   if(!supabase||!minIR.current?.trim()){
     sSt("書き起こしがありません");return;
@@ -3115,7 +3116,7 @@ finally{setMinTypoLd(false)}
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 {prog>0&&<div style={{textAlign:"center",fontSize:11,color:"#6b7280",marginBottom:8}}>{st}</div>}
 <div style={{marginTop:16}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-<span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴</span>
+<span style={{fontSize:14,fontWeight:700,color:C.pDD}}>📚 議事録履歴{minHistTotal>0&&minHist.length>=500&&minHistTotal>500?<span style={{marginLeft:8,fontSize:11,fontWeight:600,color:"#d97706"}}>（直近500件表示中 / 全{minHistTotal}件）</span>:minHistTotal>0?<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g500}}>（全{minHistTotal}件）</span>:null}</span>
 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
   <div style={{display:"flex",alignItems:"center",gap:3}}>
     <span style={{fontSize:10,color:C.g500}}>文字</span>
