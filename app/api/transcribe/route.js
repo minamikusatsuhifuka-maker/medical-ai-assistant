@@ -49,7 +49,7 @@ export async function POST(request) {
       /Thank you for watching/i, /Thanks for watching/i,
       /Please subscribe/i,
       /ぶひろ/,
-      /びらん.*ありがとう/,
+      // /びらん.*ありがとう/,  // 2026-04-30 「ただ」誤置換バグ修正に伴い無効化
       /いただれ/,
       /チャンネル/,
       /コメント欄/,
@@ -118,7 +118,7 @@ export async function POST(request) {
       /ありがとうございました$/,
       /お願いします$/,
       /登録/,
-      /びらん/,
+      // /びらん/,  // 2026-04-30 「ただ」誤置換バグ修正に伴い無効化
       /ビラン/,
       /本当にありがとう/,
       /最後まで/,
