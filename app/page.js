@@ -716,6 +716,7 @@ const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
 const minAllAudioChunks=useRef([]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
+const[audioList,setAudioList]=useState([]),[audioListLoading,setAudioListLoading]=useState(false),[audioSignedUrls,setAudioSignedUrls]=useState({}),[audioListMsg,setAudioListMsg]=useState("");
 const[asrEngine,setAsrEngine]=useState("whisper");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
@@ -924,6 +925,46 @@ return path;
 console.error("Minutes audio save error:",e);
 return null;
 }
+};
+const getAudioSignedUrl=async(path)=>{
+if(!supabase||!path)return null;
+try{
+const{data,error}=await supabase.storage.from("audio").createSignedUrl(path,3600);
+if(error){console.error("signedUrl error:",error,path);return null}
+return data?.signedUrl||null;
+}catch(e){console.error("signedUrl error:",e);return null}
+};
+const fetchAudioList=async()=>{
+if(!supabase)return;
+setAudioListLoading(true);setAudioListMsg("");
+try{
+const[recRes,minRes]=await Promise.all([
+supabase.from("records").select("id,room,patient_id,patient_name,audio_path,created_at").not("audio_path","is",null).order("created_at",{ascending:false}).limit(100),
+supabase.from("minutes").select("id,title,audio_path,created_at").not("audio_path","is",null).order("created_at",{ascending:false}).limit(100)
+]);
+const recs=(recRes.data||[]).map(r=>({type:"record",id:r.id,created_at:r.created_at,room:r.room,patient_id:r.patient_id,patient_name:r.patient_name,title:null,audio_path:r.audio_path}));
+const mins=(minRes.data||[]).map(r=>({type:"minute",id:r.id,created_at:r.created_at,room:null,patient_id:null,patient_name:null,title:r.title,audio_path:r.audio_path}));
+const merged=[...recs,...mins].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,100);
+setAudioList(merged);
+setAudioListMsg(`✓ ${merged.length}件取得（診察${recs.length}件・議事録${mins.length}件）`);
+}catch(e){console.error("fetchAudioList error:",e);setAudioListMsg("取得エラー: "+e.message)}
+finally{setAudioListLoading(false)}
+};
+const loadAudioSignedUrl=async(path)=>{
+if(audioSignedUrls[path])return audioSignedUrls[path];
+const url=await getAudioSignedUrl(path);
+if(url)setAudioSignedUrls(prev=>({...prev,[path]:url}));
+return url;
+};
+const downloadAudio=async(path)=>{
+const url=await loadAudioSignedUrl(path);
+if(!url){alert("音声ファイルが取得できませんでした");return}
+const a=document.createElement("a");
+a.href=url;
+a.download=path.split("/").pop()||"audio.webm";
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
 };
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef(""),oR=useRef(""),sumDoneRef=useRef(false);
 const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef(""),snippetsRef=useRef(DEFAULT_SNIPPETS),pipSnippetsRef=useRef([0,1,2,3,4]);
@@ -3582,6 +3623,46 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <button onClick={()=>setAudioSave(!audioSave)} style={{padding:"6px 20px",borderRadius:10,border:"none",background:audioSave?C.rG:C.g200,color:audioSave?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{audioSave?"ON":"OFF"}</button>
 <span style={{fontSize:12,color:audioSave?C.rG:C.g400}}>{audioSave?"録音停止時に自動保存されます":"音声は保存されません"}</span>
 </div></div>
+<div style={{...card,marginBottom:16}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+<h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>🎙 録音音声管理</h3>
+<div style={{display:"flex",gap:8,alignItems:"center"}}>
+{audioListMsg&&<span style={{fontSize:11,color:audioListMsg.startsWith("✓")?C.rG:C.err,fontWeight:600}}>{audioListMsg}</span>}
+<button onClick={fetchAudioList} disabled={audioListLoading} style={{padding:"6px 14px",borderRadius:10,border:"none",background:audioListLoading?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:audioListLoading?"wait":"pointer"}}>{audioListLoading?"⏳ 取得中...":"🔄 一覧を取得"}</button>
+</div>
+</div>
+<p style={{fontSize:11,color:C.g400,marginBottom:10}}>過去に保存した診察・議事録の音声を一覧から再生・ダウンロードできます。最新100件まで表示。</p>
+{audioList.length===0?(
+<div style={{padding:"20px",textAlign:"center",color:C.g400,fontSize:12,background:C.g50,borderRadius:8}}>
+{audioListLoading?"読み込み中...":"「🔄 一覧を取得」ボタンを押してください"}
+</div>
+):(
+<div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:500,overflowY:"auto"}}>
+{audioList.map(item=>{
+const paths=(item.audio_path||"").split(",").map(p=>p.trim()).filter(Boolean);
+const dateLabel=new Date(item.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+const typeLabel=item.type==="record"?"🩺 診察":"📝 議事録";
+const typeBg=item.type==="record"?"#dbeafe":"#fef3c7";
+const typeColor=item.type==="record"?"#1d4ed8":"#92400e";
+const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}${item.patient_name?" / "+item.patient_name:""}`:(item.title||"無題");
+return(<div key={item.type+"-"+item.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,display:"flex",flexDirection:"column",gap:6}}>
+<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+<span style={{padding:"2px 8px",borderRadius:6,background:typeBg,color:typeColor,fontSize:11,fontWeight:700}}>{typeLabel}</span>
+<span style={{fontSize:11,color:C.g500,fontWeight:600}}>{dateLabel}</span>
+<span style={{fontSize:11,color:C.g400}}>part{paths.length===1?"1のみ":`1〜${paths.length}`}</span>
+</div>
+<div style={{fontSize:12,color:C.g700,fontWeight:500}}>{subtitle}</div>
+{paths.map((p,idx)=>(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:8,background:C.g50,flexWrap:"wrap"}}>
+<span style={{fontSize:10,color:C.g400,fontWeight:700,minWidth:42}}>part{idx+1}</span>
+{audioSignedUrls[p]?(<audio controls preload="none" src={audioSignedUrls[p]} style={{height:32,flex:"1 1 240px",minWidth:200}}/>):(<button onClick={()=>loadAudioSignedUrl(p)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",flex:"1 1 200px"}}>▶ 再生URL取得</button>)}
+<button onClick={()=>downloadAudio(p)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.pLL,color:C.pD,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⬇ DL</button>
+<span style={{fontSize:10,color:C.g400,wordBreak:"break-all",flex:"1 1 100%"}}>{p}</span>
+</div>))}
+</div>);
+})}
+</div>
+)}
+</div>
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🤖 要約AIモデル</h3>
 <p style={{fontSize:12,color:C.g400,marginBottom:10}}>要約に使用するAIモデルを選択できます。設定は自動保存されます。</p>
