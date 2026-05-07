@@ -707,6 +707,10 @@ const[minTypoLd,setMinTypoLd]=useState(false);
 const[minDraftId,setMinDraftId]=useState(null);
 const minDraftIdRef=useRef(null);
 const updateMinDraftId=(id)=>{setMinDraftId(id);minDraftIdRef.current=id;};
+const lastSavedMinInpRef=useRef("");
+const lastSavedMinOutRef=useRef("");
+const[unsavedMinModal,setUnsavedMinModal]=useState(false);
+const[minSavingNext,setMinSavingNext]=useState(false);
 const[minAutoSaving,setMinAutoSaving]=useState(false);
 const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
@@ -1013,8 +1017,37 @@ const saveMinInputOnly=async()=>{
         output_text:"（要約未完了）"
       });
     }
+    lastSavedMinInpRef.current=minIR.current||"";
     await loadMinHist();
-    sSt("✓ 書き起こしを保存しました（要約は後で実行できます）");
+    sSt("✅ 書き起こしを保存しました");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }
+};
+// 要約のみをSupabaseに保存（画面リセットなし）
+const saveMinOutputOnly=async()=>{
+  if(!supabase){sSt("Supabase未接続");return;}
+  if(!minOut?.trim()||minOut.startsWith("エラー")){sSt("要約がありません");return;}
+  try{
+    const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録";
+    if(minDraftIdRef.current){
+      await supabase.from("minutes").update({
+        title,
+        input_text:minIR.current||"",
+        output_text:minOut
+      }).eq("id",minDraftIdRef.current);
+    }else{
+      const{data:inserted}=await supabase.from("minutes").insert({
+        title,
+        input_text:minIR.current||"",
+        output_text:minOut
+      }).select().single();
+      if(inserted)updateMinDraftId(inserted.id);
+    }
+    lastSavedMinInpRef.current=minIR.current||"";
+    lastSavedMinOutRef.current=minOut;
+    await loadMinHist();
+    sSt("✅ 要約を保存しました");
   }catch(e){
     sSt("保存エラー: "+e.message);
   }
@@ -1239,6 +1272,7 @@ updateMinDraftId(data.id);
 console.log(`[saveMinDraft] ⚠️ NEW record inserted: ${data.id}, title="${title}"`);
 }
 }
+lastSavedMinInpRef.current=minIR.current||"";
 if(!isAuto)sSt("💾 書き起こしを保存しました");
 await loadMinHist();
 }catch(e){
@@ -1269,6 +1303,8 @@ output_text:d.summary
 }).select().single();
 minData=inserted;
 }
+lastSavedMinInpRef.current=minIR.current||"";
+lastSavedMinOutRef.current=d.summary;
 if(minData){const taskPrompt=`以下の皮膚科・美容皮膚科クリニックの議事録からタスクとTODOを抽出してください。
 
 【判断基準】
@@ -1291,12 +1327,66 @@ importance: 1=低 2=やや低 3=やや高 4=高
 
 議事録（先頭3000字）:
 `;try{console.log("[page] waiting 3s before auto task extraction to avoid rate limit");await new Promise(r=>setTimeout(r,3000));const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});if(tr2.status===429){console.warn("[page] auto extract-tasks rate-limited, skipping (user can retry via manual button)");sSt("⏳ 要約後のタスク自動抽出がレート制限に達しました。少し待ってから「📋 タスク生成」ボタンで手動実行してください。")}else{const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}let chunkMsg="";if(td.chunked)chunkMsg="（"+td.chunkCount+"チャンク分割）";sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました"+chunkMsg)}else{console.warn("extract-tasks: no tasks or empty",td)}}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
-const minNext=()=>{if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
-// ドラフトをSupabaseから削除
-if(minDraftId&&supabase){
-  supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
-}
-updateMinDraftId(null);minAllAudioChunks.current=[];minStop();setMinOut("");setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");if(minIR)minIR.current="";setMinEl(0);setMinTitle("");sSt("次の打合せへ ✓")};
+// 議事録画面の状態をリセット（保存はしない・ドラフトがあれば破棄）
+const performMinReset=()=>{
+  if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
+  if(minDraftIdRef.current&&supabase){
+    supabase.from("minutes").delete().eq("id",minDraftIdRef.current).then(()=>{}).catch(()=>{});
+  }
+  updateMinDraftId(null);
+  minAllAudioChunks.current=[];
+  minStop();
+  setMinOut("");
+  setMinTruncated(false);
+  setMinChunkSummaries([]);
+  setMinFinalIntegrationFailed(false);
+  setMinFinalIntegrationError("");
+  if(minIR)minIR.current="";
+  setMinInp("");
+  setMinEl(0);
+  setMinTitle("");
+  lastSavedMinInpRef.current="";
+  lastSavedMinOutRef.current="";
+};
+// 未保存の有無を判定
+const hasUnsavedMin=()=>{
+  const cur=minIR.current||"";
+  const inpUnsaved=cur.trim().length>0&&cur!==(lastSavedMinInpRef.current||"");
+  const outUnsaved=(minOut||"").trim().length>0&&!minOut.startsWith("エラー")&&minOut!==(lastSavedMinOutRef.current||"");
+  return{inpUnsaved,outUnsaved,any:inpUnsaved||outUnsaved};
+};
+const minNext=()=>{
+  const u=hasUnsavedMin();
+  if(u.any){setUnsavedMinModal(true);return;}
+  performMinReset();
+  sSt("次の打合せへ ✓");
+};
+// 「保存して次へ」: 書き起こし＋要約をまとめて保存してリセット
+const minNextSaveAndProceed=async()=>{
+  if(minSavingNext)return;
+  setMinSavingNext(true);
+  try{
+    const u=hasUnsavedMin();
+    if(u.outUnsaved){
+      await saveMinOutputOnly();
+    }else if(u.inpUnsaved){
+      await saveMinInputOnly();
+    }
+    setUnsavedMinModal(false);
+    performMinReset();
+    sSt("✅ 保存して次へ進みました");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }finally{
+    setMinSavingNext(false);
+  }
+};
+// 「保存せず次へ」: 保存せずリセット
+const minNextDiscardAndProceed=()=>{
+  setUnsavedMinModal(false);
+  performMinReset();
+  sSt("次の打合せへ ✓（保存せず）");
+};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
@@ -3017,7 +3107,8 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {minRS==="inactive"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={minGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>🎙 録音開始</button>
 {minInp.trim()&&!minOut&&<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✨ 要約作成</button>}
-{minInp.trim()&&!minLd&&<button onClick={saveMinInputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>💾 書き起こしのみ保存</button>}
+{minInp.trim()&&!minLd&&<button onClick={saveMinInputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📝 書き起こしを保存</button>}
+{minOut.trim()&&!minOut.startsWith("エラー")&&!minLd&&<button onClick={saveMinOutputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.p}`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📋 要約を保存</button>}
 <button onClick={minNext} style={{padding:"10px 24px",borderRadius:14,border:"2px solid "+C.p,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.12)"}}>次へ ▶</button></div>
 :minRS==="paused"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={()=>{minMR.current&&minMR.current.state==="paused"&&minMR.current.resume();setMinRS("recording")}} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
@@ -3062,7 +3153,7 @@ finally{setMinTypoLd(false)}
 {minLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが議事録を作成中...</span></div>}
 {minOut.startsWith("エラー")&&minInp.trim()&&<div style={{marginTop:8,padding:"10px 14px",borderRadius:10,background:"#fef9c3",border:"1px solid #fde047",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
 <span style={{fontSize:12,color:"#854d0e"}}>⚠️ 要約に失敗しました。書き起こし内容は保存できます。</span>
-<button onClick={saveMinInputOnly} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#854d0e",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 書き起こしのみ保存</button>
+<button onClick={saveMinInputOnly} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#854d0e",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📝 書き起こしを保存</button>
 </div>}
 {minOut&&<div>
 {minFinalIntegrationFailed&&<div style={{marginBottom:10,padding:"12px 14px",borderRadius:10,background:"#fef2f2",border:"2px solid #dc2626",fontSize:12,color:"#991b1b",lineHeight:1.6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -3948,4 +4039,16 @@ const fn=actions[sc.id];if(fn)fn();
 </div>}
 {/* AI誤字スキャンモーダル */}
 {typoModalEl}
+{/* 議事録：未保存確認モーダル */}
+{unsavedMinModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>!minSavingNext&&setUnsavedMinModal(false)}>
+<div style={{background:"#ffffff",borderRadius:16,padding:24,maxWidth:420,width:"100%",boxShadow:"0 8px 32px rgba(0,0,0,.18)"}} onClick={e=>e.stopPropagation()}>
+<div style={{fontSize:16,fontWeight:700,color:C.pDD,marginBottom:10}}>⚠️ 未保存のデータがあります</div>
+<div style={{fontSize:13,color:C.g600,marginBottom:18,lineHeight:1.6}}>保存していない書き起こしまたは要約があります。どうしますか？</div>
+<div style={{display:"flex",flexDirection:"column",gap:8}}>
+<button onClick={minNextSaveAndProceed} disabled={minSavingNext} style={{padding:"10px 16px",borderRadius:10,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:minSavingNext?"wait":"pointer"}}>{minSavingNext?"💾 保存中...":"💾 保存して次へ"}</button>
+<button onClick={minNextDiscardAndProceed} disabled={minSavingNext} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g300}`,background:"#fff",color:"#dc2626",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:minSavingNext?"not-allowed":"pointer"}}>🗑 保存せず次へ（データ破棄）</button>
+<button onClick={()=>setUnsavedMinModal(false)} disabled={minSavingNext} style={{padding:"10px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50,color:C.g500,fontSize:13,fontWeight:600,fontFamily:"inherit",cursor:minSavingNext?"not-allowed":"pointer"}}>キャンセル</button>
+</div>
+</div>
+</div>}
 </div></div>);}
