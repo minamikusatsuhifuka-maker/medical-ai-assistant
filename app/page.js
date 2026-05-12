@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 const CS_SCORE_ITEMS = ["傾聴力","共感力","質問の質","ニーズ把握","説明力","信頼関係構築","提案力","クロージング"];
 const ScoreRadar = dynamic(()=>import("./ScoreRadar"),{ssr:false,loading:()=><div style={{width:"100%",height:320,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12,background:"#faf9ff",borderRadius:12,border:"1px solid #e9e6ff"}}>📊 チャート読み込み中...</div>});
 const UsageBarChart = dynamic(()=>import("./UsageBarChart"),{ssr:false,loading:()=><div style={{width:"100%",height:220,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12}}>📈 グラフ読み込み中...</div>});
+const UsageDailyChart = dynamic(()=>import("./UsageDailyChart"),{ssr:false,loading:()=><div style={{width:"100%",height:220,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12}}>📅 グラフ読み込み中...</div>});
 
 // === スコアパース（ロバスト版・別名対応） ===
 const CS_SCORE_ALIASES = {
@@ -813,6 +814,10 @@ const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAu
 const[mp3Converting,setMp3Converting]=useState({}); // {[path]: "loading"|"converting"|"done"|null}
 const[apiUsageMonth,setApiUsageMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`});
 const[apiUsageSummary,setApiUsageSummary]=useState(null),[apiUsageMonthly,setApiUsageMonthly]=useState([]),[apiUsageTop10,setApiUsageTop10]=useState([]),[apiUsageLoading,setApiUsageLoading]=useState(false);
+const[apiUsageDaily,setApiUsageDaily]=useState([]);
+const[csvPeriod,setCsvPeriod]=useState("current_month"),[csvExporting,setCsvExporting]=useState(false);
+const[budgetJpy,setBudgetJpy]=useState(0),[currentMonthJpy,setCurrentMonthJpy]=useState(0);
+useEffect(()=>{try{const v=localStorage.getItem("mk_apiBudgetJpy");if(v)setBudgetJpy(Number(v)||0)}catch{}},[]);
 
 const loadApiUsageStats=async()=>{
   if(!supabase)return;
@@ -842,10 +847,67 @@ const loadApiUsageStats=async()=>{
     (routes||[]).forEach(r=>{const k=r.route||"unknown";if(!routeMap[k])routeMap[k]={count:0,jpy:0};routeMap[k].count++;routeMap[k].jpy+=Number(r.cost_jpy||0)});
     const top10=Object.entries(routeMap).map(([route,v])=>({route,count:v.count,jpy:Math.round(v.jpy*100)/100})).sort((a,b)=>b.jpy-a.jpy).slice(0,10);
     setApiUsageTop10(top10);
+    // 4. 日別推移（選択中の月）
+    const daysInMonth=new Date(y,m,0).getDate();
+    const{data:dailyRaw}=await supabase.from("api_usage_logs").select("created_at,cost_jpy").gte("created_at",start).lt("created_at",end);
+    const dailyMap={};for(let d=1;d<=daysInMonth;d++)dailyMap[d]=0;
+    (dailyRaw||[]).forEach(r=>{const d=new Date(r.created_at);const dayJST=new Date(d.getTime()+9*60*60*1000).getUTCDate();dailyMap[dayJST]=(dailyMap[dayJST]||0)+Number(r.cost_jpy||0)});
+    const now2=new Date();const isCurrentMonth=y===now2.getFullYear()&&m===now2.getMonth()+1;
+    const lastDay=isCurrentMonth?now2.getDate():daysInMonth;
+    const daily=[];for(let d=1;d<=lastDay;d++)daily.push({day:`${d}日`,dayNum:d,jpy:Math.round((dailyMap[d]||0)*100)/100});
+    setApiUsageDaily(daily);
   }catch(e){console.error("[apiUsageStats] error:",e)}
   finally{setApiUsageLoading(false)}
 };
 useEffect(()=>{if(page==="settings")loadApiUsageStats()},[page,apiUsageMonth]);
+
+const loadCurrentMonthTotal=async()=>{
+  if(!supabase)return;
+  try{
+    const now=new Date();
+    const start=new Date(now.getFullYear(),now.getMonth(),1).toISOString();
+    const end=new Date(now.getFullYear(),now.getMonth()+1,1).toISOString();
+    const{data}=await supabase.from("api_usage_logs").select("cost_jpy").gte("created_at",start).lt("created_at",end);
+    const sum=(data||[]).reduce((s,x)=>s+Number(x.cost_jpy||0),0);
+    setCurrentMonthJpy(Math.round(sum*100)/100);
+  }catch(e){console.error("[currentMonthTotal] error:",e)}
+};
+useEffect(()=>{loadCurrentMonthTotal();const t=setInterval(loadCurrentMonthTotal,5*60*1000);return()=>clearInterval(t)},[]);
+
+const exportApiUsageCsv=async()=>{
+  if(!supabase){sSt("⚠️ 接続先未設定です");return}
+  setCsvExporting(true);
+  try{
+    const now=new Date();
+    let startDt=null,endDt=null;
+    if(csvPeriod==="current_month"){startDt=new Date(now.getFullYear(),now.getMonth(),1);endDt=new Date(now.getFullYear(),now.getMonth()+1,1)}
+    else if(csvPeriod==="last_month"){startDt=new Date(now.getFullYear(),now.getMonth()-1,1);endDt=new Date(now.getFullYear(),now.getMonth(),1)}
+    else if(csvPeriod==="last_3_months"){startDt=new Date(now.getFullYear(),now.getMonth()-2,1);endDt=new Date(now.getFullYear(),now.getMonth()+1,1)}
+    let q=supabase.from("api_usage_logs").select("created_at,route,model,model_family,context,input_tokens,output_tokens,total_tokens,cost_usd,cost_jpy,success,request_meta").order("created_at",{ascending:false}).limit(10000);
+    if(startDt)q=q.gte("created_at",startDt.toISOString());
+    if(endDt)q=q.lt("created_at",endDt.toISOString());
+    const{data,error}=await q;
+    if(error)throw error;
+    if(!data||data.length===0){sSt("⚠️ 対象期間のデータがありません");return}
+    const headers=["日時(JST)","ルート","モデル","ファミリ","コンテキスト","入力tokens","出力tokens","合計tokens","料金USD","料金JPY","成功","メタ情報"];
+    const rows=data.map(r=>{
+      const dt=new Date(r.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      const meta=r.request_meta?JSON.stringify(r.request_meta):"";
+      return[dt,r.route||"",r.model||"",r.model_family||"",r.context||"",r.input_tokens||0,r.output_tokens||0,r.total_tokens||0,r.cost_usd||0,r.cost_jpy||0,r.success?"成功":"失敗",meta];
+    });
+    const escapeCsv=v=>`"${String(v).replace(/"/g,'""')}"`;
+    const csvText=[headers.map(escapeCsv).join(","),...rows.map(row=>row.map(escapeCsv).join(","))].join("\r\n");
+    const bom="﻿";
+    const blob=new Blob([bom+csvText],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const periodLabel={current_month:"current",last_month:"last",last_3_months:"last3m",all_time:"all"}[csvPeriod]||"export";
+    const todayStr=new Date().toISOString().slice(0,10);
+    const a=document.createElement("a");a.href=url;a.download=`api-usage-${periodLabel}-${todayStr}.csv`;document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    sSt(`✓ ${data.length}件のデータをCSV出力しました`);
+  }catch(e){console.error("[csv export] error:",e);sSt("⚠️ CSV出力に失敗しました: "+e.message)}
+  finally{setCsvExporting(false)}
+};
 const generateMonthOptions=(monthsBack=12)=>{const opts=[];const now=new Date();for(let i=0;i<monthsBack;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1);const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;const label=`${d.getFullYear()}年${d.getMonth()+1}月`;opts.push({ym,label})}return opts};
 const[asrEngine,setAsrEngine]=useState("whisper");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
@@ -4387,6 +4449,14 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 {generateMonthOptions(12).map(o=>(<option key={o.ym} value={o.ym}>{o.label}</option>))}
 </select>
 <button onClick={loadApiUsageStats} disabled={apiUsageLoading} style={{padding:"5px 12px",borderRadius:8,border:"none",background:apiUsageLoading?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:apiUsageLoading?"wait":"pointer"}}>{apiUsageLoading?"⏳":"🔄 更新"}</button>
+<span style={{width:1,height:20,background:C.g200,margin:"0 4px"}}/>
+<select value={csvPeriod} onChange={e=>setCsvPeriod(e.target.value)} disabled={csvExporting} style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",background:C.w,outline:"none",cursor:csvExporting?"wait":"pointer"}}>
+  <option value="current_month">今月</option>
+  <option value="last_month">先月</option>
+  <option value="last_3_months">過去3ヶ月</option>
+  <option value="all_time">全期間</option>
+</select>
+<button onClick={exportApiUsageCsv} disabled={csvExporting} style={{padding:"5px 12px",borderRadius:8,border:"none",background:csvExporting?C.g200:"linear-gradient(135deg,#0891b2,#06b6d4)",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:csvExporting?"wait":"pointer"}}>{csvExporting?"⏳ 出力中...":"📥 CSV出力"}</button>
 </div>
 </div>
 <p style={{fontSize:11,color:C.g400,marginBottom:10}}>各AIモデル・APIルートの月次使用料を集計表示します。データは api_usage_logs テーブルに蓄積されます。</p>
@@ -4402,6 +4472,11 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <div style={{marginBottom:14}}>
 <h4 style={{margin:"0 0 6px",fontSize:13,color:C.g600,fontWeight:700}}>📈 月別推移（過去6ヶ月）</h4>
 {apiUsageMonthly.length>0?<UsageBarChart data={apiUsageMonthly}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:C.g400,fontSize:12,background:C.g50,borderRadius:8}}>データを取得中...</div>}
+</div>
+
+<div style={{marginBottom:14}}>
+<h4 style={{margin:"0 0 6px",fontSize:13,color:C.g600,fontWeight:700}}>📅 日別推移（{apiUsageMonth.replace("-","年")}月）</h4>
+{apiUsageDaily.length>0?<UsageDailyChart data={apiUsageDaily}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:C.g400,fontSize:12,background:C.g50,borderRadius:8}}>データを取得中...</div>}
 </div>
 
 <div>
@@ -4424,6 +4499,17 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 {apiUsageTop10.length===0&&(<tr><td colSpan={4} style={{padding:24,textAlign:"center",color:C.g400,fontSize:12}}>データがありません</td></tr>)}
 </tbody>
 </table>
+</div>
+</div>
+
+<div style={{marginTop:18,padding:14,background:"#fff8f0",borderRadius:10,border:"1px solid #fcd9b6"}}>
+<h4 style={{margin:"0 0 8px",fontSize:13,color:"#92400e",fontWeight:700}}>💰 月予算アラート設定</h4>
+<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+<span style={{fontSize:12,color:"#78350f"}}>月予算:</span>
+<input type="number" value={budgetJpy||""} onChange={e=>{const v=Number(e.target.value)||0;setBudgetJpy(v);try{localStorage.setItem("mk_apiBudgetJpy",String(v))}catch{}}} placeholder="例: 5000（0で無効）" style={{padding:"6px 10px",borderRadius:8,border:"1px solid #fcd9b6",width:140,fontSize:13,fontFamily:"inherit",outline:"none",background:C.w}}/>
+<span style={{fontSize:12,color:"#78350f"}}>円</span>
+<span style={{fontSize:11,color:"#a8a29e"}}>{budgetJpy>0?"（超過時に画面上部にバナー表示）":"（0でアラート無効）"}</span>
+{budgetJpy>0&&<span style={{fontSize:11,color:currentMonthJpy>budgetJpy?"#dc2626":"#16a34a",fontWeight:600,marginLeft:"auto"}}>今月: ¥{currentMonthJpy.toLocaleString()} / ¥{budgetJpy.toLocaleString()}</span>}
 </div>
 </div>
 </div>
@@ -4666,6 +4752,7 @@ return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid
 
 // === MAIN ===
 return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px 32px",minHeight:"100vh",fontFamily:"'Zen Maru Gothic', sans-serif",background:theme.bodyBg}}>
+{budgetJpy>0&&currentMonthJpy>budgetJpy&&<div style={{position:"sticky",top:0,zIndex:1000,background:"#fef2f2",border:"2px solid #dc2626",color:"#991b1b",padding:"8px 16px",fontSize:13,fontWeight:700,textAlign:"center",boxShadow:"0 2px 4px rgba(0,0,0,0.1)",borderRadius:8,marginBottom:8}}>⚠️ 今月のAPI使用料 ¥{currentMonthJpy.toLocaleString()} が予算 ¥{budgetJpy.toLocaleString()} を超えています</div>}
 {tooltip.visible&&<div style={{position:"fixed",left:tooltip.x,top:tooltip.y,transform:"translate(-50%, -100%)",background:"rgba(42,58,32,0.92)",color:"#e8f5d8",padding:"4px 10px",borderRadius:8,fontSize:12,fontWeight:600,fontFamily:"'Zen Maru Gothic', sans-serif",pointerEvents:"none",zIndex:99999,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>{tooltip.text}</div>}
 <header style={{background:theme.headerBg,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${theme.cardBorder}`,padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:0}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
