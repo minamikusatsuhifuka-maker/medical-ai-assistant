@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 60;
 
 export async function POST(request) {
@@ -59,6 +61,7 @@ ${combined.substring(0, 8000)}`;
     }
 
     const data = await res.json();
+    try { await logUsage({ route: "/api/treatment-material", model: "gemini-2.0-flash", context: "treatment-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0 } }); } catch(e) { console.error("[logUsage] treatment-material:", e); }
     const parts = data.candidates?.[0]?.content?.parts || [];
     const material = parts.filter(p => !p.thought).map(p => p.text || "").join("").trim();
 

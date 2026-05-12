@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logUsage } from "../../lib/log-usage";
 
 export const maxDuration = 60;
 
@@ -56,6 +57,7 @@ export async function POST(request) {
     }
 
     const data = await res.json();
+    try { await logUsage({ route: "/api/fix-typos", model: "gemini-2.0-flash", context: "typos-fix", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] fix-typos:", e); }
     const parts = data.candidates?.[0]?.content?.parts || [];
     console.log("fix-typos parts count:", parts.length, "parts:", JSON.stringify(parts.map(p => ({ thought: p.thought, textLen: (p.text||"").length, textPreview: (p.text||"").slice(0,100) }))));
     // thinking partを除外してtext partのみ結合

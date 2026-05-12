@@ -20,6 +20,17 @@ export const PRICING = {
 
 const FALLBACK = { input: 1.25, output: 10.00, family: "unknown" };
 
+// Whisper per-minute 課金（$0.006/分、2026年5月時点）
+const WHISPER_PER_MINUTE_USD = 0.006;
+
+export function calcWhisperCost(durationSeconds) {
+  const sec = Math.max(0, Number(durationSeconds) || 0);
+  const minutes = sec / 60;
+  const cost_usd = minutes * WHISPER_PER_MINUTE_USD;
+  const cost_jpy = Math.round(cost_usd * USD_JPY * 100) / 100;
+  return { cost_usd, cost_jpy, family: "whisper", model_resolved: "whisper-1" };
+}
+
 export function calcCost(model, inputTokens = 0, outputTokens = 0) {
   let p = PRICING[model];
   let resolved = model;

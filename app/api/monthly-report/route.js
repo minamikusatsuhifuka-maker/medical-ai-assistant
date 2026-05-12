@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 60;
 
 export async function POST(request) {
@@ -55,6 +57,7 @@ ${combined.substring(0, 10000)}`;
     }
 
     const data = await res.json();
+    try { await logUsage({ route: "/api/monthly-report", model: "gemini-2.5-flash", context: "monthly-report", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0, month: month || null } }); } catch(e) { console.error("[logUsage] monthly-report:", e); }
     const parts = data.candidates?.[0]?.content?.parts || [];
     const report = parts.filter(p => !p.thought).map(p => p.text || "").join("").trim();
 

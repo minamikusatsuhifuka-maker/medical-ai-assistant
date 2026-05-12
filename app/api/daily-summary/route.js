@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logUsage } from "../../lib/log-usage";
 
 export const maxDuration = 60;
 
@@ -47,6 +48,7 @@ export async function POST(request) {
     }
 
     const data = await res.json();
+    try { await logUsage({ route: "/api/daily-summary", model: "gemini-2.5-pro", context: "daily-summary", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] daily-summary:", e); }
     const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
 
     return NextResponse.json({ result: content, model: "gemini-2.5-pro" });

@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 30;
 
 export async function POST(request) {
@@ -40,6 +42,7 @@ export async function POST(request) {
       }),
     });
     const data = await res.json();
+    try { await logUsage({ route: "/api/generate-questionnaire", model: "gemini-2.5-flash", context: "questionnaire", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { disease: disease || null, isFirstVisit } }); } catch(e) { console.error("[logUsage] questionnaire:", e); }
     const parts = data.candidates?.[0]?.content?.parts || [];
     const questionnaire = parts.filter(p => !p.thought).map(p => p.text || "").join("").trim();
     return Response.json({ questionnaire });

@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 30;
 
 export async function POST(request) {
@@ -39,6 +41,17 @@ export async function POST(request) {
 
     const data = await res.json();
     const text = data.text || "";
+
+    try {
+      await logUsage({
+        route: "/api/transcribe-qwen",
+        model: "qwen3-asr-flash",
+        context: "transcribe",
+        input_tokens: 0,
+        output_tokens: 0,
+        request_meta: { audio_bytes: audioFile.size || 0, text_length: text.length },
+      });
+    } catch (e) { console.error("[logUsage] transcribe-qwen:", e); }
 
     if (!text || !text.trim()) {
       return Response.json({ text: "" });

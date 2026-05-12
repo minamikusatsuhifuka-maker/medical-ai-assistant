@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 30;
 
 export async function POST(request) {
@@ -48,6 +50,7 @@ ${text.substring(0, 5000)}`;
     if (!res.ok) return Response.json({ candidates: [] });
 
     const data = await res.json();
+    try { await logUsage({ route: "/api/scan-noise", model: "gemini-2.0-flash", context: "noise-scan", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] scan-noise:", e); }
     const parts = data.candidates?.[0]?.content?.parts || [];
     let content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
     content = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();

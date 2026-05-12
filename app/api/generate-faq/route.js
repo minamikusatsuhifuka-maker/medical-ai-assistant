@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logUsage } from "../../lib/log-usage";
 
 export const maxDuration = 30;
 
@@ -32,6 +33,7 @@ export async function POST(request) {
     }
 
     const data = await res.json();
+    try { await logUsage({ route: "/api/generate-faq", model: "gemini-2.5-flash", context: "faq", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] generate-faq:", e); }
     const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
     if (result.trim()) {
       return NextResponse.json({ result });
