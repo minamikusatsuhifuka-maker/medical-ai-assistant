@@ -685,6 +685,7 @@ const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useS
 const[csModel,setCsModel]=useState("gemini-pro");
 const[csModels,setCsModels]=useState(["gemini-pro"]);
 const[csResults,setCsResults]=useState([]);
+const[csCompareTab,setCsCompareTab]=useState("all");
 const[csPickOpen,setCsPickOpen]=useState(false),[csPickList,setCsPickList]=useState([]),[csPickLoading,setCsPickLoading]=useState(false),[csPickSearch,setCsPickSearch]=useState("");
 useEffect(()=>{try{
   const sm=localStorage.getItem("mk_csModels");
@@ -699,7 +700,25 @@ useEffect(()=>{try{
   if(s==="gemini-pro"||s==="gemini-3-pro"||s==="claude"){setCsModel(s);setCsModels([s]);localStorage.setItem("mk_csModels",JSON.stringify([s]))}
   else if(s==="gemini"){setCsModel("gemini-pro");setCsModels(["gemini-pro"]);localStorage.setItem("mk_csModels",JSON.stringify(["gemini-pro"]));localStorage.removeItem("mk_csModel")}
 }catch{}},[]);
-const csModelLabel=(m)=>m==="gemini-3-pro"?"Gemini 3.1 Pro":m==="claude"?"Claude Sonnet 4.6":"Gemini 2.5 Pro";
+const csModelLabel=(m)=>{
+  if(!m)return"Gemini 2.5 Pro";
+  // 既に整形済みのラベルが渡された場合はそのまま返す（履歴の ai_model 互換）
+  if(/^(Gemini |Claude )/i.test(m))return m;
+  const s=String(m).toLowerCase();
+  // 内部キー
+  if(s==="gemini-3-pro")return"Gemini 3.1 Pro";
+  if(s==="claude")return"Claude Sonnet 4.6";
+  if(s==="gemini-pro")return"Gemini 2.5 Pro";
+  if(s==="gemini")return"Gemini 2.5 Flash";
+  // API応答の実モデル名
+  if(s.includes("claude"))return"Claude Sonnet 4.6";
+  if(s.includes("3.1-pro")||s.includes("3-pro-preview")||s.includes("gemini-3"))return"Gemini 3.1 Pro";
+  if(s.includes("2.5-pro")||s.includes("2.0-pro"))return"Gemini 2.5 Pro";
+  if(s.includes("flash"))return"Gemini 2.5 Flash";
+  if(s.includes("whisper"))return"Whisper";
+  return m;
+};
+const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
 const csModelDesc=(m)=>m==="gemini-3-pro"?"最新・最高精度 ⭐":m==="claude"?"日本語精度":"バランス型";
 const csModelColor=(m)=>m==="gemini-3-pro"?"#9333ea":m==="claude"?"#d97706":"#4285f4";
 const csAbortRef=useRef(null);
@@ -947,6 +966,7 @@ const[journeyModal,setJourneyModal]=useState(false);
 const[journeyMeta,setJourneyMeta]=useState(null); // {model, usage}
 const[journeyModels,setJourneyModels]=useState(["gemini-pro"]);
 const[journeyResults,setJourneyResults]=useState([]); // 並列実行用
+const[journeyCompareTab,setJourneyCompareTab]=useState("all");
 const[journeySaving,setJourneySaving]=useState(false),[journeySaveMsg,setJourneySaveMsg]=useState("");
 const[journeyHistOpen,setJourneyHistOpen]=useState(false),[journeyHistList,setJourneyHistList]=useState([]),[journeyHistLoading,setJourneyHistLoading]=useState(false),[journeyHistSearch,setJourneyHistSearch]=useState("");
 const journeyAbortRef=useRef(null);
@@ -1105,6 +1125,7 @@ const runSingleJourney=async(model,content,controller)=>{
 const runJourneyMapAll=async()=>{
   if(!supabase)return;
   if(journeyAbortRef.current){try{(Array.isArray(journeyAbortRef.current)?journeyAbortRef.current:[journeyAbortRef.current]).forEach(c=>{try{c.abort()}catch{}})}catch{}}
+  setJourneyCompareTab("all");
   setJourneyLoading(true);setJourneyModal(true);setJourneyResult("");setJourneyMeta(null);setJourneySaveMsg("");
   const content=await fetchJourneyContent();
   if(content.trim().length<50){
@@ -1986,6 +2007,7 @@ const runCsAnalyzeAll=async()=>{
   const tx=csTx.trim()||iR.current;
   if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}
   if(csAbortRef.current){try{(Array.isArray(csAbortRef.current)?csAbortRef.current:[csAbortRef.current]).forEach(c=>{try{c.abort()}catch{}})}catch{}}
+  setCsCompareTab("all");
   setCsLd(true);setProg(20);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);
   let pastRef="";if(supabase){try{
     const{data:csData}=await supabase.from("counseling_records").select("transcription,summary,patient_name").order("created_at",{ascending:false}).limit(20);
@@ -3996,6 +4018,14 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {!csLd&&csResults.some(r=>r.status==="done")&&<button onClick={saveCsResultsAll} disabled={csSaving} style={{padding:"6px 14px",borderRadius:10,border:"none",background:csSaving?C.g200:"linear-gradient(135deg,#7f77dd,#5a4fc4)",color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:csSaving?"not-allowed":"pointer"}}>{csSaving?"⏳ 保存中...":"💾 完了分をすべて保存"}</button>}
 </div>
 {csSaveMsg&&<div style={{fontSize:12,fontWeight:600,color:csSaveMsg.includes("失敗")?"#dc2626":"#16a34a",marginBottom:8}}>{csSaveMsg}</div>}
+
+{/* タブ切替バー */}
+<div style={{display:"flex",gap:2,marginBottom:8,borderBottom:`2px solid ${C.g200}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+  <button onClick={()=>setCsCompareTab("all")} style={{padding:"7px 14px",border:"none",background:csCompareTab==="all"?C.pD:"transparent",color:csCompareTab==="all"?C.w:C.g600,fontWeight:csCompareTab==="all"?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:csCompareTab==="all"?`2px solid ${C.pD}`:"2px solid transparent"}}>🔬 全体比較</button>
+  {csResults.map((r,i)=>{const color=csModelColor(r.model);const active=csCompareTab===r.model;return(<button key={i} onClick={()=>setCsCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":C.g600,fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:active?`2px solid ${color}`:"2px solid transparent"}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":""}</button>)})}
+</div>
+
+{csCompareTab==="all"?(
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${csResults.length},minmax(0,1fr))`,gap:12}}>
 {csResults.map((r,i)=>{
   const color=csModelColor(r.model);
@@ -4020,6 +4050,31 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
   </div>);
 })}
 </div>
+):(
+<div>
+{csResults.filter(r=>r.model===csCompareTab).map((r,i)=>{
+  const color=csModelColor(r.model);
+  const elapsed=r.endedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;
+  return(<div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:12,padding:18,background:C.w}}>
+    <div style={{paddingBottom:10,marginBottom:14,borderBottom:`3px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>
+      <span style={{fontSize:13,fontWeight:600}}>{r.status==="running"?"⏳ 分析中...":r.status==="done"?"✅ 完了":r.status==="error"?"❌ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+    </div>
+    <div style={{fontSize:14,lineHeight:1.75,whiteSpace:"pre-wrap",wordBreak:"break-word",color:C.g700,maxHeight:600,overflowY:"auto",marginBottom:16,padding:"8px 10px",background:"#fafafa",borderRadius:8}}>
+      {r.status==="running"&&!r.output&&<div style={{textAlign:"center",padding:30,color:"#94a3b8"}}><div style={{width:32,height:32,border:`3px solid ${color}33`,borderTop:`3px solid ${color}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/>応答待ち...</div>}
+      {r.status==="error"&&<div style={{color:"#dc2626"}}>⚠️ {r.error||"不明なエラー"}</div>}
+      {r.status==="aborted"&&!r.output&&<div style={{color:"#64748b"}}>⏹ 停止されました</div>}
+      {r.output}
+    </div>
+    {r.scores&&Object.keys(r.scores).length>0&&<div style={{marginBottom:14}}><ScoreRadar scores={r.scores}/></div>}
+    <div style={{display:"flex",gap:14,fontSize:12,color:C.g600,flexWrap:"wrap",alignItems:"center"}}>
+      {r.usage&&<div>📊 入力 {(r.usage.input_tokens||0).toLocaleString()} / 出力 {(r.usage.output_tokens||0).toLocaleString()} tokens ／ <strong style={{color:"#7c3aed"}}>¥{(r.usage.cost_jpy||0).toFixed(2)}</strong></div>}
+      {elapsed&&<div style={{marginLeft:"auto"}}>⏱ {elapsed}s</div>}
+    </div>
+  </div>);
+})}
+</div>
+)}
 </div>}
 {csOut&&csResults.length<=1&&<div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -4147,6 +4202,14 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {!journeyLoading&&journeyResults.some(r=>r.status==="done")&&<button onClick={saveJourneyResultsAll} disabled={journeySaving} style={{padding:"5px 12px",borderRadius:10,border:"none",background:journeySaving?"#e2e8f0":"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:journeySaving?"not-allowed":"pointer"}}>{journeySaving?"⏳ 保存中...":"💾 完了分をすべて保存"}</button>}
 </div>
 {journeySaveMsg&&<div style={{fontSize:12,fontWeight:600,color:journeySaveMsg.includes("失敗")?"#dc2626":"#16a34a",marginBottom:8}}>{journeySaveMsg}</div>}
+
+{/* タブ切替バー */}
+<div style={{display:"flex",gap:2,marginBottom:8,borderBottom:"2px solid #e2e8f0",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+  <button onClick={()=>setJourneyCompareTab("all")} style={{padding:"7px 14px",border:"none",background:journeyCompareTab==="all"?"#0369a1":"transparent",color:journeyCompareTab==="all"?"#fff":"#475569",fontWeight:journeyCompareTab==="all"?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2}}>🔬 全体比較</button>
+  {journeyResults.map((r,i)=>{const color=csModelColor(r.model);const active=journeyCompareTab===r.model;return(<button key={i} onClick={()=>setJourneyCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":"#475569",fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":""}</button>)})}
+</div>
+
+{journeyCompareTab==="all"?(
 <div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${journeyResults.length},minmax(0,1fr))`,gap:10}}>
 {journeyResults.map((r,i)=>{
   const color=csModelColor(r.model);
@@ -4170,6 +4233,30 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
   </div>);
 })}
 </div>
+):(
+<div>
+{journeyResults.filter(r=>r.model===journeyCompareTab).map((r,i)=>{
+  const color=csModelColor(r.model);
+  const elapsed=r.endedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;
+  return(<div key={i} style={{border:"1px solid #e2e8f0",borderRadius:12,padding:18,background:"#fff"}}>
+    <div style={{paddingBottom:10,marginBottom:14,borderBottom:`3px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>
+      <span style={{fontSize:13,fontWeight:600}}>{r.status==="running"?"⏳ 生成中...":r.status==="done"?"✅ 完了":r.status==="error"?"❌ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+    </div>
+    <div style={{fontSize:14,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",color:"#334155",maxHeight:600,overflowY:"auto",marginBottom:14,padding:"10px 12px",background:"#f8fafc",borderRadius:10}}>
+      {r.status==="running"&&!r.output&&<div style={{textAlign:"center",padding:30,color:"#94a3b8"}}><div style={{width:32,height:32,border:`3px solid ${color}33`,borderTop:`3px solid ${color}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/>応答待ち...</div>}
+      {r.status==="error"&&<div style={{color:"#dc2626"}}>⚠️ {r.error||"不明なエラー"}</div>}
+      {r.status==="aborted"&&!r.output&&<div style={{color:"#64748b"}}>⏹ 停止されました</div>}
+      {r.output}
+    </div>
+    <div style={{display:"flex",gap:14,fontSize:12,color:"#475569",flexWrap:"wrap",alignItems:"center"}}>
+      {r.usage&&<div>📊 入力 {(r.usage.input_tokens||0).toLocaleString()} / 出力 {(r.usage.output_tokens||0).toLocaleString()} tokens ／ <strong style={{color:"#7c3aed"}}>¥{(r.usage.cost_jpy||0).toFixed(2)}</strong></div>}
+      {elapsed&&<div style={{marginLeft:"auto"}}>⏱ {elapsed}s</div>}
+    </div>
+  </div>);
+})}
+</div>
+)}
 </div>}
 
 {/* 単一結果 */}
