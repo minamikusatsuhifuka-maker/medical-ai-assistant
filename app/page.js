@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
 const CS_SCORE_ITEMS = ["傾聴力","共感力","質問の質","ニーズ把握","説明力","信頼関係構築","提案力","クロージング"];
 const ScoreRadar = dynamic(()=>import("./ScoreRadar"),{ssr:false,loading:()=><div style={{width:"100%",height:320,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12,background:"#faf9ff",borderRadius:12,border:"1px solid #e9e6ff"}}>📊 チャート読み込み中...</div>});
+const UsageBarChart = dynamic(()=>import("./UsageBarChart"),{ssr:false,loading:()=><div style={{width:"100%",height:220,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12}}>📈 グラフ読み込み中...</div>});
 
 // === スコアパース（ロバスト版） ===
 const parseCsScores = (text) => {
@@ -797,6 +798,42 @@ const minAllAudioChunks=useRef([]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[audioList,setAudioList]=useState([]),[audioListLoading,setAudioListLoading]=useState(false),[audioSignedUrls,setAudioSignedUrls]=useState({}),[audioListMsg,setAudioListMsg]=useState("");
 const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAudioDeleting]=useState(false);
+const[apiUsageMonth,setApiUsageMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`});
+const[apiUsageSummary,setApiUsageSummary]=useState(null),[apiUsageMonthly,setApiUsageMonthly]=useState([]),[apiUsageTop10,setApiUsageTop10]=useState([]),[apiUsageLoading,setApiUsageLoading]=useState(false);
+
+const loadApiUsageStats=async()=>{
+  if(!supabase)return;
+  setApiUsageLoading(true);
+  try{
+    const[y,m]=apiUsageMonth.split("-").map(Number);
+    const startD=new Date(y,m-1,1);
+    const endD=new Date(y,m,1);
+    const start=startD.toISOString();
+    const end=endD.toISOString();
+    const{data:summaryRows}=await supabase.from("api_usage_logs").select("model_family,cost_jpy,total_tokens").gte("created_at",start).lt("created_at",end);
+    const byFamily={};let totalJpy=0,totalCount=0,totalTokens=0;
+    (summaryRows||[]).forEach(r=>{const f=r.model_family||"unknown";byFamily[f]=(byFamily[f]||0)+Number(r.cost_jpy||0);totalJpy+=Number(r.cost_jpy||0);totalTokens+=Number(r.total_tokens||0);totalCount++});
+    setApiUsageSummary({totalJpy:Math.round(totalJpy*100)/100,totalCount,totalTokens,byFamily});
+    const monthly=[];
+    for(let i=5;i>=0;i--){
+      const d=new Date(y,m-1-i,1);
+      const ms=d.toISOString();
+      const me=new Date(d.getFullYear(),d.getMonth()+1,1).toISOString();
+      const{data:rs}=await supabase.from("api_usage_logs").select("cost_jpy").gte("created_at",ms).lt("created_at",me);
+      const sum=(rs||[]).reduce((s,x)=>s+Number(x.cost_jpy||0),0);
+      monthly.push({month:`${d.getMonth()+1}月`,yearMonth:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`,jpy:Math.round(sum*100)/100});
+    }
+    setApiUsageMonthly(monthly);
+    const{data:routes}=await supabase.from("api_usage_logs").select("route,cost_jpy").gte("created_at",start).lt("created_at",end);
+    const routeMap={};
+    (routes||[]).forEach(r=>{const k=r.route||"unknown";if(!routeMap[k])routeMap[k]={count:0,jpy:0};routeMap[k].count++;routeMap[k].jpy+=Number(r.cost_jpy||0)});
+    const top10=Object.entries(routeMap).map(([route,v])=>({route,count:v.count,jpy:Math.round(v.jpy*100)/100})).sort((a,b)=>b.jpy-a.jpy).slice(0,10);
+    setApiUsageTop10(top10);
+  }catch(e){console.error("[apiUsageStats] error:",e)}
+  finally{setApiUsageLoading(false)}
+};
+useEffect(()=>{if(page==="settings")loadApiUsageStats()},[page,apiUsageMonth]);
+const generateMonthOptions=(monthsBack=12)=>{const opts=[];const now=new Date();for(let i=0;i<monthsBack;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1);const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;const label=`${d.getFullYear()}年${d.getMonth()+1}月`;opts.push({ym,label})}return opts};
 const[asrEngine,setAsrEngine]=useState("whisper");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
@@ -4076,6 +4113,57 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <button onClick={()=>setAudioSave(!audioSave)} style={{padding:"6px 20px",borderRadius:10,border:"none",background:audioSave?C.rG:C.g200,color:audioSave?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{audioSave?"ON":"OFF"}</button>
 <span style={{fontSize:12,color:audioSave?C.rG:C.g400}}>{audioSave?"録音停止時に自動保存されます":"音声は保存されません"}</span>
 </div></div>
+
+{/* 📊 API使用料 */}
+<div style={{...card,marginBottom:16}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+<h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>📊 API使用料</h3>
+<div style={{display:"flex",gap:6,alignItems:"center"}}>
+<select value={apiUsageMonth} onChange={e=>setApiUsageMonth(e.target.value)} style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",background:C.w,outline:"none",cursor:"pointer"}}>
+{generateMonthOptions(12).map(o=>(<option key={o.ym} value={o.ym}>{o.label}</option>))}
+</select>
+<button onClick={loadApiUsageStats} disabled={apiUsageLoading} style={{padding:"5px 12px",borderRadius:8,border:"none",background:apiUsageLoading?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:apiUsageLoading?"wait":"pointer"}}>{apiUsageLoading?"⏳":"🔄 更新"}</button>
+</div>
+</div>
+<p style={{fontSize:11,color:C.g400,marginBottom:10}}>各AIモデル・APIルートの月次使用料を集計表示します。データは api_usage_logs テーブルに蓄積されます。</p>
+
+{apiUsageSummary&&<div style={{padding:14,background:"linear-gradient(135deg,#faf8ff,#f0ebff)",borderRadius:10,marginBottom:14,border:"1px solid #d4cce8"}}>
+  <div style={{fontSize:26,fontWeight:800,color:"#7c3aed",lineHeight:1}}>¥{apiUsageSummary.totalJpy.toLocaleString()}</div>
+  <div style={{fontSize:11,color:"#94a3b8",marginTop:4,marginBottom:8}}>合計 ／ {apiUsageSummary.totalCount.toLocaleString()} 件 ／ {apiUsageSummary.totalTokens.toLocaleString()} tokens</div>
+  {Object.keys(apiUsageSummary.byFamily).length>0&&<div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:11,color:"#475569"}}>
+    {Object.entries(apiUsageSummary.byFamily).sort((a,b)=>b[1]-a[1]).map(([f,j])=>(<span key={f} style={{padding:"3px 8px",background:C.w,borderRadius:6,border:"1px solid #e9e6ff"}}><strong style={{color:"#6b5fd1"}}>{f}</strong> ¥{Number(j).toLocaleString()}</span>))}
+  </div>}
+</div>}
+
+<div style={{marginBottom:14}}>
+<h4 style={{margin:"0 0 6px",fontSize:13,color:C.g600,fontWeight:700}}>📈 月別推移（過去6ヶ月）</h4>
+{apiUsageMonthly.length>0?<UsageBarChart data={apiUsageMonthly}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:C.g400,fontSize:12,background:C.g50,borderRadius:8}}>データを取得中...</div>}
+</div>
+
+<div>
+<h4 style={{margin:"0 0 6px",fontSize:13,color:C.g600,fontWeight:700}}>🏆 Top10 ルート別使用料（選択月）</h4>
+<div style={{overflowX:"auto"}}>
+<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+<thead><tr style={{background:"#f5f3ff",color:"#5a4f9c"}}>
+<th style={{padding:"7px 10px",textAlign:"left",fontWeight:700,borderBottom:"1px solid #d4cce8"}}>#</th>
+<th style={{padding:"7px 10px",textAlign:"left",fontWeight:700,borderBottom:"1px solid #d4cce8"}}>ルート</th>
+<th style={{padding:"7px 10px",textAlign:"right",fontWeight:700,borderBottom:"1px solid #d4cce8"}}>件数</th>
+<th style={{padding:"7px 10px",textAlign:"right",fontWeight:700,borderBottom:"1px solid #d4cce8"}}>料金</th>
+</tr></thead>
+<tbody>
+{apiUsageTop10.map((r,i)=>(<tr key={r.route} style={{borderBottom:"1px solid #f1f1f5"}}>
+  <td style={{padding:"6px 10px",color:C.g500}}>{i+1}</td>
+  <td style={{padding:"6px 10px",fontFamily:"ui-monospace,SFMono-Regular,monospace",fontSize:11,color:C.g700,wordBreak:"break-all"}}>{r.route}</td>
+  <td style={{padding:"6px 10px",textAlign:"right",color:C.g500}}>{r.count.toLocaleString()}</td>
+  <td style={{padding:"6px 10px",textAlign:"right",fontWeight:700,color:"#7c3aed"}}>¥{r.jpy.toLocaleString()}</td>
+</tr>))}
+{apiUsageTop10.length===0&&(<tr><td colSpan={4} style={{padding:24,textAlign:"center",color:C.g400,fontSize:12}}>データがありません</td></tr>)}
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
 <div style={{...card,marginBottom:16}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>🎙 録音音声管理</h3>

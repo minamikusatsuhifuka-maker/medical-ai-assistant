@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 // 対策1: maxDuration を 800秒に拡大（Vercel Pro上限）
 export const maxDuration = 800;
 
@@ -119,6 +121,16 @@ async function callGeminiSingle(geminiModel, text, prompt, maxOutputTokens) {
   const parts = data.candidates?.[0]?.content?.parts || [];
   const summary = parts.filter(p => !p.thought).map(p => p.text || "").join("");
   const finishReason = data.candidates?.[0]?.finishReason || "";
+  try {
+    await logUsage({
+      route: "/api/minutes-summarize",
+      model: geminiModel,
+      context: "minutes",
+      input_tokens: data.usageMetadata?.promptTokenCount || 0,
+      output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+      request_meta: { char_length: text.length },
+    });
+  } catch (e) { console.error("[logUsage] minutes-gemini:", e); }
   if (!summary.trim()) throw new Error(`${geminiModel}: empty response`);
   return { summary, model: geminiModel, finishReason };
 }
@@ -158,6 +170,16 @@ async function callClaude(text, prompt, maxTokens = 8192) {
   });
   const data = await res.json();
   if (data.content?.[0]?.text) {
+    try {
+      await logUsage({
+        route: "/api/minutes-summarize",
+        model: data.model || "claude-sonnet-4-6",
+        context: "minutes",
+        input_tokens: data.usage?.input_tokens || 0,
+        output_tokens: data.usage?.output_tokens || 0,
+        request_meta: { char_length: text.length },
+      });
+    } catch (e) { console.error("[logUsage] minutes-claude:", e); }
     return {
       summary: data.content[0].text,
       model: "claude-sonnet-4-6",

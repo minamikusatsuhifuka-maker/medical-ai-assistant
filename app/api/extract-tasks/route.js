@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 300;
 
 const TASK_CHUNK_SIZE = 8000;
@@ -161,6 +163,17 @@ ${text}`;
   const data = await res.json();
   const parts = data.candidates?.[0]?.content?.parts || [];
   let content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
+
+  try {
+    await logUsage({
+      route: "/api/extract-tasks",
+      model: "gemini-2.0-flash",
+      context: "task-extract",
+      input_tokens: data.usageMetadata?.promptTokenCount || 0,
+      output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+      request_meta: { char_length: text.length },
+    });
+  } catch (e) { console.error("[logUsage] extract-tasks:", e); }
 
   content = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
   const si = content.indexOf("[");

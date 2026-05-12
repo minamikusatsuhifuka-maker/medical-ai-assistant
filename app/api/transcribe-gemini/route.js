@@ -1,3 +1,5 @@
+import { logUsage } from "../../lib/log-usage";
+
 export const maxDuration = 30;
 
 export async function POST(request) {
@@ -55,6 +57,17 @@ export async function POST(request) {
     const data = await res.json();
     const parts = data.candidates?.[0]?.content?.parts || [];
     const text = parts.filter(p => !p.thought).map(p => p.text || "").join("").trim();
+
+    try {
+      await logUsage({
+        route: "/api/transcribe-gemini",
+        model: "gemini-3.1-flash-lite-preview",
+        context: "transcribe",
+        input_tokens: data.usageMetadata?.promptTokenCount || 0,
+        output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+        request_meta: { audio_bytes: audioBuffer.byteLength, text_length: text.length },
+      });
+    } catch (e) { console.error("[logUsage] transcribe-gemini:", e); }
 
     if (!text) {
       return Response.json({ text: "" });
