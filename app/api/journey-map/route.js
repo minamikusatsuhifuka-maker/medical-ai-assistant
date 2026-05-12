@@ -1,20 +1,10 @@
 import { NextResponse } from "next/server";
+import { logUsage } from "../../lib/log-usage";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 
-export async function POST(request) {
-  try {
-    const { content } = await request.json();
-    if (!content || content.trim().length < 10) {
-      return NextResponse.json({ error: "コンテンツが不足しています" }, { status: 400 });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
-    }
-
-    const systemPrompt = `あなたは医療マーケティング・患者体験設計の専門家です。
+const SYSTEM_PROMPT = `あなたは医療マーケティング・患者体験設計の専門家です。
 以下の皮膚科・美容皮膚科クリニックのカウンセリング記録・診療記録を分析し、
 患者ジャーニーマップを作成してください。
 
@@ -58,31 +48,90 @@ export async function POST(request) {
 実際のデータに基づき、具体的で実践的なジャーニーマップを作成してください。
 推測の場合は「推測:」と明記してください。`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: content.substring(0, 10000) }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4000 },
-      }),
+function buildGeminiModelList(model_preference) {
+  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview","gemini-3-pro-preview","gemini-2.5-pro","gemini-2.5-flash"];
+  if (model_preference === "gemini-pro") return ["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"];
+  return ["gemini-2.5-flash","gemini-2.5-pro","gemini-2.0-flash"];
+}
+
+async function callGemini(content, model_preference) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
+  const models = buildGeminiModelList(model_preference);
+  let lastError = null;
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ parts: [{ text: content.substring(0, 10000) }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+        }),
+      });
+      if (!res.ok) { lastError = `${model}: HTTP ${res.status}`; continue; }
+      const data = await res.json();
+      const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+      if (result.trim()) {
+        return {
+          result, model,
+          input_tokens: data.usageMetadata?.promptTokenCount || 0,
+          output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+        };
+      }
+      lastError = `${model}: empty response`;
+    } catch (e) { lastError = `${model}: ${e.message}`; }
+  }
+  throw new Error("Gemini全モデル失敗: " + lastError);
+}
+
+async function callClaude(content) {
+  const apiKey = process.env.CLAUDE_API_KEY;
+  if (!apiKey) throw new Error("CLAUDE_API_KEY が設定されていません");
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 16384,
+      temperature: 0.7,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: content.substring(0, 10000) }],
+    }),
+  });
+  const data = await res.json();
+  if (data.content?.[0]?.text) return {
+    result: data.content[0].text,
+    model: data.model || "claude-sonnet-4-6",
+    input_tokens: data.usage?.input_tokens || 0,
+    output_tokens: data.usage?.output_tokens || 0,
+  };
+  throw new Error("Claude応答エラー: " + JSON.stringify(data));
+}
+
+export async function POST(request) {
+  let mp = null;
+  try {
+    const { content, model_preference, context } = await request.json();
+    mp = model_preference;
+    if (!content || content.trim().length < 10) {
+      return NextResponse.json({ error: "コンテンツが不足しています" }, { status: 400 });
+    }
+    const useClaude = model_preference === "claude";
+    const r = useClaude ? await callClaude(content) : await callGemini(content, model_preference);
+    const usage = await logUsage({
+      route: "/api/journey-map",
+      model: r.model,
+      context: context || "journey-map",
+      input_tokens: r.input_tokens, output_tokens: r.output_tokens,
+      request_meta: { char_length: content.length, model_preference },
     });
-
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "患者ジャーニーマップAPIエラー" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-    if (result.trim()) {
-      return NextResponse.json({ result });
-    }
-    throw new Error("Gemini応答エラー: " + JSON.stringify(data));
+    return NextResponse.json({ result: r.result, model: r.model, usage });
   } catch (e) {
     console.error("journey-map error:", e);
+    try { await logUsage({ route: "/api/journey-map", model: mp || "unknown", success: false, error_message: e.message }); } catch {}
     return NextResponse.json({ error: "患者ジャーニーマップエラー: " + e.message }, { status: 500 });
   }
 }

@@ -881,6 +881,25 @@ const[portfolioGroup,setPortfolioGroup]=useState("美容");
 const[journeyResult,setJourneyResult]=useState("");
 const[journeyLoading,setJourneyLoading]=useState(false);
 const[journeyModal,setJourneyModal]=useState(false);
+const[journeyMeta,setJourneyMeta]=useState(null); // {model, usage}
+const[journeyModels,setJourneyModels]=useState(["gemini-pro"]);
+const[journeyResults,setJourneyResults]=useState([]); // 並列実行用
+const[journeySaving,setJourneySaving]=useState(false),[journeySaveMsg,setJourneySaveMsg]=useState("");
+const[journeyHistOpen,setJourneyHistOpen]=useState(false),[journeyHistList,setJourneyHistList]=useState([]),[journeyHistLoading,setJourneyHistLoading]=useState(false),[journeyHistSearch,setJourneyHistSearch]=useState("");
+const journeyAbortRef=useRef(null);
+useEffect(()=>{try{
+  const s=localStorage.getItem("mk_journeyModels");
+  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="claude");if(valid.length>0)setJourneyModels(valid)}}
+}catch{}},[]);
+const toggleJourneyModel=(m)=>{
+  setJourneyModels(prev=>{
+    let next;
+    if(prev.includes(m)){if(prev.length===1){sSt("⚠️ 少なくとも1つのモデルを選択してください");return prev}next=prev.filter(x=>x!==m)}
+    else next=[...prev,m];
+    try{localStorage.setItem("mk_journeyModels",JSON.stringify(next))}catch{}
+    return next;
+  });
+};
 const[insightResult,setInsightResult]=useState("");
 const[insightLoading,setInsightLoading]=useState(false);
 const[insightModal,setInsightModal]=useState(false);
@@ -975,33 +994,158 @@ if(data.error)throw new Error(data.error);
 setPortfolioResult(data.result||"");
 }catch(e){setPortfolioResult("エラー: "+e.message)}finally{setPortfolioLoading(false)}
 };
+const fetchJourneyContent=async()=>{
+  if(!supabase)return"";
+  const[{data:counseling},{data:records}]=await Promise.all([
+    supabase.from("counseling_records").select("transcription,summary,created_at").order("created_at",{ascending:false}).limit(30),
+    supabase.from("records").select("input_text,output_text,created_at").order("created_at",{ascending:false}).limit(30)
+  ]);
+  let content="【カウンセリング記録】\n";
+  if(counseling&&counseling.length>0)content+=counseling.map(r=>`[${new Date(r.created_at).toLocaleDateString("ja-JP")}]\n${r.summary||r.transcription||""}`).join("\n---\n");
+  else content+="（カウンセリング記録なし）\n";
+  content+="\n\n【診療記録】\n";
+  if(records&&records.length>0)content+=records.map(r=>r.output_text||r.input_text||"").filter(Boolean).join("\n---\n");
+  return content;
+};
 const runJourneyMap=async()=>{
 if(!supabase)return;
-setJourneyLoading(true);setJourneyModal(true);setJourneyResult("");
+setJourneyLoading(true);setJourneyModal(true);setJourneyResult("");setJourneyMeta(null);setJourneyResults([]);setJourneySaveMsg("");
 try{
-const[{data:counseling},{data:records}]=await Promise.all([
-supabase.from("counseling_records").select("transcription,summary,created_at").order("created_at",{ascending:false}).limit(30),
-supabase.from("records").select("input_text,output_text,created_at").order("created_at",{ascending:false}).limit(30)
-]);
-let content="【カウンセリング記録】\n";
-if(counseling&&counseling.length>0){
-content+=counseling.map(r=>`[${new Date(r.created_at).toLocaleDateString("ja-JP")}]\n${r.summary||r.transcription||""}`).join("\n---\n");
-}else{
-content+="（カウンセリング記録なし）\n";
-}
-content+="\n\n【診療記録】\n";
-if(records&&records.length>0){
-content+=records.map(r=>r.output_text||r.input_text||"").filter(Boolean).join("\n---\n");
-}
+const content=await fetchJourneyContent();
 if(content.trim().length<50){
 setJourneyResult("分析に必要なデータが不足しています。\nカウンセリング記録・診療記録を増やしてから再度お試しください。");
 setJourneyLoading(false);return;
 }
-const res=await fetch("/api/journey-map",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content})});
+const ctrl=new AbortController();journeyAbortRef.current=ctrl;
+const mp=journeyModels[0]||"gemini-pro";
+const res=await fetch("/api/journey-map",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content,model_preference:mp,context:"journey-map"}),signal:ctrl.signal});
 const data=await res.json();
 if(data.error)throw new Error(data.error);
+setJourneyMeta({model:data.model,usage:data.usage});
 setJourneyResult(data.result||"");
-}catch(e){setJourneyResult("エラー: "+e.message)}finally{setJourneyLoading(false)}
+}catch(e){if(e.name==="AbortError"){setJourneyResult("");sSt("⏹ ジャーニーマップ生成を停止しました")}else setJourneyResult("エラー: "+e.message)}finally{setJourneyLoading(false);if(journeyAbortRef.current&&!Array.isArray(journeyAbortRef.current))journeyAbortRef.current=null}
+};
+
+const runSingleJourney=async(model,content,controller)=>{
+  const res=await fetch("/api/journey-map",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content,model_preference:model,context:"journey-map"}),
+    signal:controller.signal,
+  });
+  if(!res.ok)throw new Error("HTTP "+res.status);
+  const d=await res.json();
+  if(d.error)throw new Error(d.error);
+  return{output:d.result||"",usage:d.usage||null,modelLabel:d.model||csModelLabel(model)};
+};
+
+const runJourneyMapAll=async()=>{
+  if(!supabase)return;
+  if(journeyAbortRef.current){try{(Array.isArray(journeyAbortRef.current)?journeyAbortRef.current:[journeyAbortRef.current]).forEach(c=>{try{c.abort()}catch{}})}catch{}}
+  setJourneyLoading(true);setJourneyModal(true);setJourneyResult("");setJourneyMeta(null);setJourneySaveMsg("");
+  const content=await fetchJourneyContent();
+  if(content.trim().length<50){
+    setJourneyResult("分析に必要なデータが不足しています。\nカウンセリング記録・診療記録を増やしてから再度お試しください。");
+    setJourneyLoading(false);return;
+  }
+  const controllers=journeyModels.map(()=>new AbortController());
+  journeyAbortRef.current=controllers;
+  const initial=journeyModels.map(m=>({model:m,status:"running",output:"",usage:null,error:null,startedAt:Date.now(),endedAt:null}));
+  setJourneyResults(initial);
+  await Promise.allSettled(journeyModels.map((m,i)=>runSingleJourney(m,content,controllers[i])
+    .then(r=>{setJourneyResults(prev=>prev.map((x,idx)=>idx===i?{...x,...r,status:"done",endedAt:Date.now()}:x))})
+    .catch(e=>{const aborted=e.name==="AbortError";setJourneyResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
+  ));
+  setJourneyLoading(false);journeyAbortRef.current=null;
+};
+
+const stopJourneyMap=()=>{
+  if(journeyAbortRef.current){
+    try{
+      if(Array.isArray(journeyAbortRef.current))journeyAbortRef.current.forEach(c=>{try{c.abort()}catch{}});
+      else journeyAbortRef.current.abort();
+    }catch{}
+    journeyAbortRef.current=null;
+    sSt("⏹ ジャーニーマップ生成を停止しました");
+  }
+  setJourneyLoading(false);
+};
+
+const saveJourneyResult=async()=>{
+  if(!supabase){setJourneySaveMsg("保存先が未設定です");return}
+  if(!journeyResult||!journeyResult.trim()||journeyResult.startsWith("エラー:")||journeyResult.startsWith("分析に必要な")){setJourneySaveMsg("保存できる内容がありません");return}
+  setJourneySaving(true);setJourneySaveMsg("");
+  try{
+    const nowStr=new Date().toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const title=`[ジャーニーマップ${journeyMeta?.model?"/"+csModelLabel(journeyModels[0]||"gemini-pro"):""}] ${nowStr}`;
+    const{error}=await supabase.from("counseling_analyses").insert({
+      title,
+      analysis_type:"journey_map",
+      input_text:"(records/counseling_records 統合)",
+      output_text:journeyResult,
+      ai_model:journeyMeta?.model||csModelLabel(journeyModels[0]||"gemini-pro"),
+      scores:null,
+    });
+    if(error){setJourneySaveMsg("保存失敗: "+error.message)}
+    else{setJourneySaveMsg("保存しました ✓");setTimeout(()=>setJourneySaveMsg(""),3000)}
+  }catch(e){setJourneySaveMsg("保存失敗: "+e.message)}
+  finally{setJourneySaving(false)}
+};
+
+const saveJourneyResultsAll=async()=>{
+  if(!supabase){setJourneySaveMsg("保存先が未設定です");return}
+  const done=journeyResults.filter(r=>r.status==="done"&&r.output);
+  if(done.length===0){setJourneySaveMsg("保存可能な結果がありません");return}
+  setJourneySaving(true);setJourneySaveMsg("");
+  const nowStr=new Date().toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  let ok=0,fail=0;
+  for(const r of done){
+    try{
+      const{error}=await supabase.from("counseling_analyses").insert({
+        title:`[ジャーニー/${csModelLabel(r.model)}] ${nowStr}`,
+        analysis_type:"journey_map",
+        input_text:"(records/counseling_records 統合)",
+        output_text:r.output,
+        ai_model:r.modelLabel||csModelLabel(r.model),
+        scores:null,
+      });
+      if(error)fail++;else ok++;
+    }catch{fail++}
+  }
+  setJourneySaving(false);
+  setJourneySaveMsg(`${ok}件保存しました${fail>0?`（${fail}件失敗）`:" ✓"}`);
+  setTimeout(()=>setJourneySaveMsg(""),3500);
+};
+
+const openJourneyHist=async()=>{
+  setJourneyHistOpen(true);setJourneyHistLoading(true);setJourneyHistSearch("");
+  if(!supabase){setJourneyHistLoading(false);setJourneyHistList([]);return}
+  try{
+    const{data,error}=await supabase.from("counseling_analyses").select("id,title,output_text,ai_model,created_at").eq("analysis_type","journey_map").order("created_at",{ascending:false}).limit(50);
+    if(error)throw error;
+    setJourneyHistList(data||[])
+  }catch(e){console.error("[journeyHist] fetch error:",e);sSt("⚠️ 履歴の取得に失敗しました: "+e.message);setJourneyHistList([])}
+  finally{setJourneyHistLoading(false)}
+};
+
+const restoreJourney=(item)=>{
+  if(!item?.output_text){sSt("⚠️ この履歴には内容がありません");return}
+  setJourneyResult(item.output_text);
+  setJourneyResults([]);
+  setJourneyMeta({model:item.ai_model,usage:null});
+  setJourneyModal(true);
+  setJourneyHistOpen(false);
+  sSt(`✓ 履歴を読み込みました（${formatCsPickDate(item.created_at)}）`);
+};
+
+const deleteJourneyHist=async(id)=>{
+  if(!supabase)return;
+  if(!confirm("この履歴を削除しますか？"))return;
+  try{
+    const{error}=await supabase.from("counseling_analyses").delete().eq("id",id);
+    if(error){alert("削除失敗: "+error.message);return}
+    setJourneyHistList(prev=>prev.filter(r=>r.id!==id))
+  }catch(e){alert("削除失敗: "+e.message)}
 };
 const runInsightDashboard=async(mode)=>{
 if(!supabase)return;
@@ -3879,11 +4023,15 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {/* ② 患者ジャーニーマップ */}
 <div style={{marginTop:16}}>
 <div style={{...card,background:"linear-gradient(135deg,#f0f9ff,#e0f2fe)",border:"1.5px solid #7dd3fc"}}>
-<h3 style={{fontSize:15,fontWeight:700,color:"#0369a1",margin:"0 0 6px"}}>🗺️ 患者ジャーニーマップ生成</h3>
-<p style={{fontSize:12,color:"#0c4a6e",marginBottom:12,lineHeight:1.6}}>カウンセリング・診療記録をAIが分析し、患者が「初回来院 → 検討 → 決断 → リピート」の各フェーズで感じている不安・期待・行動パターンを可視化します。ホームページ改善・問診票設計・接遇向上に活用できます。</p>
-<button onClick={runJourneyMap} disabled={journeyLoading} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:journeyLoading?"#e2e8f0":"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:journeyLoading?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>
-{journeyLoading?"⏳ 分析中...":"🗺️ 患者ジャーニーマップを生成する"}
-</button>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
+<h3 style={{fontSize:15,fontWeight:700,color:"#0369a1",margin:0}}>🗺️ 患者ジャーニーマップ生成</h3>
+<button onClick={openJourneyHist} style={{padding:"5px 12px",borderRadius:10,border:"1px solid #7dd3fc",background:"#fff",fontSize:11,fontWeight:700,color:"#0369a1",fontFamily:"inherit",cursor:"pointer"}}>📂 ジャーニー履歴</button>
+</div>
+<p style={{fontSize:12,color:"#0c4a6e",marginBottom:10,lineHeight:1.6}}>カウンセリング・診療記録をAIが分析し、患者が「初回来院 → 検討 → 決断 → リピート」の各フェーズで感じている不安・期待・行動パターンを可視化します。ホームページ改善・問診票設計・接遇向上に活用できます。</p>
+<div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=journeyModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleJourneyModel(m.v)} disabled={journeyLoading} style={{position:"relative",flex:"1 1 140px",padding:"8px 10px 6px",borderRadius:10,border:selected?"2px solid #0369a1":"1px solid #cbd5e1",background:selected?"#e0f2fe":"#fff",fontSize:11,fontWeight:selected?700:500,color:selected?"#0369a1":"#64748b",cursor:journeyLoading?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:3,left:6,color:"#0369a1",fontSize:12,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:9,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
+</div>
+{journeyLoading?(<button onClick={stopJourneyMap} style={{width:"100%",padding:"14px",borderRadius:12,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⏹ AI生成中... (クリックで停止)</button>):(<button onClick={journeyModels.length>1?runJourneyMapAll:runJourneyMap} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>{journeyModels.length>1?`🗺️ ${journeyModels.length}個のAIで一斉生成`:"🗺️ 患者ジャーニーマップを生成する"}</button>)}
 </div>
 </div>
 
@@ -3899,16 +4047,89 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{width:32,height:32,border:"3px solid #e2e8f0",borderTop:"3px solid #0369a1",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/>
 <span style={{color:"#64748b"}}>カウンセリング・診療記録を分析中...</span>
 </div>}
-{journeyResult&&!journeyLoading&&<div>
+{/* 並列結果（複数モデル時） */}
+{journeyResults.length>1&&<div style={{marginTop:0}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+<span style={{fontSize:13,fontWeight:700,color:"#0369a1"}}>🔬 {journeyResults.length}モデル比較</span>
+{!journeyLoading&&journeyResults.some(r=>r.status==="done")&&<button onClick={saveJourneyResultsAll} disabled={journeySaving} style={{padding:"5px 12px",borderRadius:10,border:"none",background:journeySaving?"#e2e8f0":"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:journeySaving?"not-allowed":"pointer"}}>{journeySaving?"⏳ 保存中...":"💾 完了分をすべて保存"}</button>}
+</div>
+{journeySaveMsg&&<div style={{fontSize:12,fontWeight:600,color:journeySaveMsg.includes("失敗")?"#dc2626":"#16a34a",marginBottom:8}}>{journeySaveMsg}</div>}
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${journeyResults.length},minmax(0,1fr))`,gap:10}}>
+{journeyResults.map((r,i)=>{
+  const color=csModelColor(r.model);
+  const elapsed=r.endedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;
+  return(<div key={i} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:10,background:"#fff",display:"flex",flexDirection:"column",gap:6,minWidth:0}}>
+    <div style={{paddingBottom:6,borderBottom:`2px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <strong style={{fontSize:11,color}}>{csModelLabel(r.model)}</strong>
+      <span style={{fontSize:10,fontWeight:600}}>{r.status==="running"?"⏳ 生成中...":r.status==="done"?"✅ 完了":r.status==="error"?"❌ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+    </div>
+    <div style={{maxHeight:360,overflowY:"auto",fontSize:11.5,lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",color:"#334155",padding:"4px 6px",background:"#f8fafc",borderRadius:6}}>
+      {r.status==="running"&&!r.output&&<div style={{textAlign:"center",padding:20,color:"#94a3b8"}}><div style={{width:24,height:24,border:`3px solid ${color}33`,borderTop:`3px solid ${color}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/>応答待ち...</div>}
+      {r.status==="error"&&<div style={{color:"#dc2626"}}>⚠️ {r.error||"不明なエラー"}</div>}
+      {r.status==="aborted"&&!r.output&&<div style={{color:"#64748b"}}>⏹ 停止されました</div>}
+      {r.output}
+    </div>
+    {r.usage&&<div style={{padding:5,background:"#f8f4ff",borderRadius:6,fontSize:10,color:"#475569",lineHeight:1.4}}>
+      <div>📊 入力 {(r.usage.input_tokens||0).toLocaleString()} / 出力 {(r.usage.output_tokens||0).toLocaleString()} tokens</div>
+      <div>料金: <strong style={{color:"#7c3aed",fontSize:11}}>¥{(r.usage.cost_jpy||0).toFixed(2)}</strong></div>
+    </div>}
+    {elapsed&&<div style={{fontSize:9,color:"#94a3b8",textAlign:"right"}}>⏱ {elapsed}s</div>}
+  </div>);
+})}
+</div>
+</div>}
+
+{/* 単一結果 */}
+{journeyResult&&!journeyLoading&&journeyResults.length<=1&&<div>
 <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
 <button onClick={()=>{navigator.clipboard.writeText(journeyResult);sSt("📋 コピーしました")}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#0369a1",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={saveJourneyResult} disabled={journeySaving} style={{padding:"6px 14px",borderRadius:10,border:"none",background:journeySaving?"#e2e8f0":"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:journeySaving?"not-allowed":"pointer"}}>{journeySaving?"⏳ 保存中...":"💾 保存"}</button>
 <button onClick={()=>{saveFavorite("カウンセリング","[患者ジャーニーマップ] "+new Date().toLocaleDateString("ja-JP"),journeyResult,"");setJourneyModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
+{journeySaveMsg&&<span style={{fontSize:11,fontWeight:600,color:journeySaveMsg.includes("失敗")?"#dc2626":"#16a34a"}}>{journeySaveMsg}</span>}
+{journeyMeta?.model&&<span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{csModelLabel(journeyMeta.model)||journeyMeta.model}</span>}
 </div>
 <pre style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.8,fontFamily:"inherit",background:"#f8fafc",padding:14,borderRadius:12}}>{journeyResult}</pre>
+{journeyMeta?.usage&&<div style={{marginTop:12,padding:10,background:"#f8f4ff",border:"1px solid #d4cce8",borderRadius:8,fontSize:12,color:"#475569"}}>
+  <div style={{fontWeight:700,color:"#6b5fd1",marginBottom:4}}>📊 API使用量</div>
+  <div>入力 {(journeyMeta.usage.input_tokens||0).toLocaleString()} / 出力 {(journeyMeta.usage.output_tokens||0).toLocaleString()} tokens　／　料金 <strong style={{color:"#7c3aed"}}>¥{(journeyMeta.usage.cost_jpy||0).toFixed(2)}</strong></div>
+</div>}
 </div>}
 </div>
 </div>
 </div>}
+
+{/* ジャーニー履歴モーダル */}
+{journeyHistOpen&&(()=>{
+  const q=journeyHistSearch.trim().toLowerCase();
+  const filteredJourneyList=q?journeyHistList.filter(it=>((it.title||"").toLowerCase().includes(q))||((it.output_text||"").toLowerCase().includes(q))||((it.ai_model||"").toLowerCase().includes(q))):journeyHistList;
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setJourneyHistOpen(false)}}>
+    <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#0369a1"}}>📂 ジャーニーマップ履歴 <span style={{fontSize:12,color:"#94a3b8",fontWeight:500}}>{journeyHistList.length}件</span></h3>
+        <button onClick={()=>setJourneyHistOpen(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+      </div>
+      <div style={{padding:"10px 20px 0"}}>
+        <input type="text" placeholder="🔍 タイトル・本文・モデルで検索..." value={journeyHistSearch} onChange={e=>setJourneyHistSearch(e.target.value)} style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
+      </div>
+      <div style={{flex:1,overflow:"auto",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
+        {journeyHistLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:28,height:28,border:"3px solid #e0f2fe",borderTop:"3px solid #0891b2",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#64748b",fontSize:12}}>履歴を取得中...</span></div>}
+        {!journeyHistLoading&&filteredJourneyList.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>{journeyHistList.length===0?"保存された履歴がありません":"該当する履歴が見つかりません"}</div>}
+        {!journeyHistLoading&&filteredJourneyList.map(item=>{
+          const preview=(item.output_text||"").substring(0,100)+((item.output_text||"").length>100?"...":"");
+          return(<div key={item.id} style={{border:"1px solid #e5e5e5",borderRadius:10,padding:12,background:"#fafafa",position:"relative",transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="#e0f2fe";e.currentTarget.style.borderColor="#0891b2"}} onMouseLeave={e=>{e.currentTarget.style.background="#fafafa";e.currentTarget.style.borderColor="#e5e5e5"}}>
+            <div onClick={()=>restoreJourney(item)} style={{cursor:"pointer",paddingRight:36}}>
+              <div style={{fontSize:11,color:"#0369a1",fontWeight:600,marginBottom:4}}>📅 {formatCsPickDate(item.created_at)}{item.ai_model?<span style={{marginLeft:6,color:"#94a3b8"}}>／ {item.ai_model}</span>:null}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{item.title||"無題"}</div>
+              <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview||"（プレビューなし）"}</div>
+            </div>
+            <button onClick={e=>{e.stopPropagation();deleteJourneyHist(item.id)}} title="この履歴を削除" style={{position:"absolute",top:8,right:8,padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fff",fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
+          </div>);
+        })}
+      </div>
+      <div style={{padding:"8px 20px 14px",fontSize:11,color:"#94a3b8",textAlign:"right",borderTop:"1px solid #f1f5f9"}}>{filteredJourneyList.length} / {journeyHistList.length} 件</div>
+    </div>
+  </div>);
+})()}
 </div></div>);
 
 // === TASKS ===
