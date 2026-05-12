@@ -74,13 +74,23 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
 }
 
 // Gemini 非ストリーミング（従来のJSON応答）
+function buildGeminiModelList(model_preference) {
+  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→2.5 Pro→2.5 Flash）
+  if (model_preference === "gemini-3-pro") {
+    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"];
+  }
+  // gemini-pro: 既存の2.5 Pro優先（診察要約等）
+  if (model_preference === "gemini-pro") {
+    return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
+  }
+  // デフォルト（gemini）: Flash優先
+  return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+}
+
 async function callGemini(text, prompt, model_preference) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY が設定されていません");
-  const isFlashPreferred = model_preference === "gemini";
-  const models = isFlashPreferred
-    ? ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
-    : ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
+  const models = buildGeminiModelList(model_preference);
   let lastError = null;
   for (const model of models) {
     try {
@@ -163,10 +173,7 @@ export async function POST(request) {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY未設定" }, { status: 500 });
 
-      const isFlashPreferred = model_preference === "gemini";
-      const modelList = isFlashPreferred
-        ? ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
-        : ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
+      const modelList = buildGeminiModelList(model_preference);
 
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
