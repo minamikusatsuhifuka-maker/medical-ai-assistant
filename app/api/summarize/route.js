@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
 
-export const maxDuration = 60;
+// Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 
 const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書です。以下の音声書き起こしテキストをカルテ形式で要約してください。
 
