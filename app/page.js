@@ -645,6 +645,7 @@ const[csOut,setCsOut]=useState(""),[csLd,setCsLd]=useState(false),[csMode,setCsM
 const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState("");
 const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useState(false),[csHistoryLd,setCsHistoryLd]=useState(false);
 const[csModel,setCsModel]=useState("gemini");
+const[csPickOpen,setCsPickOpen]=useState(false),[csPickList,setCsPickList]=useState([]),[csPickLoading,setCsPickLoading]=useState(false),[csPickSearch,setCsPickSearch]=useState("");
 useEffect(()=>{try{const s=localStorage.getItem("mk_csModel");if(s==="gemini"||s==="gemini-3-pro"||s==="claude")setCsModel(s)}catch{}},[]);
 const csModelLabel=(m)=>m==="gemini-3-pro"?"Gemini 3.1 Pro":m==="claude"?"Claude Sonnet 4.6":"Gemini 2.5 Flash";
 const undoRef=useRef(null);
@@ -1653,6 +1654,33 @@ const deleteCsAnalysis=async(id)=>{
     if(error){alert("削除失敗: "+error.message);return}
     setCsHistory(prev=>prev.filter(r=>r.id!==id))
   }catch(e){alert("削除失敗: "+e.message)}
+};
+
+const formatCsPickDate=(dateStr)=>{
+  if(!dateStr)return"";
+  const d=new Date(dateStr);
+  const wday=["日","月","火","水","木","金","土"][d.getDay()];
+  const hh=String(d.getHours()).padStart(2,"0");
+  const mm=String(d.getMinutes()).padStart(2,"0");
+  return `${toJSTDate(dateStr)}（${wday}）${hh}:${mm}`;
+};
+
+const openCsPickModal=async()=>{
+  setCsPickOpen(true);setCsPickLoading(true);setCsPickSearch("");
+  if(!supabase){setCsPickLoading(false);setCsPickList([]);sSt("⚠️ 接続先未設定です");return}
+  try{
+    const{data,error}=await supabase.from("records").select("id,title,input_text,created_at,room,patient_name,patient_id").eq("room","r7").not("input_text","is",null).neq("input_text","").order("created_at",{ascending:false}).limit(50);
+    if(error)throw error;
+    setCsPickList(data||[])
+  }catch(e){console.error("[csPick] fetch error",e);sSt("⚠️ 履歴の取得に失敗しました: "+e.message);setCsPickList([])}
+  finally{setCsPickLoading(false)}
+};
+
+const selectCsRecord=(item)=>{
+  if(!item?.input_text){sSt("⚠️ この記録には書き起こしがありません");return}
+  setCsTx(item.input_text);
+  setCsPickOpen(false);
+  sSt(`✓ 書き起こしを読み込みました（${formatCsPickDate(item.created_at)}）`);
 };
 
 const loadPastCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("past_records").select("*",{count:"exact",head:true});setPastCount(count||0)}catch{}};
@@ -3495,23 +3523,8 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{marginBottom:10}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:12,fontWeight:600,color:C.g500}}>分析テキスト</span>
-<button onClick={async()=>{
-  const v=(iR.current||"").trim();
-  if(v.length>0){setCsTx(iR.current);sSt("✓ メイン画面の書き起こしを取得しました");return}
-  if(!supabase){sSt("⚠️ メイン画面の書き起こしが空です。録音後にお試しください");return}
-  try{
-    sSt("🔄 最新の書き起こしを検索中...");
-    const{data,error}=await supabase.from("records").select("input_text,created_at,room,patient_id").not("input_text","is",null).neq("input_text","").order("created_at",{ascending:false}).limit(1);
-    if(error||!data||data.length===0||!data[0].input_text){
-      sSt("⚠️ 書き起こしが見つかりません。メイン画面で録音するか、直接ペーストしてください");return;
-    }
-    const latest=data[0];
-    setCsTx(latest.input_text);
-    const dateStr=new Date(latest.created_at).toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-    sSt(`✓ 最新の書き起こしを取得しました（${dateStr}）`);
-  }catch(e){console.error("書き起こし取得エラー:",e);sSt("⚠️ 書き起こしの取得に失敗しました: "+e.message)}
-}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 最新の書き起こしを取得</button></div>
-<textarea value={csTx} onChange={e=>setCsTx(e.target.value)} placeholder="📋ボタンで最新の書き起こしを取得、または会話のテキストを直接貼り付けてください" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
+<button onClick={openCsPickModal} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 書き起こしを選択</button></div>
+<textarea value={csTx} onChange={e=>setCsTx(e.target.value)} placeholder="📋ボタンでカウンセリング履歴から選択、または会話のテキストを直接貼り付けてください" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 <button onClick={analyzeCounseling} disabled={csLd} style={{padding:"10px 24px",borderRadius:14,border:"none",background:csLd?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>{csLd?"⏳ AI分析中...":"🧠 分析開始"}</button>
 {csLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>{csModelLabel(csModel)} で分析中...</span></div>}
 {csOut&&<div>
@@ -3562,6 +3575,37 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 </div>
 </div>
 </div>}
+
+{/* 書き起こし選択モーダル */}
+{csPickOpen&&(()=>{
+  const q=csPickSearch.trim().toLowerCase();
+  const filteredList=q?csPickList.filter(it=>((it.title||"").toLowerCase().includes(q))||((it.input_text||"").toLowerCase().includes(q))||((it.patient_name||"").toLowerCase().includes(q))):csPickList;
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setCsPickOpen(false)}}>
+    <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#0c4a6e"}}>💬 カウンセリング書き起こしを選択 <span style={{fontSize:12,color:"#94a3b8",fontWeight:500}}>{csPickList.length}件</span></h3>
+        <button onClick={()=>setCsPickOpen(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+      </div>
+      <div style={{padding:"10px 20px 0"}}>
+        <input type="text" placeholder="🔍 タイトル・患者名・本文で検索..." value={csPickSearch} onChange={e=>setCsPickSearch(e.target.value)} style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid "+C.g200,fontSize:13,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
+      </div>
+      <div style={{flex:1,overflow:"auto",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
+        {csPickLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:28,height:28,border:"3px solid #e0f2fe",borderTop:"3px solid #0891b2",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#64748b",fontSize:12}}>カウンセリング履歴を取得中...</span></div>}
+        {!csPickLoading&&filteredList.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>{csPickList.length===0?"カウンセリング履歴が見つかりません":"該当する書き起こしが見つかりません"}</div>}
+        {!csPickLoading&&filteredList.map(item=>{
+          const text=item.input_text||"";
+          const preview=text.substring(0,100)+(text.length>100?"...":"");
+          return(<div key={item.id} onClick={()=>selectCsRecord(item)} style={{border:"1px solid #e5e5e5",borderRadius:10,padding:12,cursor:"pointer",background:"#fafafa",transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="#e0f2fe";e.currentTarget.style.borderColor="#0891b2"}} onMouseLeave={e=>{e.currentTarget.style.background="#fafafa";e.currentTarget.style.borderColor="#e5e5e5"}}>
+            <div style={{fontSize:11,color:"#0369a1",fontWeight:600,marginBottom:4}}>📅 {formatCsPickDate(item.created_at)}</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{item.title||(item.patient_name?item.patient_name+" 様":"無題")}{item.patient_id?<span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>ID:{item.patient_id}</span>:null}</div>
+            <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview}</div>
+          </div>);
+        })}
+      </div>
+      <div style={{padding:"8px 20px 14px",fontSize:11,color:"#94a3b8",textAlign:"right",borderTop:"1px solid #f1f5f9"}}>{filteredList.length} / {csPickList.length} 件</div>
+    </div>
+  </div>);
+})()}
 
 {/* ② 患者ジャーニーマップ */}
 <div style={{marginTop:16}}>
