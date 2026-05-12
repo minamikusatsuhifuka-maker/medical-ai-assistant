@@ -1824,7 +1824,7 @@ const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null
 const tc=async(b)=>{if(b.size<500)return;
 // 音声保存は mR_save 側で連続録音中（tcは書き起こし専用）
 // 音声レベルが低すぎる場合は書き起こしAPI送信のみスキップ
-if(lvRef.current<3){return;}sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>{
+if(lvRef.current<1){return;}sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>{
 const newInp=p+(p?"\n":"")+fixed;
 // 自動テンプレート判定（まだ発動していない場合のみ）
 if(!autoTplRef.current&&newInp.length>50){
