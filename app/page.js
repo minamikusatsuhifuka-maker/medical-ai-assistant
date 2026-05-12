@@ -739,6 +739,7 @@ const[minAudioSave,setMinAudioSave]=useState(false);
 const minAllAudioChunks=useRef([]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[audioList,setAudioList]=useState([]),[audioListLoading,setAudioListLoading]=useState(false),[audioSignedUrls,setAudioSignedUrls]=useState({}),[audioListMsg,setAudioListMsg]=useState("");
+const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAudioDeleting]=useState(false);
 const[asrEngine,setAsrEngine]=useState("whisper");
 const[sessionAudioSave,setSessionAudioSave]=useState(null);
 const[favorites,setFavorites]=useState([]),[favGroup,setFavGroup]=useState("保険"),[favModal,setFavModal]=useState(null),[favToast,setFavToast]=useState(""),[favDetailModal,setFavDetailModal]=useState(null),[favMoveModal,setFavMoveModal]=useState(null);
@@ -971,6 +972,48 @@ setAudioList(merged);
 setAudioListMsg(`✓ ${merged.length}件取得（診察${recs.length}件・議事録${mins.length}件）`);
 }catch(e){console.error("fetchAudioList error:",e);setAudioListMsg("取得エラー: "+e.message)}
 finally{setAudioListLoading(false)}
+};
+const DEL_PWD="mkhifuka1199";
+const audioKey=(item)=>item.type+"-"+item.id;
+const toggleAudioSelected=(item)=>{
+  const k=audioKey(item);
+  setSelectedAudios(prev=>{const s=new Set(prev);if(s.has(k))s.delete(k);else s.add(k);return s});
+};
+const selectAllAudios=()=>{
+  const ks=audioList.filter(a=>a.audio_path).map(a=>audioKey(a));
+  setSelectedAudios(new Set(ks));
+};
+const deselectAllAudios=()=>setSelectedAudios(new Set());
+const deleteSelectedAudios=async()=>{
+  if(!supabase)return;
+  const count=selectedAudios.size;
+  if(count===0){alert("削除する音声を選択してください");return}
+  if(!window.confirm(`選択した${count}件を削除します。\n\n⚠️ この操作は取り消せません。\n- Supabase Storage からファイル削除\n- records/minutes テーブルの audio_path を NULL に更新\n\n続行する場合は次の画面でパスワードを入力してください。`))return;
+  const pwd=window.prompt("削除パスワードを入力してください:");
+  if(pwd===null)return;
+  if(pwd!==DEL_PWD){alert("パスワードが違います");return}
+  setAudioDeleting(true);
+  let success=0,failed=0;
+  try{
+    for(const key of selectedAudios){
+      const item=audioList.find(a=>audioKey(a)===key);
+      if(!item)continue;
+      try{
+        const paths=(item.audio_path||"").split(",").map(p=>p.trim()).filter(Boolean);
+        if(paths.length>0){
+          const{error:storageErr}=await supabase.storage.from("audio").remove(paths);
+          if(storageErr)console.error("Storage削除エラー:",storageErr);
+        }
+        const table=item.type==="record"?"records":"minutes";
+        const{error:dbErr}=await supabase.from(table).update({audio_path:null}).eq("id",item.id);
+        if(dbErr){console.error("DB更新エラー:",dbErr);failed++}
+        else{success++}
+      }catch(e){console.error("削除エラー:",e);failed++}
+    }
+  }finally{setAudioDeleting(false)}
+  alert(`${success}件削除しました${failed>0?`（${failed}件失敗）`:""}`);
+  setSelectedAudios(new Set());
+  await fetchAudioList();
 };
 const loadAudioSignedUrl=async(path)=>{
 if(audioSignedUrls[path])return audioSignedUrls[path];
@@ -3757,6 +3800,12 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 </div>
 </div>
 <p style={{fontSize:11,color:C.g400,marginBottom:10}}>過去に保存した診察・議事録の音声を一覧から再生・ダウンロードできます。最新100件まで表示。</p>
+{audioList.length>0&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:10,padding:"6px 10px",borderRadius:10,background:"#fff7ed",border:"1px solid #fdba74"}}>
+<button onClick={selectAllAudios} disabled={audioDeleting} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+C.p+"66",background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:audioDeleting?"not-allowed":"pointer"}}>✓ 全選択</button>
+<button onClick={deselectAllAudios} disabled={audioDeleting} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+C.g200,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:audioDeleting?"not-allowed":"pointer"}}>⬜ 全解除</button>
+<button onClick={deleteSelectedAudios} disabled={audioDeleting||selectedAudios.size===0} style={{padding:"5px 14px",borderRadius:8,border:"none",background:selectedAudios.size===0||audioDeleting?C.g200:"linear-gradient(135deg,#dc2626,#991b1b)",color:selectedAudios.size===0||audioDeleting?C.g500:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:selectedAudios.size===0||audioDeleting?"not-allowed":"pointer"}}>{audioDeleting?"⏳ 削除中...":`🗑 選択した${selectedAudios.size}件を削除`}</button>
+<span style={{fontSize:10,color:"#9a3412",fontWeight:500}}>※削除にはパスワードが必要です</span>
+</div>}
 {audioList.length===0?(
 <div style={{padding:"20px",textAlign:"center",color:C.g400,fontSize:12,background:C.g50,borderRadius:8}}>
 {audioListLoading?"読み込み中...":"「🔄 一覧を取得」ボタンを押してください"}
@@ -3770,8 +3819,12 @@ const typeLabel=item.type==="record"?"🩺 診察":"📝 議事録";
 const typeBg=item.type==="record"?"#dbeafe":"#fef3c7";
 const typeColor=item.type==="record"?"#1d4ed8":"#92400e";
 const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}${item.patient_name?" / "+item.patient_name:""}`:(item.title||"無題");
-return(<div key={item.type+"-"+item.id} style={{padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,display:"flex",flexDirection:"column",gap:6}}>
+const k=audioKey(item);
+const checked=selectedAudios.has(k);
+const hasAudio=paths.length>0;
+return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid #dc2626`:`1px solid ${C.g200}`,background:checked?"#fef2f2":C.w,display:"flex",flexDirection:"column",gap:6}}>
 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+<input type="checkbox" checked={checked} disabled={!hasAudio||audioDeleting} onChange={()=>toggleAudioSelected(item)} style={{width:16,height:16,cursor:hasAudio&&!audioDeleting?"pointer":"not-allowed",accentColor:"#dc2626",flexShrink:0}}/>
 <span style={{padding:"2px 8px",borderRadius:6,background:typeBg,color:typeColor,fontSize:11,fontWeight:700}}>{typeLabel}</span>
 <span style={{fontSize:11,color:C.g500,fontWeight:600}}>{dateLabel}</span>
 <span style={{fontSize:11,color:C.g400}}>part{paths.length===1?"1のみ":`1〜${paths.length}`}</span>
