@@ -1669,18 +1669,36 @@ const openCsPickModal=async()=>{
   setCsPickOpen(true);setCsPickLoading(true);setCsPickSearch("");
   if(!supabase){setCsPickLoading(false);setCsPickList([]);sSt("⚠️ 接続先未設定です");return}
   try{
-    const{data,error}=await supabase.from("records").select("id,title,input_text,created_at,room,patient_name,patient_id").eq("room","r7").not("input_text","is",null).neq("input_text","").order("created_at",{ascending:false}).limit(50);
+    // 履歴モーダル(L1757)と同じく records.room === "r7" のみで判定。input_text フィルタは行わない。
+    const{data,error}=await supabase.from("records").select("id,title,input_text,output_text,created_at,room,patient_name,patient_id").eq("room","r7").order("created_at",{ascending:false}).limit(50);
     if(error)throw error;
-    setCsPickList(data||[])
+    let list=data||[];
+    // 書き起こしが空のレコードも保持しつつ、選択時に判定。プレビューに output_text をフォールバック使用するため両方取得。
+    // counseling_records テーブルにのみ存在するレコード（古い記録など）も拾うため UNION 補完
+    try{
+      const{data:csData}=await supabase.from("counseling_records").select("id,patient_name,patient_id,transcription,summary,created_at,room").eq("room","r7").order("created_at",{ascending:false}).limit(50);
+      if(csData&&csData.length>0){
+        const existingTimes=new Set(list.map(r=>r.created_at));
+        const merged=csData.filter(c=>!existingTimes.has(c.created_at)).map(c=>({
+          id:"cs-"+c.id,title:null,input_text:c.transcription||"",output_text:c.summary||"",
+          created_at:c.created_at,room:"r7",patient_name:c.patient_name,patient_id:c.patient_id,_source:"counseling_records"
+        }));
+        if(merged.length>0){list=[...list,...merged].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,50)}
+      }
+    }catch{}
+    console.log("[csPick] room=r7 取得:",list.length,"件");
+    setCsPickList(list)
   }catch(e){console.error("[csPick] fetch error",e);sSt("⚠️ 履歴の取得に失敗しました: "+e.message);setCsPickList([])}
   finally{setCsPickLoading(false)}
 };
 
 const selectCsRecord=(item)=>{
-  if(!item?.input_text){sSt("⚠️ この記録には書き起こしがありません");return}
-  setCsTx(item.input_text);
+  const txt=item?.input_text||item?.output_text||"";
+  if(!txt.trim()){sSt("⚠️ この記録には書き起こし・要約のいずれもありません");return}
+  setCsTx(txt);
   setCsPickOpen(false);
-  sSt(`✓ 書き起こしを読み込みました（${formatCsPickDate(item.created_at)}）`);
+  const tag=item.input_text?"":"（要約から読込）";
+  sSt(`✓ 書き起こしを読み込みました${tag}（${formatCsPickDate(item.created_at)}）`);
 };
 
 const loadPastCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("past_records").select("*",{count:"exact",head:true});setPastCount(count||0)}catch{}};
@@ -3579,7 +3597,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {/* 書き起こし選択モーダル */}
 {csPickOpen&&(()=>{
   const q=csPickSearch.trim().toLowerCase();
-  const filteredList=q?csPickList.filter(it=>((it.title||"").toLowerCase().includes(q))||((it.input_text||"").toLowerCase().includes(q))||((it.patient_name||"").toLowerCase().includes(q))):csPickList;
+  const filteredList=q?csPickList.filter(it=>((it.title||"").toLowerCase().includes(q))||((it.input_text||"").toLowerCase().includes(q))||((it.output_text||"").toLowerCase().includes(q))||((it.patient_name||"").toLowerCase().includes(q))||((it.patient_id||"").toLowerCase().includes(q))):csPickList;
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setCsPickOpen(false)}}>
     <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
@@ -3593,12 +3611,19 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
         {csPickLoading&&<div style={{textAlign:"center",padding:40}}><div style={{width:28,height:28,border:"3px solid #e0f2fe",borderTop:"3px solid #0891b2",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#64748b",fontSize:12}}>カウンセリング履歴を取得中...</span></div>}
         {!csPickLoading&&filteredList.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>{csPickList.length===0?"カウンセリング履歴が見つかりません":"該当する書き起こしが見つかりません"}</div>}
         {!csPickLoading&&filteredList.map(item=>{
-          const text=item.input_text||"";
-          const preview=text.substring(0,100)+(text.length>100?"...":"");
+          const hasInput=!!(item.input_text&&item.input_text.trim());
+          const hasOutput=!!(item.output_text&&item.output_text.trim());
+          const baseText=item.input_text||item.output_text||"";
+          const preview=baseText.substring(0,100)+(baseText.length>100?"...":"");
+          const sourceTag=hasInput?"📝 書き起こし":hasOutput?"📋 要約のみ":"（内容なし）";
+          const sourceColor=hasInput?"#0891b2":hasOutput?"#f59e0b":"#94a3b8";
           return(<div key={item.id} onClick={()=>selectCsRecord(item)} style={{border:"1px solid #e5e5e5",borderRadius:10,padding:12,cursor:"pointer",background:"#fafafa",transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="#e0f2fe";e.currentTarget.style.borderColor="#0891b2"}} onMouseLeave={e=>{e.currentTarget.style.background="#fafafa";e.currentTarget.style.borderColor="#e5e5e5"}}>
-            <div style={{fontSize:11,color:"#0369a1",fontWeight:600,marginBottom:4}}>📅 {formatCsPickDate(item.created_at)}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,color:"#0369a1",fontWeight:600}}>📅 {formatCsPickDate(item.created_at)}</span>
+              <span style={{fontSize:9,color:sourceColor,fontWeight:700,padding:"1px 6px",borderRadius:5,background:sourceColor+"15",border:"1px solid "+sourceColor+"44"}}>{sourceTag}</span>
+            </div>
             <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{item.title||(item.patient_name?item.patient_name+" 様":"無題")}{item.patient_id?<span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>ID:{item.patient_id}</span>:null}</div>
-            <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview}</div>
+            <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview||"（プレビュー不可）"}</div>
           </div>);
         })}
       </div>
