@@ -150,7 +150,7 @@ async function callClaude(text, prompt) {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: 16384,
       temperature: 0.3,
       system: prompt,
       messages: [{ role: "user", content: text }],
