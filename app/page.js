@@ -1665,28 +1665,41 @@ const formatCsPickDate=(dateStr)=>{
   return `${toJSTDate(dateStr)}（${wday}）${hh}:${mm}`;
 };
 
+const getCsDisplayTitle=(item)=>{
+  if(!item)return"無題";
+  if(item.patient_name)return item.patient_name+" 様"+(item.patient_id?" (ID:"+item.patient_id+")":"");
+  if(item.patient_id)return"患者ID: "+item.patient_id;
+  const txt=item.input_text||item.output_text||"";
+  const m=txt.match(/■\s*施術名[：:\s]+([^\n■]+)/);
+  if(m)return m[1].trim().substring(0,40);
+  const firstLine=(txt||"").split("\n").map(s=>s.trim()).filter(Boolean)[0]||"";
+  if(firstLine)return firstLine.substring(0,40);
+  return"無題";
+};
+
 const openCsPickModal=async()=>{
   setCsPickOpen(true);setCsPickLoading(true);setCsPickSearch("");
   if(!supabase){setCsPickLoading(false);setCsPickList([]);sSt("⚠️ 接続先未設定です");return}
   try{
     // 履歴モーダル(L1757)と同じく records.room === "r7" のみで判定。input_text フィルタは行わない。
-    const{data,error}=await supabase.from("records").select("id,title,input_text,output_text,created_at,room,patient_name,patient_id").eq("room","r7").order("created_at",{ascending:false}).limit(50);
+    // records テーブルに title カラムは存在しないため select には含めない（saveRecord L1064 insert参照）
+    const{data,error}=await supabase.from("records").select("id,input_text,output_text,created_at,room,patient_name,patient_id").eq("room","r7").order("created_at",{ascending:false}).limit(50);
     if(error)throw error;
     let list=data||[];
-    // 書き起こしが空のレコードも保持しつつ、選択時に判定。プレビューに output_text をフォールバック使用するため両方取得。
-    // counseling_records テーブルにのみ存在するレコード（古い記録など）も拾うため UNION 補完
+    console.log("[csPick] records 取得:",list.length,"件 / カラム:",list[0]?Object.keys(list[0]):"empty");
+    // counseling_records (rid==='r7'時に saveRecord が追加保存する別テーブル) からも UNION 補完
     try{
       const{data:csData}=await supabase.from("counseling_records").select("id,patient_name,patient_id,transcription,summary,created_at,room").eq("room","r7").order("created_at",{ascending:false}).limit(50);
       if(csData&&csData.length>0){
+        console.log("[csPick] counseling_records 取得:",csData.length,"件");
         const existingTimes=new Set(list.map(r=>r.created_at));
         const merged=csData.filter(c=>!existingTimes.has(c.created_at)).map(c=>({
-          id:"cs-"+c.id,title:null,input_text:c.transcription||"",output_text:c.summary||"",
+          id:"cs-"+c.id,input_text:c.transcription||"",output_text:c.summary||"",
           created_at:c.created_at,room:"r7",patient_name:c.patient_name,patient_id:c.patient_id,_source:"counseling_records"
         }));
         if(merged.length>0){list=[...list,...merged].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,50)}
       }
-    }catch{}
-    console.log("[csPick] room=r7 取得:",list.length,"件");
+    }catch(ce){console.warn("[csPick] counseling_records fetch skip:",ce?.message)}
     setCsPickList(list)
   }catch(e){console.error("[csPick] fetch error",e);sSt("⚠️ 履歴の取得に失敗しました: "+e.message);setCsPickList([])}
   finally{setCsPickLoading(false)}
@@ -3597,7 +3610,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {/* 書き起こし選択モーダル */}
 {csPickOpen&&(()=>{
   const q=csPickSearch.trim().toLowerCase();
-  const filteredList=q?csPickList.filter(it=>((it.title||"").toLowerCase().includes(q))||((it.input_text||"").toLowerCase().includes(q))||((it.output_text||"").toLowerCase().includes(q))||((it.patient_name||"").toLowerCase().includes(q))||((it.patient_id||"").toLowerCase().includes(q))):csPickList;
+  const filteredList=q?csPickList.filter(it=>((it.input_text||"").toLowerCase().includes(q))||((it.output_text||"").toLowerCase().includes(q))||((it.patient_name||"").toLowerCase().includes(q))||((it.patient_id||"").toLowerCase().includes(q))):csPickList;
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setCsPickOpen(false)}}>
     <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
@@ -3622,7 +3635,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
               <span style={{fontSize:11,color:"#0369a1",fontWeight:600}}>📅 {formatCsPickDate(item.created_at)}</span>
               <span style={{fontSize:9,color:sourceColor,fontWeight:700,padding:"1px 6px",borderRadius:5,background:sourceColor+"15",border:"1px solid "+sourceColor+"44"}}>{sourceTag}</span>
             </div>
-            <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{item.title||(item.patient_name?item.patient_name+" 様":"無題")}{item.patient_id?<span style={{fontSize:10,color:"#94a3b8",fontWeight:500,marginLeft:6}}>ID:{item.patient_id}</span>:null}</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{getCsDisplayTitle(item)}</div>
             <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview||"（プレビュー不可）"}</div>
           </div>);
         })}
