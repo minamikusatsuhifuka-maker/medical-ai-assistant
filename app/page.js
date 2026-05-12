@@ -669,14 +669,38 @@ const[csOut,setCsOut]=useState(""),[csLd,setCsLd]=useState(false),[csMode,setCsM
 const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState(""),[csUsage,setCsUsage]=useState(null);
 const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useState(false),[csHistoryLd,setCsHistoryLd]=useState(false);
 const[csModel,setCsModel]=useState("gemini-pro");
+const[csModels,setCsModels]=useState(["gemini-pro"]);
+const[csResults,setCsResults]=useState([]);
 const[csPickOpen,setCsPickOpen]=useState(false),[csPickList,setCsPickList]=useState([]),[csPickLoading,setCsPickLoading]=useState(false),[csPickSearch,setCsPickSearch]=useState("");
 useEffect(()=>{try{
+  const sm=localStorage.getItem("mk_csModels");
+  if(sm){
+    const arr=JSON.parse(sm);
+    if(Array.isArray(arr)&&arr.length>0){
+      const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="claude");
+      if(valid.length>0){setCsModels(valid);setCsModel(valid[0]);return}
+    }
+  }
   const s=localStorage.getItem("mk_csModel");
-  if(s==="gemini-pro"||s==="gemini-3-pro"||s==="claude")setCsModel(s);
-  else if(s==="gemini"){setCsModel("gemini-pro");localStorage.setItem("mk_csModel","gemini-pro")}
+  if(s==="gemini-pro"||s==="gemini-3-pro"||s==="claude"){setCsModel(s);setCsModels([s]);localStorage.setItem("mk_csModels",JSON.stringify([s]))}
+  else if(s==="gemini"){setCsModel("gemini-pro");setCsModels(["gemini-pro"]);localStorage.setItem("mk_csModels",JSON.stringify(["gemini-pro"]));localStorage.removeItem("mk_csModel")}
 }catch{}},[]);
 const csModelLabel=(m)=>m==="gemini-3-pro"?"Gemini 3.1 Pro":m==="claude"?"Claude Sonnet 4.6":"Gemini 2.5 Pro";
+const csModelDesc=(m)=>m==="gemini-3-pro"?"最新・最高精度 ⭐":m==="claude"?"日本語精度":"バランス型";
+const csModelColor=(m)=>m==="gemini-3-pro"?"#9333ea":m==="claude"?"#d97706":"#4285f4";
 const csAbortRef=useRef(null);
+const toggleCsModel=(m)=>{
+  setCsModels(prev=>{
+    let next;
+    if(prev.includes(m)){
+      if(prev.length===1){sSt("⚠️ 少なくとも1つのモデルを選択してください");return prev}
+      next=prev.filter(x=>x!==m);
+    }else{next=[...prev,m]}
+    try{localStorage.setItem("mk_csModels",JSON.stringify(next))}catch{}
+    setCsModel(next[0]);
+    return next;
+  });
+};
 const undoRef=useRef(null);
 const shortcutsRef=useRef(shortcuts);
 const loadCsCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("counseling_records").select("*",{count:"exact",head:true});setCsCount(count||0)}catch{}};
@@ -1559,7 +1583,7 @@ if(d.error){setSuggestedSnippets([{title:"エラー",text:d.error,cat:""}]);retu
 try{const cleaned=d.summary.replace(/```json|```/g,"").trim();const arr=JSON.parse(cleaned);setSuggestedSnippets(arr)}catch{setSuggestedSnippets([{title:"解析エラー",text:d.summary,cat:""}])}
 }catch(e){setSuggestedSnippets([{title:"エラー",text:e.message,cat:""}])}finally{setSuggestLd(false)}};
 
-const analyzeCounseling=async()=>{const tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);
+const analyzeCounseling=async()=>{const tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);setCsResults([]);
 let pastRef="";if(supabase){try{
 const{data:csData}=await supabase.from("counseling_records").select("transcription,summary,patient_name").order("created_at",{ascending:false}).limit(20);
 if(csData&&csData.length>0){pastRef="\n\n【当院の過去のカウンセリング記録（"+csData.length+"件）】\n"+csData.map((r,i)=>`--- カウンセリング${i+1}${r.patient_name?" ("+r.patient_name+")":""}---\n書き起こし: ${r.transcription}\n${r.summary?"要約: "+r.summary:""}`).join("\n")}
@@ -1636,8 +1660,89 @@ try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":
 }finally{setCsLd(false);setProg(0);if(csAbortRef.current===ctrl)csAbortRef.current=null}};
 
 const stopCsAnalyze=()=>{
-  if(csAbortRef.current){try{csAbortRef.current.abort()}catch{}csAbortRef.current=null;sSt("⏹ 分析を停止しました")}
+  if(csAbortRef.current){
+    try{
+      if(Array.isArray(csAbortRef.current))csAbortRef.current.forEach(c=>{try{c.abort()}catch{}});
+      else csAbortRef.current.abort();
+    }catch{}
+    csAbortRef.current=null;
+    sSt("⏹ 分析を停止しました")
+  }
   setCsLd(false);setProg(0);
+};
+
+const buildCsPrompt=(tx,pastRef,mode)=>{
+  const modes={
+    full:`以下の皮膚科クリニックのカウンセリング書き起こしを多角的に分析してください。${pastRef}\n\n【書き起こし】\n${tx}\n\n以下の7項目すべてについて詳細に分析・提案してください：\n\n■ 1. コミュニケーション分析\n- 傾聴度（患者の発言をどれだけ拾えているか）\n- 共感表現の有無と適切さ\n- 質問の質（オープン/クローズド質問のバランス）\n- 話す割合（医師 vs 患者）の評価\n\n■ 2. 患者ニーズの把握度\n- 患者が明示的に述べたニーズ\n- 潜在的ニーズ（言葉の裏にある本当の悩み）\n- 見逃しているかもしれないニーズ\n- 心理的ニーズ（不安、期待、自己イメージ等）\n\n■ 3. 提案の適切性\n- 患者のニーズに合った提案ができているか\n- 提案のタイミングは適切か\n- 代替案の提示はあるか\n- 押し売り感がないか\n\n■ 4. 心理学的分析（マーケティング観点）\n- 患者の購買心理段階（認知→興味→欲求→行動）\n- 信頼構築のレベル\n- 不安要素の解消度\n- 意思決定を後押しする要素の有無\n\n■ 5. トークスクリプト改善案\n- 具体的な改善フレーズを5つ以上提案\n- NGワードとその改善例\n- クロージングトークの提案\n\n■ 6. 年間治療計画の提案\n- 今回の相談内容をもとに12ヶ月の治療・施術スケジュールを提案\n- 各月の施術内容・目的・期待効果\n- 季節要因の考慮（紫外線、乾燥等）\n- 予算感の段階的提案\n\n■ 7. 総合スコアと改善優先度\n- 傾聴力: /10\n- ニーズ把握: /10\n- 提案力: /10\n- クロージング: /10\n- 総合: /10\n- 最優先で改善すべき点TOP3`,
+    listening:`以下の書き起こしから傾聴・共感スキルを分析してください。${pastRef}\n\n${tx}\n\n分析項目：\n1. 患者の発言に対するリアクション\n2. 共感表現の具体例と改善案\n3. 見逃している患者の感情・ニーズ\n4. より良い傾聴のための具体的フレーズ提案10個`,
+    needs:`以下の書き起こしから患者ニーズを分析してください。${pastRef}\n\n${tx}\n\n分析項目：\n1. 明示的ニーズ一覧\n2. 潜在的ニーズ（推測）\n3. ニーズに合った提案ができているか評価\n4. 追加で提案すべき施術・治療\n5. 年間計画への展開案`,
+    marketing:`以下の書き起こしをマーケティング心理学の観点から分析してください。${pastRef}\n\n${tx}\n\n分析項目：\n1. AIDMA分析（患者の心理段階）\n2. 信頼構築度の評価\n3. 不安解消の適切さ\n4. アップセル・クロスセルの機会\n5. リピート率向上のための提案\n6. 具体的なトークスクリプト改善案`,
+    plan:`以下の書き起こし内容から患者の年間治療計画を作成してください。${pastRef}\n\n${tx}\n\n出力：\n1. 患者プロファイル（推定される肌悩み・目標）\n2. 12ヶ月スケジュール（月ごとの施術・治療内容）\n3. 各施術の目的・期待効果\n4. ホームケア指導\n5. 概算費用感（施術ごとの目安）\n6. 継続のモチベーション維持策`
+  };
+  const scoreAppendix=`\n\n---\n■ 評価スコア（出力必須・必ず以下の形式を厳守）\n各項目について1〜10の整数で評価し、必ず数値を埋めること。空欄・「未評価」「N/A」「-」「不明」は禁止。判断材料が乏しい場合でも、書き起こしの範囲で推定して必ず1〜10の数値を入れること。\n書式は「項目名: 数値/10」とし、太字記号や括弧書きは付けないこと。\n- 傾聴力: 5/10\n- 共感力: 5/10\n- 質問の質: 5/10\n- ニーズ把握: 5/10\n- 説明力: 5/10\n- 信頼関係構築: 5/10\n- 提案力: 5/10\n- クロージング: 5/10\n（※上記は記入例。実際の評価値で必ず置き換えること）\n\n■ 改善ポイント（このカウンセリングで特に改善すべき具体的な点を3〜5個、箇条書きで）\n\n■ 改善案（上記の改善ポイントに対する具体的なアクション・トーク例・代替フレーズを3〜5個、箇条書きで）`;
+  return (modes[mode]||modes.full)+scoreAppendix;
+};
+
+const runSingleAnalyze=async(model,promptText,controller)=>{
+  const res=await fetch("/api/summarize",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({text:promptText,mode:model==="claude"?"claude":"gemini",prompt:"詳細に分析してください。",model_preference:model,context:"counseling-"+csMode}),
+    signal:controller.signal
+  });
+  if(!res.ok)throw new Error("HTTP "+res.status);
+  const d=await res.json();
+  if(d.error)throw new Error(d.error);
+  return{output:d.summary||"",scores:parseCsScores(d.summary||""),usage:d.usage||null,modelLabel:d.model||csModelLabel(model)};
+};
+
+const runCsAnalyzeAll=async()=>{
+  const tx=csTx.trim()||iR.current;
+  if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}
+  if(csAbortRef.current){try{(Array.isArray(csAbortRef.current)?csAbortRef.current:[csAbortRef.current]).forEach(c=>{try{c.abort()}catch{}})}catch{}}
+  setCsLd(true);setProg(20);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);
+  let pastRef="";if(supabase){try{
+    const{data:csData}=await supabase.from("counseling_records").select("transcription,summary,patient_name").order("created_at",{ascending:false}).limit(20);
+    if(csData&&csData.length>0)pastRef="\n\n【当院の過去のカウンセリング記録（"+csData.length+"件）】\n"+csData.map((r,i)=>`--- カウンセリング${i+1}${r.patient_name?" ("+r.patient_name+")":""}---\n書き起こし: ${r.transcription}\n${r.summary?"要約: "+r.summary:""}`).join("\n");
+    const{data:pd}=await supabase.from("past_records").select("content").order("created_at",{ascending:false}).limit(10);
+    if(pd&&pd.length>0)pastRef+="\n\n【当院の過去カルテ（参考）】\n"+pd.map(r=>r.content).join("\n---\n");
+  }catch{}}
+  const promptText=buildCsPrompt(tx,pastRef,csMode);
+  const controllers=csModels.map(()=>new AbortController());
+  csAbortRef.current=controllers;
+  const initial=csModels.map(m=>({model:m,status:"running",output:"",scores:null,usage:null,error:null,startedAt:Date.now(),endedAt:null}));
+  setCsResults(initial);
+  await Promise.allSettled(csModels.map((m,i)=>runSingleAnalyze(m,promptText,controllers[i])
+    .then(r=>{setCsResults(prev=>prev.map((x,idx)=>idx===i?{...x,...r,status:"done",endedAt:Date.now()}:x))})
+    .catch(e=>{const aborted=e.name==="AbortError";setCsResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
+  ));
+  setCsLd(false);setProg(0);csAbortRef.current=null;
+};
+
+const saveCsResultsAll=async()=>{
+  if(!supabase){setCsSaveMsg("保存先が未設定です");return}
+  const done=csResults.filter(r=>r.status==="done"&&r.output);
+  if(done.length===0){setCsSaveMsg("保存可能な結果がありません");return}
+  setCsSaving(true);setCsSaveMsg("");
+  const inputText=csTx.trim()||iR.current||"";
+  const baseTitle=(inputText.slice(0,30)||"カウンセリング")+(inputText.length>30?"...":"");
+  let ok=0,fail=0;
+  for(const r of done){
+    try{
+      const{error}=await supabase.from("counseling_analyses").insert({
+        title:`[${csModelLabel(r.model)}] ${baseTitle}`,
+        analysis_type:CS_MODE_LABELS[csMode]||csMode,
+        input_text:inputText,
+        output_text:r.output,
+        ai_model:r.modelLabel||csModelLabel(r.model),
+        scores:r.scores&&Object.keys(r.scores).length>0?r.scores:null
+      });
+      if(error)fail++;else ok++;
+    }catch{fail++}
+  }
+  setCsSaving(false);
+  setCsSaveMsg(`${ok}件保存しました${fail>0?`（${fail}件失敗）`:" ✓"}`);
+  setTimeout(()=>setCsSaveMsg(""),3500);
 };
 
 const CS_MODE_LABELS={full:"総合分析",listening:"傾聴・共感",needs:"ニーズ把握",marketing:"マーケティング",plan:"年間計画"};
@@ -3588,16 +3693,49 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {[{k:"full",l:"📊 総合分析"},{k:"listening",l:"👂 傾聴・共感"},{k:"needs",l:"🎯 ニーズ把握"},{k:"marketing",l:"💡 マーケティング"},{k:"plan",l:"📅 年間計画"}].map(m=>(<button key={m.k} onClick={()=>setCsMode(m.k)} style={{padding:"5px 12px",borderRadius:10,border:csMode===m.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:csMode===m.k?C.pLL:C.w,fontSize:12,fontWeight:csMode===m.k?700:500,color:csMode===m.k?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{m.l}</button>))}
 </div>
 <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>(<button key={m.v} onClick={()=>{setCsModel(m.v);try{localStorage.setItem("mk_csModel",m.v)}catch{}}} disabled={csLd} style={{flex:"1 1 140px",padding:"8px 12px",borderRadius:10,border:csModel===m.v?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:csModel===m.v?C.pLL:C.w,fontSize:12,fontWeight:csModel===m.v?700:500,color:csModel===m.v?C.pD:C.g500,cursor:csLd?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}><div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>))}
+{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=csModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleCsModel(m.v)} disabled={csLd} style={{position:"relative",flex:"1 1 140px",padding:"10px 12px 8px",borderRadius:10,border:selected?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?C.pD:C.g500,cursor:csLd?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:4,left:6,color:C.pD,fontSize:13,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
 </div>
 <div style={{marginBottom:10}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:12,fontWeight:600,color:C.g500}}>分析テキスト</span>
 <button onClick={openCsPickModal} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 書き起こしを選択</button></div>
 <textarea value={csTx} onChange={e=>setCsTx(e.target.value)} placeholder="📋ボタンでカウンセリング履歴から選択、または会話のテキストを直接貼り付けてください" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
-{csLd?(<button onClick={stopCsAnalyze} title="クリックで分析を停止" style={{padding:"10px 24px",borderRadius:14,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>⏹ AI分析中... (クリックで停止)</button>):(<button onClick={analyzeCounseling} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>🧠 分析開始</button>)}
-{csLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>{csModelLabel(csModel)} で分析中...</span></div>}
-{csOut&&<div>
+{csLd?(<button onClick={stopCsAnalyze} title="クリックで分析を停止" style={{padding:"10px 24px",borderRadius:14,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>⏹ AI分析中... (クリックで停止)</button>):(<button onClick={csModels.length>1?runCsAnalyzeAll:analyzeCounseling} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>{csModels.length>1?`🧠 ${csModels.length}個のAIで一斉分析`:"🧠 分析開始"}</button>)}
+{csLd&&csResults.length===0&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>{csModelLabel(csModel)} で分析中...</span></div>}
+
+{/* 3モデル並列比較表示 */}
+{csResults.length>1&&<div style={{marginTop:14}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>🔬 {csResults.length}モデル比較</span>
+{!csLd&&csResults.some(r=>r.status==="done")&&<button onClick={saveCsResultsAll} disabled={csSaving} style={{padding:"6px 14px",borderRadius:10,border:"none",background:csSaving?C.g200:"linear-gradient(135deg,#7f77dd,#5a4fc4)",color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:csSaving?"not-allowed":"pointer"}}>{csSaving?"⏳ 保存中...":"💾 完了分をすべて保存"}</button>}
+</div>
+{csSaveMsg&&<div style={{fontSize:12,fontWeight:600,color:csSaveMsg.includes("失敗")?"#dc2626":"#16a34a",marginBottom:8}}>{csSaveMsg}</div>}
+<div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${csResults.length},minmax(0,1fr))`,gap:12}}>
+{csResults.map((r,i)=>{
+  const color=csModelColor(r.model);
+  const elapsed=r.endedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;
+  return(<div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,padding:10,background:C.w,display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
+    <div style={{paddingBottom:6,borderBottom:`2px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <strong style={{fontSize:12,color}}>{csModelLabel(r.model)}</strong>
+      <span style={{fontSize:10,fontWeight:600}}>{r.status==="running"?"⏳ 分析中...":r.status==="done"?"✅ 完了":r.status==="error"?"❌ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+    </div>
+    <div style={{maxHeight:360,overflowY:"auto",fontSize:12,lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",color:C.g700,padding:"4px 6px",background:"#fafafa",borderRadius:6}}>
+      {r.status==="running"&&!r.output&&<div style={{textAlign:"center",padding:20,color:"#94a3b8"}}><div style={{width:24,height:24,border:`3px solid ${color}33`,borderTop:`3px solid ${color}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/>応答待ち...</div>}
+      {r.status==="error"&&<div style={{color:"#dc2626"}}>⚠️ {r.error||"不明なエラー"}</div>}
+      {r.status==="aborted"&&!r.output&&<div style={{color:"#64748b"}}>⏹ 停止されました</div>}
+      {r.output}
+    </div>
+    {r.scores&&Object.keys(r.scores).length>0&&<ScoreRadar scores={r.scores} compact/>}
+    {r.usage&&<div style={{padding:6,background:"#f8f4ff",borderRadius:6,fontSize:10,color:"#475569",lineHeight:1.5}}>
+      <div>📊 入力 {(r.usage.input_tokens||0).toLocaleString()} / 出力 {(r.usage.output_tokens||0).toLocaleString()} tokens</div>
+      <div>料金: <strong style={{color:"#7c3aed",fontSize:12}}>¥{(r.usage.cost_jpy||0).toFixed(2)}</strong></div>
+    </div>}
+    {elapsed&&<div style={{fontSize:10,color:"#94a3b8",textAlign:"right"}}>⏱ {elapsed}s</div>}
+  </div>);
+})}
+</div>
+</div>}
+{csOut&&csResults.length<=1&&<div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 分析結果</span>
 <button onClick={()=>navigator.clipboard.writeText(csOut)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
