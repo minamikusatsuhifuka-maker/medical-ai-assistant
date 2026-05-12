@@ -810,6 +810,7 @@ const minAllAudioChunks=useRef([]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[audioList,setAudioList]=useState([]),[audioListLoading,setAudioListLoading]=useState(false),[audioSignedUrls,setAudioSignedUrls]=useState({}),[audioListMsg,setAudioListMsg]=useState("");
 const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAudioDeleting]=useState(false);
+const[mp3Converting,setMp3Converting]=useState({}); // {[path]: "loading"|"converting"|"done"|null}
 const[apiUsageMonth,setApiUsageMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`});
 const[apiUsageSummary,setApiUsageSummary]=useState(null),[apiUsageMonthly,setApiUsageMonthly]=useState([]),[apiUsageTop10,setApiUsageTop10]=useState([]),[apiUsageLoading,setApiUsageLoading]=useState(false);
 
@@ -1280,6 +1281,36 @@ a.download=path.split("/").pop()||"audio.webm";
 document.body.appendChild(a);
 a.click();
 document.body.removeChild(a);
+};
+
+const convertAndDownloadMp3=async(path)=>{
+  if(!path){alert("音声パスが取得できませんでした");return}
+  if(mp3Converting[path]){return}
+  setMp3Converting(prev=>({...prev,[path]:"loading"}));
+  try{
+    const url=await loadAudioSignedUrl(path);
+    if(!url){throw new Error("音声ファイルが取得できませんでした")}
+    const res=await fetch(url);
+    if(!res.ok)throw new Error("音声取得失敗 HTTP "+res.status);
+    const webmBlob=await res.blob();
+    setMp3Converting(prev=>({...prev,[path]:"converting"}));
+    const{convertWebmToMp3}=await import("./Mp3Converter");
+    const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"128k"});
+    const baseName=(path.split("/").pop()||"audio.webm").replace(/\.webm$/i,".mp3");
+    const dlUrl=URL.createObjectURL(mp3Blob);
+    const a=document.createElement("a");
+    a.href=dlUrl;
+    a.download=baseName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(dlUrl),60000);
+    setMp3Converting(prev=>{const n={...prev};delete n[path];return n});
+  }catch(e){
+    console.error("[mp3] convert error:",e);
+    alert("mp3変換に失敗しました: "+e.message);
+    setMp3Converting(prev=>{const n={...prev};delete n[path];return n});
+  }
 };
 const mR=useRef(null),msR=useRef(null),acR=useRef(null),anR=useRef(null),laR=useRef(null),tR=useRef(null),cR=useRef(null),iR=useRef(""),oR=useRef(""),sumDoneRef=useRef(false);
 const pipRef=useRef(null),elRef=useRef(0),lvRef=useRef(0),rsRef=useRef("inactive"),pNameRef=useRef(""),pIdRef=useRef(""),snippetsRef=useRef(DEFAULT_SNIPPETS),pipSnippetsRef=useRef([0,1,2,3,4]);
@@ -4440,6 +4471,7 @@ return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid
 <span style={{fontSize:10,color:C.g400,fontWeight:700,minWidth:42}}>part{idx+1}</span>
 {audioSignedUrls[p]?(<audio controls preload="none" src={audioSignedUrls[p]} style={{height:32,flex:"1 1 240px",minWidth:200}}/>):(<button onClick={()=>loadAudioSignedUrl(p)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",flex:"1 1 200px"}}>▶ 再生URL取得</button>)}
 <button onClick={()=>downloadAudio(p)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.pLL,color:C.pD,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⬇ DL</button>
+<button onClick={()=>convertAndDownloadMp3(p)} disabled={!!mp3Converting[p]} title="mp3に変換してダウンロード" style={{padding:"4px 10px",borderRadius:6,border:"none",background:mp3Converting[p]?C.g200:"#fef3c7",color:mp3Converting[p]?C.g500:"#92400e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:mp3Converting[p]?"wait":"pointer"}}>{mp3Converting[p]==="loading"?"⏳ 初期化中...":mp3Converting[p]==="converting"?"⏳ 変換中...":"📥 mp3"}</button>
 <span style={{fontSize:10,color:C.g400,wordBreak:"break-all",flex:"1 1 100%"}}>{p}</span>
 </div>))}
 </div>);
