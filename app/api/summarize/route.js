@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logUsage } from "../../lib/log-usage";
 
 export const maxDuration = 60;
 
@@ -117,7 +118,12 @@ async function callGemini(text, prompt, model_preference) {
             lastError = `${model}: response too short (${summary.length} chars)`;
             continue;
           }
-          return { summary, model };
+          const um = data.usageMetadata || {};
+          return {
+            summary, model,
+            input_tokens: um.promptTokenCount || 0,
+            output_tokens: um.candidatesTokenCount || 0,
+          };
         }
         lastError = `${model}: empty response`;
       } else {
@@ -149,13 +155,20 @@ async function callClaude(text, prompt) {
     }),
   });
   const data = await res.json();
-  if (data.content?.[0]?.text) return data.content[0].text;
+  if (data.content?.[0]?.text) return {
+    summary: data.content[0].text,
+    model: data.model || "claude-sonnet-4-6",
+    input_tokens: data.usage?.input_tokens || 0,
+    output_tokens: data.usage?.output_tokens || 0,
+  };
   throw new Error("Claude応答エラー: " + JSON.stringify(data));
 }
 
 export async function POST(request) {
+  let _model_preference_for_err = null;
   try {
-    const { text, mode, prompt, model_preference, stream: useStream } = await request.json();
+    const { text, mode, prompt, model_preference, stream: useStream, context: ctx } = await request.json();
+    _model_preference_for_err = model_preference;
     if (!text || !text.trim()) {
       return NextResponse.json({ error: "テキストが必要です" }, { status: 400 });
     }
@@ -164,8 +177,15 @@ export async function POST(request) {
 
     // Claude は常に非ストリーミング
     if (useClaude) {
-      const summary = await callClaude(text, finalPrompt);
-      return NextResponse.json({ summary, model: "Claude Sonnet 4.6" });
+      const r = await callClaude(text, finalPrompt);
+      const usage = await logUsage({
+        route: "/api/summarize",
+        model: r.model,
+        context: ctx || (model_preference === "claude" ? "claude" : null),
+        input_tokens: r.input_tokens, output_tokens: r.output_tokens,
+        request_meta: { char_length: text.length, model_preference },
+      });
+      return NextResponse.json({ summary: r.summary, model: "Claude Sonnet 4.6", usage });
     }
 
     // Gemini ストリーミング（stream:true の場合のみ）
@@ -197,9 +217,17 @@ export async function POST(request) {
 
     // Gemini 非ストリーミング（従来の動作）
     const result = await callGemini(text, finalPrompt, model_preference);
-    return NextResponse.json({ summary: result.summary, model: result.model });
+    const usage = await logUsage({
+      route: "/api/summarize",
+      model: result.model,
+      context: ctx || model_preference || null,
+      input_tokens: result.input_tokens, output_tokens: result.output_tokens,
+      request_meta: { char_length: text.length, model_preference },
+    });
+    return NextResponse.json({ summary: result.summary, model: result.model, usage });
   } catch (e) {
     console.error("Summarize error:", e);
+    try { await logUsage({ route: "/api/summarize", model: _model_preference_for_err || "unknown", success: false, error_message: e.message }); } catch {}
     return NextResponse.json({ error: "要約エラー: " + e.message }, { status: 500 });
   }
 }

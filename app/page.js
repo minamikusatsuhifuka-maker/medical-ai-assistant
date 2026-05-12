@@ -666,7 +666,7 @@ const[docDisease,setDocDisease]=useState(""),[docOut,setDocOut]=useState(""),[do
 const[suggestLd,setSuggestLd]=useState(false),[suggestedSnippets,setSuggestedSnippets]=useState([]);
 const[pastInput,setPastInput]=useState(""),[pastDisease,setPastDisease]=useState(""),[pastSource,setPastSource]=useState(""),[pastLd,setPastLd]=useState(false),[pastCount,setPastCount]=useState(0),[pastMsg,setPastMsg]=useState("");
 const[csOut,setCsOut]=useState(""),[csLd,setCsLd]=useState(false),[csMode,setCsMode]=useState("full"),[csTx,setCsTx]=useState(""),[csCount,setCsCount]=useState(0);
-const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState("");
+const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState(""),[csUsage,setCsUsage]=useState(null);
 const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useState(false),[csHistoryLd,setCsHistoryLd]=useState(false);
 const[csModel,setCsModel]=useState("gemini-pro");
 const[csPickOpen,setCsPickOpen]=useState(false),[csPickList,setCsPickList]=useState([]),[csPickLoading,setCsPickLoading]=useState(false),[csPickSearch,setCsPickSearch]=useState("");
@@ -1559,7 +1559,7 @@ if(d.error){setSuggestedSnippets([{title:"エラー",text:d.error,cat:""}]);retu
 try{const cleaned=d.summary.replace(/```json|```/g,"").trim();const arr=JSON.parse(cleaned);setSuggestedSnippets(arr)}catch{setSuggestedSnippets([{title:"解析エラー",text:d.summary,cat:""}])}
 }catch(e){setSuggestedSnippets([{title:"エラー",text:e.message,cat:""}])}finally{setSuggestLd(false)}};
 
-const analyzeCounseling=async()=>{const tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");
+const analyzeCounseling=async()=>{const tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);
 let pastRef="";if(supabase){try{
 const{data:csData}=await supabase.from("counseling_records").select("transcription,summary,patient_name").order("created_at",{ascending:false}).limit(20);
 if(csData&&csData.length>0){pastRef="\n\n【当院の過去のカウンセリング記録（"+csData.length+"件）】\n"+csData.map((r,i)=>`--- カウンセリング${i+1}${r.patient_name?" ("+r.patient_name+")":""}---\n書き起こし: ${r.transcription}\n${r.summary?"要約: "+r.summary:""}`).join("\n")}
@@ -1630,7 +1630,7 @@ Object.keys(modes).forEach(k=>{modes[k]=modes[k]+scoreAppendix});
 setProg(50);
 if(csAbortRef.current){try{csAbortRef.current.abort()}catch{}}
 const ctrl=new AbortController();csAbortRef.current=ctrl;
-try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:modes[csMode],mode:csModel==="claude"?"claude":"gemini",prompt:"詳細に分析してください。",model_preference:csModel}),signal:ctrl.signal});const d=await r.json();const outText=d.error?"エラー: "+d.error:d.summary;setCsOut(outText);if(d.model){setGeminiModel(d.model);setCsAiModel(d.model)}else{setCsAiModel(csModelLabel(csModel))}if(!d.error){const parsed=parseCsScores(outText);console.log("[csAnalyze] スコアパース結果:",parsed,"/ 出力末尾500文字:",(outText||"").slice(-500));setCsScores(parsed)}}catch(e){
+try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:modes[csMode],mode:csModel==="claude"?"claude":"gemini",prompt:"詳細に分析してください。",model_preference:csModel,context:"counseling-"+csMode}),signal:ctrl.signal});const d=await r.json();const outText=d.error?"エラー: "+d.error:d.summary;setCsOut(outText);if(d.model){setGeminiModel(d.model);setCsAiModel(d.model)}else{setCsAiModel(csModelLabel(csModel))}if(d.usage)setCsUsage(d.usage);if(!d.error){const parsed=parseCsScores(outText);console.log("[csAnalyze] スコアパース結果:",parsed,"/ usage:",d.usage,"/ 出力末尾500文字:",(outText||"").slice(-500));setCsScores(parsed)}}catch(e){
   if(e.name==="AbortError"){setCsOut("");sSt("⏹ 分析を停止しました")}
   else{console.error("[csAnalyze] error:",e);setCsOut("エラー: "+e.message)}
 }finally{setCsLd(false);setProg(0);if(csAbortRef.current===ctrl)csAbortRef.current=null}};
@@ -3610,6 +3610,11 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={saveCounselingAnalysis} disabled={csSaving} style={{padding:"8px 18px",borderRadius:12,border:"none",background:csSaving?C.g200:"linear-gradient(135deg,#7f77dd,#5a4fc4)",color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:csSaving?"not-allowed":"pointer"}}>{csSaving?"⏳ 保存中...":"💾 保存"}</button>
 {csSaveMsg&&<span style={{fontSize:12,fontWeight:600,color:csSaveMsg.includes("失敗")?"#dc2626":"#16a34a"}}>{csSaveMsg}</span>}
 </div>
+{csUsage&&<div style={{marginTop:16,padding:12,background:"#f8f4ff",border:"1px solid #d4cce8",borderRadius:10,fontSize:13,color:"#475569"}}>
+  <div style={{fontWeight:700,marginBottom:6,color:"#6b5fd1"}}>📊 API使用量</div>
+  <div>モデル: <strong>{csUsage.model_resolved||csAiModel}</strong>　／　入力: <strong>{(csUsage.input_tokens||0).toLocaleString()}</strong> tokens　／　出力: <strong>{(csUsage.output_tokens||0).toLocaleString()}</strong> tokens　／　合計: <strong>{((csUsage.input_tokens||0)+(csUsage.output_tokens||0)).toLocaleString()}</strong> tokens</div>
+  <div style={{marginTop:4}}>料金: <strong style={{color:"#7c3aed",fontSize:15}}>¥{(csUsage.cost_jpy||0).toFixed(2)}</strong><span style={{marginLeft:10,fontSize:11,color:"#94a3b8"}}>(USD ${(csUsage.cost_usd||0).toFixed(4)} ／ レート ¥{csUsage.usd_jpy_rate||155}/USD)</span></div>
+</div>}
 </div>}
 
 {/* 履歴モーダル */}
