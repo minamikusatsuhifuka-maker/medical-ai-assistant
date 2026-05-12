@@ -1,6 +1,26 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabase";
+import dynamic from "next/dynamic";
+
+// === カウンセリング評価レーダーチャート（SSR無効でロード） ===
+const CS_SCORE_ITEMS = ["傾聴力","共感力","質問の質","ニーズ把握","説明力","信頼関係構築","提案力","クロージング"];
+const ScoreRadar = dynamic(()=>import("./ScoreRadar"),{ssr:false,loading:()=><div style={{width:"100%",height:320,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12,background:"#faf9ff",borderRadius:12,border:"1px solid #e9e6ff"}}>📊 チャート読み込み中...</div>});
+
+// === スコアパース ===
+const parseCsScores = (text) => {
+  const scores = {};
+  if (!text) return scores;
+  CS_SCORE_ITEMS.forEach(item => {
+    const re = new RegExp(item.replace(/[-/\\^$*+?.()|[\]{}]/g,"\\$&") + "\\s*[:：]\\s*(\\d+(?:\\.\\d+)?)");
+    const m = text.match(re);
+    if (m) {
+      const n = parseFloat(m[1]);
+      if (!isNaN(n)) scores[item] = Math.min(10, Math.max(0, n));
+    }
+  });
+  return scores;
+};
 
 // === RESPONSIVE HOOK ===
 function useResponsive(){
@@ -622,6 +642,8 @@ const[docDisease,setDocDisease]=useState(""),[docOut,setDocOut]=useState(""),[do
 const[suggestLd,setSuggestLd]=useState(false),[suggestedSnippets,setSuggestedSnippets]=useState([]);
 const[pastInput,setPastInput]=useState(""),[pastDisease,setPastDisease]=useState(""),[pastSource,setPastSource]=useState(""),[pastLd,setPastLd]=useState(false),[pastCount,setPastCount]=useState(0),[pastMsg,setPastMsg]=useState("");
 const[csOut,setCsOut]=useState(""),[csLd,setCsLd]=useState(false),[csMode,setCsMode]=useState("full"),[csTx,setCsTx]=useState(""),[csCount,setCsCount]=useState(0);
+const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState("");
+const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useState(false),[csHistoryLd,setCsHistoryLd]=useState(false);
 const undoRef=useRef(null);
 const shortcutsRef=useRef(shortcuts);
 const loadCsCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("counseling_records").select("*",{count:"exact",head:true});setCsCount(count||0)}catch{}};
@@ -1461,7 +1483,7 @@ if(d.error){setSuggestedSnippets([{title:"エラー",text:d.error,cat:""}]);retu
 try{const cleaned=d.summary.replace(/```json|```/g,"").trim();const arr=JSON.parse(cleaned);setSuggestedSnippets(arr)}catch{setSuggestedSnippets([{title:"解析エラー",text:d.summary,cat:""}])}
 }catch(e){setSuggestedSnippets([{title:"エラー",text:e.message,cat:""}])}finally{setSuggestLd(false)}};
 
-const analyzeCounseling=async()=>{const tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");
+const analyzeCounseling=async()=>{const tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");
 let pastRef="";if(supabase){try{
 const{data:csData}=await supabase.from("counseling_records").select("transcription,summary,patient_name").order("created_at",{ascending:false}).limit(20);
 if(csData&&csData.length>0){pastRef="\n\n【当院の過去のカウンセリング記録（"+csData.length+"件）】\n"+csData.map((r,i)=>`--- カウンセリング${i+1}${r.patient_name?" ("+r.patient_name+")":""}---\n書き起こし: ${r.transcription}\n${r.summary?"要約: "+r.summary:""}`).join("\n")}
@@ -1526,8 +1548,66 @@ marketing:`以下の書き起こしをマーケティング心理学の観点か
 
 plan:`以下の書き起こし内容から患者の年間治療計画を作成してください。${pastRef}\n\n${tx}\n\n出力：\n1. 患者プロファイル（推定される肌悩み・目標）\n2. 12ヶ月スケジュール（月ごとの施術・治療内容）\n3. 各施術の目的・期待効果\n4. ホームケア指導\n5. 概算費用感（施術ごとの目安）\n6. 継続のモチベーション維持策`};
 
+const scoreAppendix=`\n\n---\n■ 評価スコア（必ず8項目すべてを「項目名: 数値/10」の形式で出力すること。数値は1〜10の整数）\n- 傾聴力: /10\n- 共感力: /10\n- 質問の質: /10\n- ニーズ把握: /10\n- 説明力: /10\n- 信頼関係構築: /10\n- 提案力: /10\n- クロージング: /10\n\n■ 改善ポイント（このカウンセリングで特に改善すべき具体的な点を3〜5個、箇条書きで）\n\n■ 改善案（上記の改善ポイントに対する具体的なアクション・トーク例・代替フレーズを3〜5個、箇条書きで）`;
+Object.keys(modes).forEach(k=>{modes[k]=modes[k]+scoreAppendix});
+
 setProg(50);
-try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:modes[csMode],mode:"gemini",prompt:"詳細に分析してください。"})});const d=await r.json();setCsOut(d.error?"エラー: "+d.error:d.summary);if(d.model)setGeminiModel(d.model)}catch(e){setCsOut("エラー: "+e.message)}finally{setCsLd(false);setProg(0)}};
+try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:modes[csMode],mode:"gemini",prompt:"詳細に分析してください。"})});const d=await r.json();const outText=d.error?"エラー: "+d.error:d.summary;setCsOut(outText);if(d.model){setGeminiModel(d.model);setCsAiModel(d.model)}else{setCsAiModel("Gemini 2.5 Flash")}if(!d.error){setCsScores(parseCsScores(outText))}}catch(e){setCsOut("エラー: "+e.message)}finally{setCsLd(false);setProg(0)}};
+
+const CS_MODE_LABELS={full:"総合分析",listening:"傾聴・共感",needs:"ニーズ把握",marketing:"マーケティング",plan:"年間計画"};
+const saveCounselingAnalysis=async()=>{
+  if(!supabase){setCsSaveMsg("保存先が未設定です");return}
+  if(!csOut||csLd){setCsSaveMsg("分析結果がありません");return}
+  setCsSaving(true);setCsSaveMsg("");
+  try{
+    const inputText=csTx.trim()||iR.current||"";
+    const title=(inputText.slice(0,30)||"カウンセリング")+(inputText.length>30?"...":"");
+    const{error}=await supabase.from("counseling_analyses").insert({
+      title,
+      analysis_type:CS_MODE_LABELS[csMode]||csMode,
+      input_text:inputText,
+      output_text:csOut,
+      ai_model:csAiModel||geminiModel||"Gemini 2.5 Flash",
+      scores:csScores&&Object.keys(csScores).length>0?csScores:null
+    });
+    if(error){setCsSaveMsg("保存失敗: "+error.message)}
+    else{setCsSaveMsg("保存しました ✓");setTimeout(()=>setCsSaveMsg(""),3000)}
+  }catch(e){setCsSaveMsg("保存失敗: "+e.message)}
+  finally{setCsSaving(false)}
+};
+
+const loadCsHistory=async()=>{
+  if(!supabase)return;
+  setCsHistoryLd(true);
+  try{
+    const{data,error}=await supabase.from("counseling_analyses").select("*").order("created_at",{ascending:false}).limit(100);
+    if(!error)setCsHistory(data||[])
+  }catch{}
+  finally{setCsHistoryLd(false)}
+};
+
+const restoreCsAnalysis=(rec)=>{
+  if(!rec)return;
+  setCsTx(rec.input_text||"");
+  setCsOut(rec.output_text||"");
+  setCsScores(rec.scores||{});
+  setCsAiModel(rec.ai_model||"");
+  const modeKey=Object.keys(CS_MODE_LABELS).find(k=>CS_MODE_LABELS[k]===rec.analysis_type);
+  if(modeKey)setCsMode(modeKey);
+  setCsShowHistory(false);
+  setCsSaveMsg("履歴を復元しました");
+  setTimeout(()=>setCsSaveMsg(""),2500);
+};
+
+const deleteCsAnalysis=async(id)=>{
+  if(!supabase)return;
+  if(!confirm("この履歴を削除しますか？"))return;
+  try{
+    const{error}=await supabase.from("counseling_analyses").delete().eq("id",id);
+    if(error){alert("削除失敗: "+error.message);return}
+    setCsHistory(prev=>prev.filter(r=>r.id!==id))
+  }catch(e){alert("削除失敗: "+e.message)}
+};
 
 const loadPastCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("past_records").select("*",{count:"exact",head:true});setPastCount(count||0)}catch{}};
 const savePastRecords=async()=>{if(!supabase||!pastInput.trim())return;setPastLd(true);setPastMsg("");try{
@@ -3358,7 +3438,7 @@ finally{setMinTypoLd(false)}
 if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>🧠 カウンセリング分析</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 2.5 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:6,flexWrap:"wrap"}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>🧠 カウンセリング分析</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8,flex:1}}>{geminiModel||"Gemini 2.5 Flash"}</span><button onClick={()=>{setCsShowHistory(true);loadCsHistory()}} style={{padding:"6px 12px",borderRadius:10,border:`1px solid ${C.p}66`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>カウンセリング内容をAIが多角的に分析。傾聴力・ニーズ把握・提案力の改善やトークスクリプト提案、年間計画を生成します。<br/><span style={{fontSize:12,color:C.pD,fontWeight:600}}>💬 カウンセリング履歴: {csCount}件保存済み（カウンセリング室の記録を自動蓄積）</span></p>
 <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
 {[{k:"full",l:"📊 総合分析"},{k:"listening",l:"👂 傾聴・共感"},{k:"needs",l:"🎯 ニーズ把握"},{k:"marketing",l:"💡 マーケティング"},{k:"plan",l:"📅 年間計画"}].map(m=>(<button key={m.k} onClick={()=>setCsMode(m.k)} style={{padding:"5px 12px",borderRadius:10,border:csMode===m.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:csMode===m.k?C.pLL:C.w,fontSize:12,fontWeight:csMode===m.k?700:500,color:csMode===m.k?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{m.l}</button>))}
@@ -3374,7 +3454,49 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 分析結果</span>
 <button onClick={()=>navigator.clipboard.writeText(csOut)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
+{csScores&&Object.keys(csScores).length>0&&<div style={{marginBottom:12}}>
+<div style={{fontSize:12,fontWeight:700,color:"#6b5fd1",marginBottom:6,display:"flex",alignItems:"center",gap:6}}><span>📊 評価スコア（10点満点）</span><span style={{fontSize:11,color:"#94a3b8",fontWeight:500}}>{Object.keys(csScores).length}/8項目</span></div>
+<ScoreRadar scores={csScores}/>
+</div>}
 <textarea value={csOut} onChange={e=>setCsOut(e.target.value)} style={{width:"100%",height:400,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
+<div style={{display:"flex",gap:8,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
+<button onClick={saveCounselingAnalysis} disabled={csSaving} style={{padding:"8px 18px",borderRadius:12,border:"none",background:csSaving?C.g200:"linear-gradient(135deg,#7f77dd,#5a4fc4)",color:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:csSaving?"not-allowed":"pointer"}}>{csSaving?"⏳ 保存中...":"💾 保存"}</button>
+{csSaveMsg&&<span style={{fontSize:12,fontWeight:600,color:csSaveMsg.includes("失敗")?"#dc2626":"#16a34a"}}>{csSaveMsg}</span>}
+</div>
+</div>}
+
+{/* 履歴モーダル */}
+{csShowHistory&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setCsShowHistory(false)}}>
+<div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+<h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#5a4fc4"}}>📂 カウンセリング分析履歴 <span style={{fontSize:12,color:"#94a3b8",fontWeight:500}}>{csHistory.length}件</span></h3>
+<button onClick={()=>setCsShowHistory(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+<div style={{flex:1,overflow:"auto",padding:16}}>
+{csHistoryLd&&<div style={{textAlign:"center",padding:40}}><div style={{width:28,height:28,border:"3px solid #e9e6ff",borderTop:"3px solid #7f77dd",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#64748b",fontSize:12}}>読み込み中...</span></div>}
+{!csHistoryLd&&csHistory.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>保存された分析履歴がありません</div>}
+{!csHistoryLd&&csHistory.map(r=>{
+  const dateStr=r.created_at?new Date(r.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+  const typeColor=r.analysis_type==="総合分析"?"#7c3aed":r.analysis_type==="傾聴・共感"?"#0891b2":r.analysis_type==="ニーズ把握"?"#16a34a":r.analysis_type==="マーケティング"?"#f59e0b":"#dc2626";
+  return(<div key={r.id} style={{padding:12,borderRadius:12,border:"1px solid #e9e6ff",background:"#faf9ff",marginBottom:8}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:200}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
+          <span style={{fontSize:10,fontWeight:700,color:typeColor,padding:"2px 8px",borderRadius:6,background:typeColor+"15",border:`1px solid ${typeColor}44`}}>{r.analysis_type||"分析"}</span>
+          <span style={{fontSize:10,color:"#94a3b8"}}>{dateStr}</span>
+        </div>
+        <div style={{fontSize:13,fontWeight:600,color:"#334155",wordBreak:"break-word"}}>{r.title||"（無題）"}</div>
+        {r.scores&&Object.keys(r.scores).length>0&&<div style={{fontSize:10,color:"#6b5fd1",marginTop:4}}>📊 スコア{Object.keys(r.scores).length}項目</div>}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={()=>restoreCsAnalysis(r)} style={{padding:"5px 10px",borderRadius:8,border:"1px solid #7f77dd",background:"#fff",fontSize:11,fontWeight:600,color:"#5a4fc4",fontFamily:"inherit",cursor:"pointer"}}>↻ 再表示</button>
+        <button onClick={()=>deleteCsAnalysis(r.id)} style={{padding:"5px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fff",fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
+      </div>
+    </div>
+  </div>)
+})}
+</div>
+</div>
 </div>}
 
 {/* ② 患者ジャーニーマップ */}
