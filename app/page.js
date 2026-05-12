@@ -7,18 +7,42 @@ import dynamic from "next/dynamic";
 const CS_SCORE_ITEMS = ["傾聴力","共感力","質問の質","ニーズ把握","説明力","信頼関係構築","提案力","クロージング"];
 const ScoreRadar = dynamic(()=>import("./ScoreRadar"),{ssr:false,loading:()=><div style={{width:"100%",height:320,display:"flex",alignItems:"center",justifyContent:"center",color:"#94a3b8",fontSize:12,background:"#faf9ff",borderRadius:12,border:"1px solid #e9e6ff"}}>📊 チャート読み込み中...</div>});
 
-// === スコアパース ===
+// === スコアパース（ロバスト版） ===
 const parseCsScores = (text) => {
   const scores = {};
   if (!text) return scores;
+
+  // 1) ```json ... ``` ブロックがあれば優先パース
+  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/```\s*({[\s\S]*?})\s*```/);
+  if (jsonMatch) {
+    try {
+      const obj = JSON.parse(jsonMatch[1].trim().replace(/^[^{]*/, "").replace(/[^}]*$/, ""));
+      CS_SCORE_ITEMS.forEach(item => {
+        const v = obj[item];
+        if (typeof v === "number" && !isNaN(v) && v > 0) scores[item] = Math.min(10, Math.max(0, v));
+        else if (typeof v === "string") {
+          const n = parseFloat(v);
+          if (!isNaN(n) && n > 0) scores[item] = Math.min(10, Math.max(0, n));
+        }
+      });
+      if (Object.keys(scores).length >= 6) return scores;
+    } catch {}
+  }
+
+  // 2) マークダウン本文から「項目名 ... : 数値」を抽出（太字・括弧書き・記号に強い）
+  const cleaned = text.replace(/\*\*/g, "").replace(/[【】「」『』]/g, "");
   CS_SCORE_ITEMS.forEach(item => {
-    const re = new RegExp(item.replace(/[-/\\^$*+?.()|[\]{}]/g,"\\$&") + "\\s*[:：]\\s*(\\d+(?:\\.\\d+)?)");
-    const m = text.match(re);
+    if (scores[item]) return;
+    const esc = item.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    // 項目名と数値の間に「(10点満点)」等が入っても許容、半角/全角コロン両対応
+    const re = new RegExp(esc + "[^:：\\d\\n]{0,30}[:：]\\s*(\\d+(?:\\.\\d+)?)\\s*(?:/\\s*10|点)?");
+    const m = cleaned.match(re);
     if (m) {
       const n = parseFloat(m[1]);
-      if (!isNaN(n)) scores[item] = Math.min(10, Math.max(0, n));
+      if (!isNaN(n) && n > 0) scores[item] = Math.min(10, Math.max(0, n));
     }
   });
+
   return scores;
 };
 
@@ -1600,13 +1624,13 @@ marketing:`以下の書き起こしをマーケティング心理学の観点か
 
 plan:`以下の書き起こし内容から患者の年間治療計画を作成してください。${pastRef}\n\n${tx}\n\n出力：\n1. 患者プロファイル（推定される肌悩み・目標）\n2. 12ヶ月スケジュール（月ごとの施術・治療内容）\n3. 各施術の目的・期待効果\n4. ホームケア指導\n5. 概算費用感（施術ごとの目安）\n6. 継続のモチベーション維持策`};
 
-const scoreAppendix=`\n\n---\n■ 評価スコア（必ず8項目すべてを「項目名: 数値/10」の形式で出力すること。数値は1〜10の整数）\n- 傾聴力: /10\n- 共感力: /10\n- 質問の質: /10\n- ニーズ把握: /10\n- 説明力: /10\n- 信頼関係構築: /10\n- 提案力: /10\n- クロージング: /10\n\n■ 改善ポイント（このカウンセリングで特に改善すべき具体的な点を3〜5個、箇条書きで）\n\n■ 改善案（上記の改善ポイントに対する具体的なアクション・トーク例・代替フレーズを3〜5個、箇条書きで）`;
+const scoreAppendix=`\n\n---\n■ 評価スコア（出力必須・必ず以下の形式を厳守）\n各項目について1〜10の整数で評価し、必ず数値を埋めること。空欄・「未評価」「N/A」「-」「不明」は禁止。判断材料が乏しい場合でも、書き起こしの範囲で推定して必ず1〜10の数値を入れること。\n書式は「項目名: 数値/10」とし、太字記号や括弧書きは付けないこと。\n- 傾聴力: 5/10\n- 共感力: 5/10\n- 質問の質: 5/10\n- ニーズ把握: 5/10\n- 説明力: 5/10\n- 信頼関係構築: 5/10\n- 提案力: 5/10\n- クロージング: 5/10\n（※上記は記入例。実際の評価値で必ず置き換えること）\n\n■ 改善ポイント（このカウンセリングで特に改善すべき具体的な点を3〜5個、箇条書きで）\n\n■ 改善案（上記の改善ポイントに対する具体的なアクション・トーク例・代替フレーズを3〜5個、箇条書きで）`;
 Object.keys(modes).forEach(k=>{modes[k]=modes[k]+scoreAppendix});
 
 setProg(50);
 if(csAbortRef.current){try{csAbortRef.current.abort()}catch{}}
 const ctrl=new AbortController();csAbortRef.current=ctrl;
-try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:modes[csMode],mode:csModel==="claude"?"claude":"gemini",prompt:"詳細に分析してください。",model_preference:csModel}),signal:ctrl.signal});const d=await r.json();const outText=d.error?"エラー: "+d.error:d.summary;setCsOut(outText);if(d.model){setGeminiModel(d.model);setCsAiModel(d.model)}else{setCsAiModel(csModelLabel(csModel))}if(!d.error){setCsScores(parseCsScores(outText))}}catch(e){
+try{const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:modes[csMode],mode:csModel==="claude"?"claude":"gemini",prompt:"詳細に分析してください。",model_preference:csModel}),signal:ctrl.signal});const d=await r.json();const outText=d.error?"エラー: "+d.error:d.summary;setCsOut(outText);if(d.model){setGeminiModel(d.model);setCsAiModel(d.model)}else{setCsAiModel(csModelLabel(csModel))}if(!d.error){const parsed=parseCsScores(outText);console.log("[csAnalyze] スコアパース結果:",parsed,"/ 出力末尾500文字:",(outText||"").slice(-500));setCsScores(parsed)}}catch(e){
   if(e.name==="AbortError"){setCsOut("");sSt("⏹ 分析を停止しました")}
   else{console.error("[csAnalyze] error:",e);setCsOut("エラー: "+e.message)}
 }finally{setCsLd(false);setProg(0);if(csAbortRef.current===ctrl)csAbortRef.current=null}};
