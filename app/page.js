@@ -3495,8 +3495,23 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{marginBottom:10}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:12,fontWeight:600,color:C.g500}}>分析テキスト</span>
-<button onClick={()=>setCsTx(iR.current||"")} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 書き起こしから取得</button></div>
-<textarea value={csTx} onChange={e=>setCsTx(e.target.value)} placeholder="カウンセリング内容を入力、または「書き起こしから取得」ボタンで取得" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
+<button onClick={async()=>{
+  const v=(iR.current||"").trim();
+  if(v.length>0){setCsTx(iR.current);sSt("✓ メイン画面の書き起こしを取得しました");return}
+  if(!supabase){sSt("⚠️ メイン画面の書き起こしが空です。録音後にお試しください");return}
+  try{
+    sSt("🔄 最新の書き起こしを検索中...");
+    const{data,error}=await supabase.from("records").select("input_text,created_at,room,patient_id").not("input_text","is",null).neq("input_text","").order("created_at",{ascending:false}).limit(1);
+    if(error||!data||data.length===0||!data[0].input_text){
+      sSt("⚠️ 書き起こしが見つかりません。メイン画面で録音するか、直接ペーストしてください");return;
+    }
+    const latest=data[0];
+    setCsTx(latest.input_text);
+    const dateStr=new Date(latest.created_at).toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+    sSt(`✓ 最新の書き起こしを取得しました（${dateStr}）`);
+  }catch(e){console.error("書き起こし取得エラー:",e);sSt("⚠️ 書き起こしの取得に失敗しました: "+e.message)}
+}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 最新の書き起こしを取得</button></div>
+<textarea value={csTx} onChange={e=>setCsTx(e.target.value)} placeholder="📋ボタンで最新の書き起こしを取得、または会話のテキストを直接貼り付けてください" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 <button onClick={analyzeCounseling} disabled={csLd} style={{padding:"10px 24px",borderRadius:14,border:"none",background:csLd?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>{csLd?"⏳ AI分析中...":"🧠 分析開始"}</button>
 {csLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>{csModelLabel(csModel)} で分析中...</span></div>}
 {csOut&&<div>
