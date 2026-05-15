@@ -2729,6 +2729,24 @@ const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);s
 const pipBtnUpdate=()=>{try{pipBtnUpdateRef.current&&pipBtnUpdateRef.current()}catch(e){console.warn("pipBtnUpdate error:",e)}};
 const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
+// 長文（書き起こし全文等）をワンクリックコピー。HTTPS環境はnavigator.clipboard、ローカルHTTPはtextareaフォールバック
+const copyTextToClipboard=async(text,label="テキスト")=>{
+  if(!text||text.length===0){sSt(`⚠️ コピーする${label}がありません`);return}
+  try{
+    await navigator.clipboard.writeText(text);
+    sSt(`✓ ${label}をコピーしました（${text.length.toLocaleString()}文字）`);
+  }catch(e){
+    console.error("[copyText] error:",e);
+    try{
+      const ta=document.createElement("textarea");
+      ta.value=text;ta.style.position="fixed";ta.style.top="-9999px";
+      document.body.appendChild(ta);ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      sSt(`✓ ${label}をコピーしました（${text.length.toLocaleString()}文字）`);
+    }catch(e2){console.error("[copyText] fallback error:",e2);sSt("⚠️ コピーに失敗しました")}
+  }
+};
 
 // PiP
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("Chrome 116以降で利用可能です");return}
@@ -4150,10 +4168,13 @@ finally{setMinTypoLd(false)}
     </div>
   </div>
 )}
-{m.input_text&&m.input_text!=="（録音中・未要約）"&&<details style={{marginTop:8}}>
+{m.input_text&&m.input_text!=="（録音中・未要約）"&&<div style={{marginTop:8,display:"flex",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+<details style={{flex:"1 1 60%",minWidth:0}}>
 <summary style={{fontSize:11,color:C.g400,cursor:"pointer",userSelect:"none"}}>📝 書き起こし全文を表示（{Math.ceil((m.input_text||"").length/40)}行）</summary>
 <pre style={{fontSize:11,color:C.g600,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:6,padding:8,borderRadius:8,background:C.g50,maxHeight:200,overflowY:"auto",lineHeight:1.6,fontFamily:"inherit"}}>{m.input_text}</pre>
-</details>}
+</details>
+<button onClick={(e)=>{e.stopPropagation();copyTextToClipboard(m.input_text,"書き起こし全文")}} title="書き起こし全文をクリップボードにコピー" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d4cce8",background:"#fff",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"inherit"}}>📋 コピー</button>
+</div>}
 </div>:<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>}
 </div>)})}
 {taskAnalysis&&<div style={{marginTop:12,padding:12,borderRadius:12,border:`2px solid #a78bfa`,background:"#f5f3ff"}}>
@@ -5365,7 +5386,10 @@ const fn=actions[sc.id];if(fn)fn();
   return(<div key={r.id||i} style={{padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:C.g50}}>
     <div style={{fontSize:11,color:C.g400,marginBottom:4}}>{date} — {r.room||""} {r.template||""}</div>
     <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.7,fontFamily:"inherit"}}>{r.output_text||"（要約なし）"}</pre>
-    {r.input_text&&<details style={{marginTop:6}}><summary style={{fontSize:11,color:C.g400,cursor:"pointer"}}>📝 書き起こしを表示</summary><pre style={{fontSize:11,color:C.g500,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:"4px 0 0",lineHeight:1.6,fontFamily:"inherit",padding:8,background:"#fff",borderRadius:6,border:`1px solid ${C.g200}`}}>{r.input_text}</pre></details>}
+    {r.input_text&&<div style={{marginTop:6,display:"flex",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+      <details style={{flex:"1 1 60%",minWidth:0}}><summary style={{fontSize:11,color:C.g400,cursor:"pointer"}}>📝 書き起こしを表示</summary><pre style={{fontSize:11,color:C.g500,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:"4px 0 0",lineHeight:1.6,fontFamily:"inherit",padding:8,background:"#fff",borderRadius:6,border:`1px solid ${C.g200}`}}>{r.input_text}</pre></details>
+      <button onClick={(e)=>{e.stopPropagation();copyTextToClipboard(r.input_text,"書き起こし")}} title="書き起こしをクリップボードにコピー" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d4cce8",background:"#fff",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"inherit"}}>📋 コピー</button>
+    </div>}
   </div>)
 })}
 </div>
