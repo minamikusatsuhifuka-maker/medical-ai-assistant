@@ -4352,6 +4352,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
     <h3 style={{fontSize:15,fontWeight:700,color:"#5b21b6",margin:0}}>📋 Genspark共有資料用テキスト</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnGensparkText);sSt("✓ Genspark用テキストをコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #7c3aed",background:C.w,fontSize:11,fontWeight:600,color:"#5b21b6",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+      <button onClick={saveSmnResult} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
       <a href="https://www.genspark.ai/" target="_blank" rel="noreferrer" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",textDecoration:"none"}}>🔗 Gensparkを開く</a>
     </div>
   </div>
@@ -4363,7 +4364,10 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {smnInsights&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#fffbeb",border:"2px solid #f59e0b"}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
     <h3 style={{fontSize:15,fontWeight:700,color:"#92400e",margin:0}}>💡 AI気づき・提案（経営・人材・見逃し・応用）</h3>
-    <button onClick={()=>{navigator.clipboard.writeText(smnInsights);sSt("✓ 気づき・提案をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:C.w,fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <button onClick={()=>{navigator.clipboard.writeText(smnInsights);sSt("✓ 気づき・提案をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:C.w,fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+      <button onClick={saveSmnResult} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#f59e0b",color:"#78350f",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+    </div>
   </div>
   <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:"1px solid #fde047"}}>{smnInsights}</div>
 </div>}
