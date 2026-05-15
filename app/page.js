@@ -843,6 +843,13 @@ const[smnInsights,setSmnInsights]=useState("");
 const[smnInsightsLoading,setSmnInsightsLoading]=useState(false);
 const[smnHistOpen,setSmnHistOpen]=useState(false);
 const[smnHistList,setSmnHistList]=useState([]);
+// === D-1〜D-3 複数選択削除モード state ===
+const[csSelectMode,setCsSelectMode]=useState(false);
+const[csSelectedIds,setCsSelectedIds]=useState(new Set());
+const[journeySelectMode,setJourneySelectMode]=useState(false);
+const[journeySelectedIds,setJourneySelectedIds]=useState(new Set());
+const[smnSelectMode,setSmnSelectMode]=useState(false);
+const[smnSelectedIds,setSmnSelectedIds]=useState(new Set());
 const smnMR=useRef(null);
 const smnTR=useRef(null);
 const smnTextRef=useRef("");
@@ -2729,6 +2736,76 @@ const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);s
 const pipBtnUpdate=()=>{try{pipBtnUpdateRef.current&&pipBtnUpdateRef.current()}catch(e){console.warn("pipBtnUpdate error:",e)}};
 const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
+// === D-1〜D-3 複数選択削除 共通ヘルパー & 削除関数 ===
+const toggleIdInSet=(setter,id)=>{setter(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n})};
+// 議事録一括削除（既存 selMinutes を流用）
+const deleteMinSelected=async()=>{
+  const ids=Array.from(selMinutes);
+  if(ids.length===0){sSt("⚠️ 削除する議事録を選択してください");return}
+  if(!window.confirm(`選択した ${ids.length} 件の議事録を削除しますか？\n（この操作は取り消せません）`))return;
+  try{
+    const{error}=await supabase.from("minutes").delete().in("id",ids);
+    if(error)throw error;
+    setSelMinutes([]);
+    await loadMinHist();
+    sSt(`✓ ${ids.length} 件を削除しました`);
+  }catch(e){console.error("[deleteMinSelected] error:",e);sSt("⚠️ 削除に失敗: "+e.message)}
+};
+// カウンセリング分析一括削除
+const deleteCsSelected=async()=>{
+  const ids=Array.from(csSelectedIds);
+  if(ids.length===0){sSt("⚠️ 削除する記録を選択してください");return}
+  if(!window.confirm(`選択した ${ids.length} 件のカウンセリング分析を削除しますか？\n（この操作は取り消せません）`))return;
+  try{
+    const{error}=await supabase.from("counseling_analyses").delete().in("id",ids);
+    if(error)throw error;
+    setCsHistory(prev=>prev.filter(r=>!csSelectedIds.has(r.id)));
+    setCsSelectedIds(new Set());
+    setCsSelectMode(false);
+    sSt(`✓ ${ids.length} 件を削除しました`);
+  }catch(e){console.error("[deleteCsSelected] error:",e);sSt("⚠️ 削除に失敗: "+e.message)}
+};
+// ジャーニーマップ一括削除
+const deleteJourneySelected=async()=>{
+  const ids=Array.from(journeySelectedIds);
+  if(ids.length===0){sSt("⚠️ 削除する記録を選択してください");return}
+  if(!window.confirm(`選択した ${ids.length} 件のジャーニーマップを削除しますか？\n（この操作は取り消せません）`))return;
+  try{
+    const{error}=await supabase.from("counseling_analyses").delete().in("id",ids);
+    if(error)throw error;
+    setJourneyHistList(prev=>prev.filter(r=>!journeySelectedIds.has(r.id)));
+    setJourneySelectedIds(new Set());
+    setJourneySelectMode(false);
+    sSt(`✓ ${ids.length} 件を削除しました`);
+  }catch(e){console.error("[deleteJourneySelected] error:",e);sSt("⚠️ 削除に失敗: "+e.message)}
+};
+// セミナー学習一括削除
+const deleteSmnSelected=async()=>{
+  const ids=Array.from(smnSelectedIds);
+  if(ids.length===0){sSt("⚠️ 削除する記録を選択してください");return}
+  if(!window.confirm(`選択した ${ids.length} 件のセミナー学習を削除しますか？\n（この操作は取り消せません）`))return;
+  try{
+    const{error}=await supabase.from("counseling_analyses").delete().in("id",ids);
+    if(error)throw error;
+    setSmnHistList(prev=>prev.filter(r=>!smnSelectedIds.has(r.id)));
+    setSmnSelectedIds(new Set());
+    setSmnSelectMode(false);
+    sSt(`✓ ${ids.length} 件を削除しました`);
+  }catch(e){console.error("[deleteSmnSelected] error:",e);sSt("⚠️ 削除に失敗: "+e.message)}
+};
+// 診察記録一括削除（既存 selectedHistIds を流用）
+const deleteRecSelected=async()=>{
+  const ids=Array.from(selectedHistIds);
+  if(ids.length===0){sSt("⚠️ 削除する診察記録を選択してください");return}
+  if(!window.confirm(`選択した ${ids.length} 件の診察記録を削除しますか？\n\n※ 書き起こし・要約・関連情報が削除されます。\n※ 録音音声ファイル本体は録音音声管理から別途削除してください。\n（この操作は取り消せません）`))return;
+  try{
+    const{error}=await supabase.from("records").delete().in("id",ids);
+    if(error)throw error;
+    setSelectedHistIds(new Set());
+    await loadHist();
+    sSt(`✓ ${ids.length} 件を削除しました`);
+  }catch(e){console.error("[deleteRecSelected] error:",e);sSt("⚠️ 削除に失敗: "+e.message)}
+};
 // 長文（書き起こし全文等）をワンクリックコピー。HTTPS環境はnavigator.clipboard、ローカルHTTPはtextareaフォールバック
 const copyTextToClipboard=async(text,label="テキスト")=>{
   if(!text||text.length===0){sSt(`⚠️ コピーする${label}がありません`);return}
@@ -3071,6 +3148,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={runTreatmentMaterial} disabled={!selectedHistIds.size||treatLd} title="選択した履歴から疾患別治療資料を生成" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #a78bfa`,background:!selectedHistIds.size||treatLd?"#e5e7eb":"#f5f3ff",fontSize:11,fontWeight:600,color:!selectedHistIds.size||treatLd?C.g400:"#7c3aed",fontFamily:"inherit",cursor:!selectedHistIds.size||treatLd?"default":"pointer",whiteSpace:"nowrap"}}>{treatLd?"⏳ 生成中...":"📚 治療資料を生成"}</button>
 <button onClick={runMonthlyReport} disabled={monthlyLd} style={{padding:"3px 10px",borderRadius:7,border:"1px solid #0369a1",background:"#e0f2fe",fontSize:11,fontWeight:600,color:"#0369a1",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{monthlyLd?"⏳ 生成中...":"📊 月次レポート"}</button>
 <button onClick={()=>setBulkFavModal(true)} disabled={!selectedHistIds.size} title="選択した履歴をお気に入りに一括登録" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #f59e0b`,background:!selectedHistIds.size?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size?"default":"pointer"}}>⭐ お気に入り一括登録</button>
+<button onClick={deleteRecSelected} disabled={!selectedHistIds.size} title="選択した診察記録を一括削除（書き起こし・要約含む。音声本体は録音音声管理から別途削除）" style={{padding:"3px 10px",borderRadius:7,border:"none",background:!selectedHistIds.size?"#e5e7eb":"#dc2626",fontSize:11,fontWeight:700,color:!selectedHistIds.size?C.g400:C.w,fontFamily:"inherit",cursor:!selectedHistIds.size?"default":"pointer",whiteSpace:"nowrap"}}>🗑 選択を削除({selectedHistIds.size})</button>
 </div>
 {bulkFavModal&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setBulkFavModal(false)}>
 <div style={{background:"#ffffff",borderRadius:14,padding:20,maxWidth:320,width:"100%"}} onClick={e=>e.stopPropagation()}>
@@ -4123,6 +4201,7 @@ finally{setMinTypoLd(false)}
 {selMinutes.length>0&&<><button onClick={generateTasksFromSelected} style={{padding:"4px 10px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>📋 選択({selMinutes.length})からタスク生成</button>
 <button onClick={analyzeSelectedMinutes} disabled={taskAnalLd} style={{padding:"4px 10px",borderRadius:8,border:"none",background:taskAnalLd?C.g200:`linear-gradient(135deg,#7c3aed,#a78bfa)`,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{taskAnalLd?"⏳ 分析中...":"📊 時系列分析"}</button>
 {selMinutes.length>=2&&<button onClick={mergeSelectedMinutes} disabled={mergeLd} style={{padding:"4px 12px",borderRadius:8,border:"none",background:mergeLd?C.g200:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:C.w,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>{mergeLd?"⏳ まとめ中...":"🔗 選択分をまとめる("+selMinutes.length+"件)"}</button>}
+<button onClick={deleteMinSelected} title="選択した議事録を一括削除" style={{padding:"4px 10px",borderRadius:8,border:"none",background:"#dc2626",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>🗑 削除({selMinutes.length})</button>
 <button onClick={()=>setSelMinutes([])} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button></>}
 <button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🔄 更新</button></div></div>
 {mergeLd&&<div style={{textAlign:"center",padding:16}}><div style={{width:28,height:28,border:"3px solid #e5e7eb",borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:"#6b7280",fontSize:12}}>AIが議事録をまとめ中...</span></div>}
@@ -4294,25 +4373,37 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {/* 履歴モーダル */}
 {smnHistOpen&&<div onClick={()=>setSmnHistOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
   <div onClick={e=>e.stopPropagation()} style={{background:C.w,borderRadius:14,padding:18,maxWidth:760,width:"100%",maxHeight:"85vh",overflowY:"auto"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
       <h3 style={{fontSize:16,fontWeight:700,color:"#2a5018",margin:0}}>📂 セミナー学習履歴（{smnHistList.length}件）</h3>
-      <button onClick={()=>setSmnHistOpen(false)} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        {smnSelectMode&&<>
+          <button onClick={()=>setSmnSelectedIds(new Set(smnHistList.map(x=>x.id)))} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.p}`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>☑ 全選択</button>
+          <button onClick={()=>setSmnSelectedIds(new Set())} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>⬜ 全解除</button>
+          <button onClick={deleteSmnSelected} disabled={smnSelectedIds.size===0} style={{padding:"4px 12px",borderRadius:6,border:"none",background:smnSelectedIds.size>0?"#dc2626":"#ddd",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSelectedIds.size>0?"pointer":"not-allowed"}}>🗑 {smnSelectedIds.size}件削除</button>
+        </>}
+        <button onClick={()=>{setSmnSelectMode(p=>{if(p)setSmnSelectedIds(new Set());return!p})}} style={{padding:"4px 10px",borderRadius:6,border:smnSelectMode?`2px solid ${C.pD}`:`1px solid ${C.g200}`,background:smnSelectMode?C.pLL:C.w,color:smnSelectMode?C.pD:C.g500,fontSize:11,fontWeight:smnSelectMode?700:500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{smnSelectMode?"✕ 選択モード解除":"☑ 選択モード"}</button>
+        <button onClick={()=>setSmnHistOpen(false)} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+      </div>
     </div>
     {smnHistList.length===0?<p style={{fontSize:13,color:C.g400,textAlign:"center",padding:20}}>保存されたセミナー学習はまだありません。</p>:
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {smnHistList.map(it=>(<div key={it.id} style={{padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fafafa"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:200}}>
-            <div style={{fontSize:13,fontWeight:700,color:C.pD}}>{it.title||"無題"}</div>
-            <div style={{fontSize:10,color:C.g400,marginTop:2}}>{new Date(it.created_at).toLocaleString("ja-JP")} ・ {it.ai_model||""}</div>
+      {smnHistList.map(it=>{
+        const smnSel=smnSelectedIds.has(it.id);
+        return(<div key={it.id} onClick={()=>{if(smnSelectMode)toggleIdInSet(setSmnSelectedIds,it.id)}} style={{padding:12,borderRadius:10,border:smnSelectMode&&smnSel?"2px solid #dc2626":`1px solid ${C.g200}`,background:smnSelectMode&&smnSel?"#fef2f2":"#fafafa",cursor:smnSelectMode?"pointer":"default"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
+            {smnSelectMode&&<input type="checkbox" checked={smnSel} onChange={()=>{}} onClick={e=>e.stopPropagation()} style={{width:18,height:18,cursor:"pointer",flexShrink:0,accentColor:"#dc2626"}}/>}
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.pD}}>{it.title||"無題"}</div>
+              <div style={{fontSize:10,color:C.g400,marginTop:2}}>{new Date(it.created_at).toLocaleString("ja-JP")} ・ {it.ai_model||""}</div>
+            </div>
+            {!smnSelectMode&&<div style={{display:"flex",gap:6}}>
+              <button onClick={()=>restoreSmnRecord(it)} style={{padding:"4px 10px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元</button>
+              <button onClick={()=>deleteSmnRecord(it.id)} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #dc2626",background:C.w,fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>削除</button>
+            </div>}
           </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>restoreSmnRecord(it)} style={{padding:"4px 10px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元</button>
-            <button onClick={()=>deleteSmnRecord(it.id)} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #dc2626",background:C.w,fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>削除</button>
-          </div>
-        </div>
-        <div style={{fontSize:11,color:C.g600,maxHeight:60,overflow:"hidden",whiteSpace:"pre-wrap",lineHeight:1.5}}>{(it.output_text||"").substring(0,160)}...</div>
-      </div>))}
+          <div style={{fontSize:11,color:C.g600,maxHeight:60,overflow:"hidden",whiteSpace:"pre-wrap",lineHeight:1.5}}>{(it.output_text||"").substring(0,160)}...</div>
+        </div>);
+      })}
     </div>}
   </div>
 </div>}
@@ -4426,9 +4517,17 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {/* 履歴モーダル */}
 {csShowHistory&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setCsShowHistory(false)}}>
 <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:700,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0",flexWrap:"wrap",gap:8}}>
 <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#5a4fc4"}}>📂 カウンセリング分析履歴 <span style={{fontSize:12,color:"#94a3b8",fontWeight:500}}>{csHistory.length}件</span></h3>
+<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+{csSelectMode&&<>
+  <button onClick={()=>setCsSelectedIds(new Set(csHistory.map(x=>x.id)))} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:11,fontWeight:600,color:"#5b21b6",fontFamily:"inherit",cursor:"pointer"}}>☑ 全選択</button>
+  <button onClick={()=>setCsSelectedIds(new Set())} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:"#fff",fontSize:11,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>⬜ 全解除</button>
+  <button onClick={deleteCsSelected} disabled={csSelectedIds.size===0} style={{padding:"4px 12px",borderRadius:6,border:"none",background:csSelectedIds.size>0?"#dc2626":"#ddd",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:csSelectedIds.size>0?"pointer":"not-allowed"}}>🗑 {csSelectedIds.size}件削除</button>
+</>}
+<button onClick={()=>{setCsSelectMode(p=>{if(p)setCsSelectedIds(new Set());return!p})}} style={{padding:"4px 10px",borderRadius:6,border:csSelectMode?"2px solid #7c3aed":"1px solid #ddd",background:csSelectMode?"#faf8ff":"#fff",color:csSelectMode?"#7c3aed":"#555",fontSize:11,fontWeight:csSelectMode?700:500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{csSelectMode?"✕ 選択モード解除":"☑ 選択モード"}</button>
 <button onClick={()=>setCsShowHistory(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
 </div>
 <div style={{flex:1,overflow:"auto",padding:16}}>
 {csHistoryLd&&<div style={{textAlign:"center",padding:40}}><div style={{width:28,height:28,border:"3px solid #e9e6ff",borderTop:"3px solid #7f77dd",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:"#64748b",fontSize:12}}>読み込み中...</span></div>}
@@ -4436,8 +4535,10 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {!csHistoryLd&&csHistory.map(r=>{
   const dateStr=r.created_at?new Date(r.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
   const typeColor=r.analysis_type==="総合分析"?"#7c3aed":r.analysis_type==="傾聴・共感"?"#0891b2":r.analysis_type==="ニーズ把握"?"#16a34a":r.analysis_type==="マーケティング"?"#f59e0b":"#dc2626";
-  return(<div key={r.id} style={{padding:12,borderRadius:12,border:"1px solid #e9e6ff",background:"#faf9ff",marginBottom:8}}>
+  const csSel=csSelectedIds.has(r.id);
+  return(<div key={r.id} onClick={()=>{if(csSelectMode)toggleIdInSet(setCsSelectedIds,r.id)}} style={{padding:12,borderRadius:12,border:csSelectMode&&csSel?"2px solid #dc2626":"1px solid #e9e6ff",background:csSelectMode&&csSel?"#fef2f2":"#faf9ff",marginBottom:8,cursor:csSelectMode?"pointer":"default"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+      {csSelectMode&&<input type="checkbox" checked={csSel} onChange={()=>{}} onClick={e=>e.stopPropagation()} style={{width:18,height:18,marginRight:4,cursor:"pointer",flexShrink:0,accentColor:"#dc2626"}}/>}
       <div style={{flex:1,minWidth:200}}>
         <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4,flexWrap:"wrap"}}>
           <span style={{fontSize:10,fontWeight:700,color:typeColor,padding:"2px 8px",borderRadius:6,background:typeColor+"15",border:`1px solid ${typeColor}44`}}>{r.analysis_type||"分析"}</span>
@@ -4446,10 +4547,10 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
         <div style={{fontSize:13,fontWeight:600,color:"#334155",wordBreak:"break-word"}}>{r.title||"（無題）"}</div>
         {r.scores&&Object.keys(r.scores).length>0&&<div style={{fontSize:10,color:"#6b5fd1",marginTop:4}}>📊 スコア{Object.keys(r.scores).length}項目</div>}
       </div>
-      <div style={{display:"flex",gap:4}}>
+      {!csSelectMode&&<div style={{display:"flex",gap:4}}>
         <button onClick={()=>restoreCsAnalysis(r)} style={{padding:"5px 10px",borderRadius:8,border:"1px solid #7f77dd",background:"#fff",fontSize:11,fontWeight:600,color:"#5a4fc4",fontFamily:"inherit",cursor:"pointer"}}>↻ 再表示</button>
         <button onClick={()=>deleteCsAnalysis(r.id)} style={{padding:"5px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fff",fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
-      </div>
+      </div>}
     </div>
   </div>)
 })}
@@ -4611,9 +4712,17 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
   const filteredJourneyList=q?journeyHistList.filter(it=>((it.title||"").toLowerCase().includes(q))||((it.output_text||"").toLowerCase().includes(q))||((it.ai_model||"").toLowerCase().includes(q))):journeyHistList;
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)setJourneyHistOpen(false)}}>
     <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:720,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",borderBottom:"1px solid #e2e8f0",flexWrap:"wrap",gap:8}}>
         <h3 style={{margin:0,fontSize:16,fontWeight:700,color:"#0369a1"}}>📂 ジャーニーマップ履歴 <span style={{fontSize:12,color:"#94a3b8",fontWeight:500}}>{journeyHistList.length}件</span></h3>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        {journeySelectMode&&<>
+          <button onClick={()=>setJourneySelectedIds(new Set(filteredJourneyList.map(x=>x.id)))} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #7dd3fc",background:"#f0f9ff",fontSize:11,fontWeight:600,color:"#0369a1",fontFamily:"inherit",cursor:"pointer"}}>☑ 全選択</button>
+          <button onClick={()=>setJourneySelectedIds(new Set())} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:"#fff",fontSize:11,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>⬜ 全解除</button>
+          <button onClick={deleteJourneySelected} disabled={journeySelectedIds.size===0} style={{padding:"4px 12px",borderRadius:6,border:"none",background:journeySelectedIds.size>0?"#dc2626":"#ddd",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:journeySelectedIds.size>0?"pointer":"not-allowed"}}>🗑 {journeySelectedIds.size}件削除</button>
+        </>}
+        <button onClick={()=>{setJourneySelectMode(p=>{if(p)setJourneySelectedIds(new Set());return!p})}} style={{padding:"4px 10px",borderRadius:6,border:journeySelectMode?"2px solid #0891b2":"1px solid #ddd",background:journeySelectMode?"#f0fafd":"#fff",color:journeySelectMode?"#0891b2":"#555",fontSize:11,fontWeight:journeySelectMode?700:500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{journeySelectMode?"✕ 選択モード解除":"☑ 選択モード"}</button>
         <button onClick={()=>setJourneyHistOpen(false)} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
+        </div>
       </div>
       <div style={{padding:"10px 20px 0"}}>
         <input type="text" placeholder="🔍 タイトル・本文・モデルで検索..." value={journeyHistSearch} onChange={e=>setJourneyHistSearch(e.target.value)} style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
@@ -4623,13 +4732,15 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
         {!journeyHistLoading&&filteredJourneyList.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>{journeyHistList.length===0?"保存された履歴がありません":"該当する履歴が見つかりません"}</div>}
         {!journeyHistLoading&&filteredJourneyList.map(item=>{
           const preview=(item.output_text||"").substring(0,100)+((item.output_text||"").length>100?"...":"");
-          return(<div key={item.id} style={{border:"1px solid #e5e5e5",borderRadius:10,padding:12,background:"#fafafa",position:"relative",transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="#e0f2fe";e.currentTarget.style.borderColor="#0891b2"}} onMouseLeave={e=>{e.currentTarget.style.background="#fafafa";e.currentTarget.style.borderColor="#e5e5e5"}}>
-            <div onClick={()=>restoreJourney(item)} style={{cursor:"pointer",paddingRight:36}}>
+          const jrnSel=journeySelectedIds.has(item.id);
+          return(<div key={item.id} onClick={()=>{if(journeySelectMode)toggleIdInSet(setJourneySelectedIds,item.id)}} style={{border:journeySelectMode&&jrnSel?"2px solid #dc2626":"1px solid #e5e5e5",borderRadius:10,padding:12,background:journeySelectMode&&jrnSel?"#fef2f2":"#fafafa",position:"relative",transition:"all 0.15s",cursor:journeySelectMode?"pointer":"default",display:"flex",alignItems:"flex-start",gap:8}} onMouseEnter={e=>{if(!journeySelectMode){e.currentTarget.style.background="#e0f2fe";e.currentTarget.style.borderColor="#0891b2"}}} onMouseLeave={e=>{if(!journeySelectMode){e.currentTarget.style.background="#fafafa";e.currentTarget.style.borderColor="#e5e5e5"}}}>
+            {journeySelectMode&&<input type="checkbox" checked={jrnSel} onChange={()=>{}} onClick={e=>e.stopPropagation()} style={{width:18,height:18,marginTop:2,cursor:"pointer",flexShrink:0,accentColor:"#dc2626"}}/>}
+            <div onClick={journeySelectMode?undefined:()=>restoreJourney(item)} style={{cursor:journeySelectMode?"pointer":"pointer",paddingRight:journeySelectMode?0:36,flex:1,minWidth:0}}>
               <div style={{fontSize:11,color:"#0369a1",fontWeight:600,marginBottom:4}}>📅 {formatCsPickDate(item.created_at)}{item.ai_model?<span style={{marginLeft:6,color:"#94a3b8"}}>／ {item.ai_model}</span>:null}</div>
               <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{item.title||"無題"}</div>
               <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview||"（プレビューなし）"}</div>
             </div>
-            <button onClick={e=>{e.stopPropagation();deleteJourneyHist(item.id)}} title="この履歴を削除" style={{position:"absolute",top:8,right:8,padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fff",fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
+            {!journeySelectMode&&<button onClick={e=>{e.stopPropagation();deleteJourneyHist(item.id)}} title="この履歴を削除" style={{position:"absolute",top:8,right:8,padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fff",fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>}
           </div>);
         })}
       </div>
