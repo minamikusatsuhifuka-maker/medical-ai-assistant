@@ -827,6 +827,26 @@ const[minAutoSaving,setMinAutoSaving]=useState(false);
 const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
 const minAllAudioChunks=useRef([]);
+// === セミナー学習機能 state ===
+const[smnMode,setSmnMode]=useState("record"); // 'record' | 'paste'
+const[smnRS,setSmnRS]=useState("inactive"); // 'inactive' | 'recording' | 'paused'
+const[smnEl,setSmnEl]=useState(0);
+const[smnTitle,setSmnTitle]=useState("");
+const[smnTranscript,setSmnTranscript]=useState("");
+const[smnSummary,setSmnSummary]=useState("");
+const[smnSummaryLoading,setSmnSummaryLoading]=useState(false);
+const[smnSummaryModel,setSmnSummaryModel]=useState("gemini-3-pro");
+const[smnSummaryModelUsed,setSmnSummaryModelUsed]=useState("");
+const[smnGensparkText,setSmnGensparkText]=useState("");
+const[smnGensparkLoading,setSmnGensparkLoading]=useState(false);
+const[smnInsights,setSmnInsights]=useState("");
+const[smnInsightsLoading,setSmnInsightsLoading]=useState(false);
+const[smnHistOpen,setSmnHistOpen]=useState(false);
+const[smnHistList,setSmnHistList]=useState([]);
+const smnMR=useRef(null);
+const smnTR=useRef(null);
+const smnTextRef=useRef("");
+useEffect(()=>{smnTextRef.current=smnTranscript},[smnTranscript]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
 const[audioList,setAudioList]=useState([]),[audioListLoading,setAudioListLoading]=useState(false),[audioSignedUrls,setAudioSignedUrls]=useState({}),[audioListMsg,setAudioListMsg]=useState("");
 const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAudioDeleting]=useState(false);
@@ -1474,6 +1494,162 @@ const blob=new Blob(minAllAudioChunks.current,{type:"audio/webm"});
 minAllAudioChunks.current=[];
 saveMinAudio(blob,minTitle);
 }
+};
+// === セミナー学習: 録音（議事録 minGo/minStop を流用、書き起こし出力先のみ smnTranscript に差し替え） ===
+const smnGo=async()=>{
+  const s=await sAM();if(!s)return;
+  const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});
+  smnMR.current=mr;
+  let ch=[];
+  mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data)}};
+  mr.onstop=async()=>{
+    if(ch.length>0){
+      const b=new Blob(ch,{type:"audio/webm"});ch=[];
+      if(b.size<500)return;
+      if(lvRef.current<8)return;
+      try{
+        const f=new FormData();f.append("audio",b,"audio.webm");
+        const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";
+        const r=await fetch(endpoint,{method:"POST",body:f});
+        const d=await r.json();
+        if(endpoint==="/api/transcribe"){
+          fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-seminar",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});
+        }
+        if(d.text&&d.text.trim()){
+          const noise=filterTranscriptNoise(d.text.trim());
+          if(noise){setSmnTranscript(p=>p+(p?"\n":"")+noise)}
+        }
+      }catch{}
+    }
+  };
+  mr.start();
+  setSmnRS("recording");setSmnEl(0);
+  const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);
+  const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.start()}catch{}}},200)}},10000);
+  smnTR.current={ti,ci};
+};
+const smnStop=()=>{
+  if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null}
+  if(smnMR.current&&smnMR.current.state==="recording"){try{smnMR.current.stop()}catch{}}
+  setSmnRS("inactive");xAM();
+};
+// === セミナー学習: 詳細要約生成 ===
+const runSmnSummary=async()=>{
+  const txt=smnTextRef.current||smnTranscript;
+  if(!txt||txt.length<100){sSt("⚠️ 書き起こしが短すぎます（100文字以上必要）");return;}
+  setSmnSummaryLoading(true);setProg(20);
+  try{
+    const r=await fetch("/api/seminar-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({transcript:txt,model_preference:smnSummaryModel})});
+    setProg(70);
+    if(!r.ok){const t=await r.text();throw new Error("HTTP "+r.status+" "+t.substring(0,200))}
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    setSmnSummary(d.summary||"");
+    setSmnSummaryModelUsed(d.model||"");
+    sSt("✓ 詳細要約を生成しました");
+  }catch(e){
+    console.error("[smnSummary] error:",e);
+    sSt("⚠️ 要約生成に失敗: "+e.message);
+  }finally{setSmnSummaryLoading(false);setProg(0)}
+};
+// === セミナー学習: Genspark共有用テキスト生成 ===
+const runSmnGenspark=async()=>{
+  if(!smnSummary||smnSummary.length<50){sSt("⚠️ 先に詳細要約を生成してください");return;}
+  setSmnGensparkLoading(true);
+  try{
+    const r=await fetch("/api/seminar-genspark",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({summary:smnSummary,model_preference:smnSummaryModel})});
+    if(!r.ok){const t=await r.text();throw new Error("HTTP "+r.status+" "+t.substring(0,200))}
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    setSmnGensparkText(d.result||"");
+    sSt("✓ Genspark用テキストを生成しました");
+  }catch(e){
+    console.error("[smnGenspark] error:",e);
+    sSt("⚠️ Gensparkテキスト生成に失敗: "+e.message);
+  }finally{setSmnGensparkLoading(false)}
+};
+// === セミナー学習: AI気づき・提案生成 ===
+const runSmnInsights=async()=>{
+  if(!smnSummary||smnSummary.length<50){sSt("⚠️ 先に詳細要約を生成してください");return;}
+  setSmnInsightsLoading(true);
+  try{
+    const r=await fetch("/api/seminar-insights",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({summary:smnSummary,model_preference:smnSummaryModel})});
+    if(!r.ok){const t=await r.text();throw new Error("HTTP "+r.status+" "+t.substring(0,200))}
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    setSmnInsights(d.result||"");
+    sSt("✓ AI気づき・提案を生成しました");
+  }catch(e){
+    console.error("[smnInsights] error:",e);
+    sSt("⚠️ 気づき・提案生成に失敗: "+e.message);
+  }finally{setSmnInsightsLoading(false)}
+};
+// === セミナー学習: 保存（counseling_analyses に analysis_type='seminar' で保存） ===
+const saveSmnResult=async()=>{
+  if(!supabase){sSt("Supabase未接続");return;}
+  if(!smnSummary){sSt("⚠️ 要約がまだ生成されていません");return;}
+  try{
+    const title=smnTitle||`[セミナー] ${new Date().toLocaleString("ja-JP")}`;
+    const{error}=await supabase.from("counseling_analyses").insert({
+      title,
+      analysis_type:"seminar",
+      input_text:smnTranscript||"",
+      output_text:smnSummary,
+      ai_model:smnSummaryModelUsed||smnSummaryModel,
+      scores:{
+        genspark:smnGensparkText||null,
+        insights:smnInsights||null,
+      },
+    });
+    if(error)throw error;
+    sSt("✓ 保存しました");
+  }catch(e){
+    console.error("[smnSave] error:",e);
+    sSt("⚠️ 保存に失敗: "+e.message);
+  }
+};
+const openSmnHist=async()=>{
+  if(!supabase){sSt("Supabase未接続");return;}
+  setSmnHistOpen(true);
+  try{
+    const{data,error}=await supabase.from("counseling_analyses").select("id,title,input_text,output_text,ai_model,scores,created_at").eq("analysis_type","seminar").order("created_at",{ascending:false}).limit(50);
+    if(error)throw error;
+    setSmnHistList(data||[]);
+  }catch(e){
+    console.error("[smnHist] error:",e);
+    sSt("⚠️ 履歴取得に失敗: "+e.message);
+  }
+};
+const restoreSmnRecord=(item)=>{
+  setSmnTitle(item.title?item.title.replace(/^\[セミナー\]\s*/,""):"");
+  setSmnTranscript(item.input_text||"");
+  setSmnSummary(item.output_text||"");
+  if(item.scores){
+    setSmnGensparkText(item.scores.genspark||"");
+    setSmnInsights(item.scores.insights||"");
+  }else{
+    setSmnGensparkText("");setSmnInsights("");
+  }
+  setSmnHistOpen(false);
+  sSt("✓ "+new Date(item.created_at).toLocaleDateString("ja-JP")+" のセミナーを復元しました");
+};
+const deleteSmnRecord=async(id)=>{
+  if(!supabase)return;
+  if(!window.confirm("このセミナー記録を削除しますか？"))return;
+  try{
+    const{error}=await supabase.from("counseling_analyses").delete().eq("id",id);
+    if(error)throw error;
+    setSmnHistList(p=>p.filter(x=>x.id!==id));
+    sSt("✓ 削除しました");
+  }catch(e){
+    console.error("[smnDelete] error:",e);
+    sSt("⚠️ 削除に失敗: "+e.message);
+  }
+};
+const clearSmnAll=()=>{
+  if(!window.confirm("入力中のセミナー学習内容（書き起こし・要約・Genspark・気づき）をすべてクリアしますか？"))return;
+  smnStop();
+  setSmnTitle("");setSmnTranscript("");setSmnSummary("");setSmnGensparkText("");setSmnInsights("");setSmnSummaryModelUsed("");
 };
 const loadMinHist=async()=>{if(!supabase)return;try{const[{data},{count}]=await Promise.all([supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(500),supabase.from("minutes").select("*",{count:"exact",head:true})]);if(data)setMinHist(data);if(typeof count==="number")setMinHistTotal(count);console.log(`[minHist] fetched: ${data?.length||0}件 / total: ${count||0}件`)}catch(e){console.error("[minHist] load error:",e)}};
 const saveMinInputOnly=async()=>{
@@ -3991,6 +4167,136 @@ finally{setMinTypoLd(false)}
 {noiseModalEl}
 </div></div>);
 
+// === SEMINAR LEARNING ===
+if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+{prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
+<div style={card}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+  <h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>🎓 セミナー学習</h2>
+  <span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8,flex:1}}>{smnSummaryModelUsed||smnSummaryModel}</span>
+  <button onClick={openSmnHist} style={{padding:"6px 12px",borderRadius:10,border:`1px solid ${C.p}66`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button>
+  <button onClick={()=>{smnStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div>
+{st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("⚠️")||st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("⚠️")||st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
+<p style={{fontSize:13,color:C.g500,marginBottom:12}}>セミナー音声を書き起こし → 詳細な要約・まとめ → Genspark共有資料 → AI気づき・提案 を一気通貫で生成します。</p>
+
+<input value={smnTitle} onChange={e=>setSmnTitle(e.target.value)} placeholder="セミナータイトル（例：5月クリニック経営セミナー）" style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",marginBottom:12,boxSizing:"border-box"}}/>
+
+{/* モデル選択 */}
+<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+{[{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const sel=smnSummaryModel===m.v;return(<button key={m.v} onClick={()=>setSmnSummaryModel(m.v)} disabled={smnSummaryLoading||smnGensparkLoading||smnInsightsLoading} style={{flex:"1 1 140px",padding:"8px 12px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}><div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
+</div>
+
+{/* 入力モード切替 */}
+<div style={{display:"flex",gap:8,marginBottom:16}}>
+  <button onClick={()=>setSmnMode("record")} style={{flex:1,padding:"10px 12px",borderRadius:10,border:smnMode==="record"?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:smnMode==="record"?C.pLL:C.w,fontSize:13,fontWeight:smnMode==="record"?700:500,color:smnMode==="record"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🎙 録音して書き起こす</button>
+  <button onClick={()=>setSmnMode("paste")} style={{flex:1,padding:"10px 12px",borderRadius:10,border:smnMode==="paste"?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:smnMode==="paste"?C.pLL:C.w,fontSize:13,fontWeight:smnMode==="paste"?700:500,color:smnMode==="paste"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>📝 テキストを直接入力</button>
+</div>
+
+{/* 録音モード */}
+{smnMode==="record"&&<div style={{marginBottom:12}}>
+  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
+    <span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(smnEl/60)).padStart(2,"0")}:{String(smnEl%60).padStart(2,"0")}</span>
+    {smnRS==="inactive"?
+      <button onClick={smnGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap"}}>🎙 録音開始</button>
+      :
+      <button onClick={smnStop} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap"}}>⏹ 録音停止</button>
+    }
+    <span style={{fontSize:12,color:smnRS==="recording"?C.rG:C.g400,fontWeight:600}}>{smnRS==="recording"?"● 録音中（10秒毎に書き起こし）":"停止"}</span>
+  </div>
+</div>}
+
+{/* テキスト直接入力モード */}
+{smnMode==="paste"&&<div style={{marginBottom:12}}>
+  <div style={{fontSize:12,fontWeight:600,color:C.g500,marginBottom:4}}>📝 書き起こしテキスト（YouTube字幕・配布資料・他ツールでの書き起こしを貼り付け）</div>
+</div>}
+
+{/* 共通: 書き起こしテキストエリア */}
+<div style={{marginBottom:14}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+    <span style={{fontSize:12,fontWeight:600,color:C.g500}}>{smnMode==="record"?"📝 書き起こし結果（編集可能）":"📝 セミナー書き起こしテキスト"}</span>
+    <span style={{fontSize:11,color:C.g400}}>{smnTranscript.length.toLocaleString()} 文字</span>
+  </div>
+  <textarea value={smnTranscript} onChange={e=>setSmnTranscript(e.target.value)} placeholder={smnMode==="record"?"録音開始すると自動で書き起こされます":"セミナーの書き起こしテキスト、YouTube字幕、資料の文字起こしなどを貼り付けてください"} style={{width:"100%",height:smnMode==="paste"?400:240,padding:12,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+</div>
+
+{/* 要約生成ボタン */}
+<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+  <button onClick={runSmnSummary} disabled={!smnTranscript||smnSummaryLoading} style={{flex:"1 1 200px",padding:"12px 24px",borderRadius:14,border:"none",background:smnSummaryLoading||!smnTranscript?C.g200:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:smnSummaryLoading||!smnTranscript?C.g500:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:smnSummaryLoading||!smnTranscript?"not-allowed":"pointer",boxShadow:smnSummaryLoading||!smnTranscript?"none":`0 2px 8px rgba(0,0,0,.15)`}}>{smnSummaryLoading?"⏳ 詳細要約を生成中...":"📚 詳細要約を生成"}</button>
+  {(smnTranscript||smnSummary)&&<button onClick={clearSmnAll} style={{padding:"10px 16px",borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🗑 クリア</button>}
+</div>
+
+{smnSummaryLoading&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIがセミナーを詳細要約中...（長文の場合 1-2分かかります）</span></div>}
+
+{/* 詳細要約結果 */}
+{smnSummary&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#f0fdf4",border:`2px solid ${C.p}88`}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#2a5018",margin:0}}>📚 詳細要約・まとめ</h3>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <button onClick={()=>{navigator.clipboard.writeText(smnSummary);sSt("✓ 要約をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.p}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+      <button onClick={saveSmnResult} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+    </div>
+  </div>
+  <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{smnSummary}</div>
+
+  {/* 応用機能ボタン */}
+  <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+    <button onClick={runSmnGenspark} disabled={smnGensparkLoading} style={{flex:"1 1 200px",padding:"10px 16px",borderRadius:12,border:"none",background:smnGensparkLoading?C.g200:"linear-gradient(135deg,#7c3aed,#a78bfa)",color:smnGensparkLoading?C.g500:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:smnGensparkLoading?"wait":"pointer"}}>{smnGensparkLoading?"⏳ 生成中...":"📋 Genspark共有資料用テキストを生成"}</button>
+    <button onClick={runSmnInsights} disabled={smnInsightsLoading} style={{flex:"1 1 200px",padding:"10px 16px",borderRadius:12,border:"none",background:smnInsightsLoading?C.g200:"linear-gradient(135deg,#f59e0b,#fbbf24)",color:smnInsightsLoading?C.g500:"#78350f",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:smnInsightsLoading?"wait":"pointer"}}>{smnInsightsLoading?"⏳ 生成中...":"💡 AI気づき・提案を生成"}</button>
+  </div>
+</div>}
+
+{/* Genspark用テキスト結果 */}
+{smnGensparkText&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#f5f3ff",border:"2px solid #a78bfa"}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#5b21b6",margin:0}}>📋 Genspark共有資料用テキスト</h3>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <button onClick={()=>{navigator.clipboard.writeText(smnGensparkText);sSt("✓ Genspark用テキストをコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #7c3aed",background:C.w,fontSize:11,fontWeight:600,color:"#5b21b6",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+      <a href="https://www.genspark.ai/" target="_blank" rel="noreferrer" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",textDecoration:"none"}}>🔗 Gensparkを開く</a>
+    </div>
+  </div>
+  <textarea readOnly value={smnGensparkText} style={{width:"100%",minHeight:300,padding:10,borderRadius:8,border:"1px solid #c4b5fd",background:C.w,fontSize:12,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.7,boxSizing:"border-box"}}/>
+  <p style={{fontSize:11,color:"#7c3aed",marginTop:6,marginBottom:0}}>💡 このテキストをコピーしてGensparkに貼り付けると、スライド資料が自動生成されます。</p>
+</div>}
+
+{/* AI気づき・提案 */}
+{smnInsights&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#fffbeb",border:"2px solid #f59e0b"}}>
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#92400e",margin:0}}>💡 AI気づき・提案（経営・人材・見逃し・応用）</h3>
+    <button onClick={()=>{navigator.clipboard.writeText(smnInsights);sSt("✓ 気づき・提案をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:C.w,fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+  </div>
+  <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:"1px solid #fde047"}}>{smnInsights}</div>
+</div>}
+
+</div>
+
+{/* 履歴モーダル */}
+{smnHistOpen&&<div onClick={()=>setSmnHistOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+  <div onClick={e=>e.stopPropagation()} style={{background:C.w,borderRadius:14,padding:18,maxWidth:760,width:"100%",maxHeight:"85vh",overflowY:"auto"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <h3 style={{fontSize:16,fontWeight:700,color:"#2a5018",margin:0}}>📂 セミナー学習履歴（{smnHistList.length}件）</h3>
+      <button onClick={()=>setSmnHistOpen(false)} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+    </div>
+    {smnHistList.length===0?<p style={{fontSize:13,color:C.g400,textAlign:"center",padding:20}}>保存されたセミナー学習はまだありません。</p>:
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {smnHistList.map(it=>(<div key={it.id} style={{padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fafafa"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.pD}}>{it.title||"無題"}</div>
+            <div style={{fontSize:10,color:C.g400,marginTop:2}}>{new Date(it.created_at).toLocaleString("ja-JP")} ・ {it.ai_model||""}</div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>restoreSmnRecord(it)} style={{padding:"4px 10px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元</button>
+            <button onClick={()=>deleteSmnRecord(it.id)} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #dc2626",background:C.w,fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>削除</button>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:C.g600,maxHeight:60,overflow:"hidden",whiteSpace:"pre-wrap",lineHeight:1.5}}>{(it.output_text||"").substring(0,160)}...</div>
+      </div>))}
+    </div>}
+  </div>
+</div>}
+</div>);
+
 // === COUNSELING ANALYSIS ===
 if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
@@ -4845,7 +5151,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 2.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル",f:()=>window.open('/manual.pdf','_blank')}].filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh])).map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル",f:()=>window.open('/manual.pdf','_blank')}].filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh])).map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>{const rc=ROOM_COLORS[rm.id]||{bg:"#f3f4f6",text:"#374151",border:"#d1d5db",accent:"#6b7280"};const isSel=rid===rm.id;return(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"4px 10px",borderRadius:8,border:`2px solid ${isSel?rc.accent:rc.border}`,background:isSel?rc.bg:"#fff",color:isSel?rc.text:"#6b7280",fontSize:mob?11:12,fontWeight:isSel?700:500,fontFamily:"inherit",cursor:"pointer",transition:"all 0.15s",boxShadow:isSel?`0 0 0 2px ${rc.accent}33`:"none",whiteSpace:"nowrap",flexShrink:0}}>{rm.i} {rm.l}</button>)})}</div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
 <span style={{fontSize:10,color:C.g400}}>🎙</span>
