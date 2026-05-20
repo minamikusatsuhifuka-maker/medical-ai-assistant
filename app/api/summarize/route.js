@@ -78,16 +78,16 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
 
 // Gemini 非ストリーミング（従来のJSON応答）
 function buildGeminiModelList(model_preference) {
-  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→2.5 Pro→2.5 Flash）
+  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→3.5 Flash→2.5 Pro→2.5 Flash）
   if (model_preference === "gemini-3-pro") {
-    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"];
+    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"];
   }
   // gemini-pro: 既存の2.5 Pro優先（診察要約等）
   if (model_preference === "gemini-pro") {
-    return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"];
+    return ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
   }
-  // デフォルト（gemini）: Flash優先
-  return ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+  // デフォルト（gemini）: 3.5 Flash 優先（2026-05-19 GA・上位互換）
+  return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
 }
 
 async function callGemini(text, prompt, model_preference) {

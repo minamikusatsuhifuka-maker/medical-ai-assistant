@@ -5,9 +5,14 @@ export const USD_JPY = Number(process.env.USD_JPY_RATE) || 155;
 export const PRICING = {
   // Gemini 2.5 Pro
   "gemini-2.5-pro":            { input: 1.25, output: 10.00, family: "gemini-pro" },
-  // Gemini 2.5 Flash
+  // Gemini 2.5 Flash（過去ログ集計のために維持）
   "gemini-2.5-flash":          { input: 0.30, output: 2.50,  family: "gemini-flash" },
   "gemini-2.0-flash":          { input: 0.30, output: 2.50,  family: "gemini-flash" },
+  // Gemini 3.5 Flash（2026年5月19日 I/O 2026 で GA）
+  "gemini-3.5-flash":          { input: 1.50, output: 9.00,  family: "gemini-3-5-flash" },
+  "gemini-3-5-flash":          { input: 1.50, output: 9.00,  family: "gemini-3-5-flash" },
+  "3.5-flash-05-2026":         { input: 1.50, output: 9.00,  family: "gemini-3-5-flash" },
+  "gemini-3.5-flash-preview":  { input: 1.50, output: 9.00,  family: "gemini-3-5-flash" },
   // Gemini 3.1 Pro 系
   "gemini-3.1-pro-preview":    { input: 2.00, output: 12.00, family: "gemini-3-pro" },
   "gemini-3-pro-preview":      { input: 2.00, output: 12.00, family: "gemini-3-pro" },
