@@ -709,6 +709,7 @@ const csModelLabel=(m)=>{
   if(s==="gemini-3-pro")return"Gemini 3.1 Pro";
   if(s==="claude")return"Claude Sonnet 4.6";
   if(s==="gemini-pro")return"Gemini 2.5 Pro";
+  if(s==="gemini-3-5-flash")return"Gemini 3.5 Flash";
   if(s==="gemini")return"Gemini 3.5 Flash";
   // API応答の実モデル名（最新版優先）
   if(s.includes("claude"))return"Claude Sonnet 4.6";
@@ -726,7 +727,7 @@ const csModelSubLabel=(m)=>{
   if(s==="gemini-3-pro"||s.includes("3.1-pro"))return"最新・最高精度 ⭐";
   if(s==="claude"||s.includes("claude"))return"日本語精度";
   if(s==="gemini-pro"||s.includes("2.5-pro"))return"バランス型";
-  if(s==="gemini"||s.includes("3.5-flash")||s.includes("3-5-flash"))return"最新・超高速 ✨";
+  if(s==="gemini-3-5-flash"||s==="gemini"||s.includes("3.5-flash")||s.includes("3-5-flash"))return"最新・超高速 ✨";
   if(s.includes("2.5-flash")||s.includes("2-5-flash"))return"高速";
   return"";
 };
@@ -1021,6 +1022,43 @@ const toggleJourneyModel=(m)=>{
     try{localStorage.setItem("mk_journeyModels",JSON.stringify(next))}catch{}
     return next;
   });
+};
+// 要約テストラボ（4モデル並列比較）
+const[labText,setLabText]=useState("");
+const[labTemplate,setLabTemplate]=useState("free");
+const[labModels,setLabModels]=useState(["gemini-pro","gemini-3-pro","gemini-3-5-flash","claude"]);
+const[labResults,setLabResults]=useState([]);
+const[labBusy,setLabBusy]=useState(false);
+const labAbortRef=useRef(null);
+const[labCompareTab,setLabCompareTab]=useState("all");
+const[labHistOpen,setLabHistOpen]=useState(false);
+const[labHistList,setLabHistList]=useState([]);
+const[labHistLoading,setLabHistLoading]=useState(false);
+const[labHistSearch,setLabHistSearch]=useState("");
+const[labSelectMode,setLabSelectMode]=useState(false);
+const[labSelectedIds,setLabSelectedIds]=useState([]);
+const[labSaving,setLabSaving]=useState(false);
+const[labSaveMsg,setLabSaveMsg]=useState("");
+useEffect(()=>{try{
+  const s=localStorage.getItem("mk_labModels");
+  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setLabModels(valid)}}
+  const t=localStorage.getItem("mk_labTemplate");
+  if(t&&["exam","minutes","counseling","free"].includes(t))setLabTemplate(t);
+}catch{}},[]);
+const toggleLabModel=(m)=>{
+  setLabModels(prev=>{
+    let next;
+    if(prev.includes(m)){if(prev.length===1){sSt("⚠️ 少なくとも1つのモデルを選択してください");return prev}next=prev.filter(x=>x!==m)}
+    else next=[...prev,m];
+    try{localStorage.setItem("mk_labModels",JSON.stringify(next))}catch{}
+    return next;
+  });
+};
+const LAB_TEMPLATES={
+  exam:{label:"🩺 診察要約",prompt:"以下の診察録音書き起こしを、SOAP形式で要約してください。\n- S（主訴・症状）\n- O（所見）\n- A（評価）\n- P（計画・処方）\n\n【書き起こし】\n{TEXT}"},
+  minutes:{label:"📋 議事録要約",prompt:"以下の会議録音書き起こしを、議事録形式で要約してください。\n- 議題\n- 決定事項\n- 検討事項\n- アクションアイテム\n\n【書き起こし】\n{TEXT}"},
+  counseling:{label:"💬 カウンセリング要約",prompt:"以下のカウンセリング書き起こしを要約してください。\n- 患者の主訴・希望\n- 提示した治療内容\n- 検討した懸念点\n- 患者の反応・合意状況\n\n【書き起こし】\n{TEXT}"},
+  free:{label:"✨ フリーフォーマット",prompt:"以下のテキストを、構造化された要約にしてください。\n\n【テキスト】\n{TEXT}"}
 };
 const[insightResult,setInsightResult]=useState("");
 const[insightLoading,setInsightLoading]=useState(false);
@@ -2248,6 +2286,99 @@ const saveCsResultsAll=async()=>{
   setTimeout(()=>setCsSaveMsg(""),3500);
 };
 
+// 要約テストラボ ハンドラ
+const runSingleLabSummary=async(model,promptText,controller)=>{
+  const res=await fetch("/api/summarize",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({text:promptText,mode:model==="claude"?"claude":"gemini",prompt:"以下のテキストを要約してください。",model_preference:model,context:"summary-lab"}),
+    signal:controller.signal
+  });
+  if(!res.ok)throw new Error("HTTP "+res.status);
+  const d=await res.json();
+  if(d.error)throw new Error(d.error);
+  return{output:d.summary||d.result||"",usage:d.usage||null,modelLabel:d.model||csModelLabel(model)};
+};
+const runLabAnalyzeAll=async()=>{
+  const tx=(labText||"").trim();
+  if(!tx){sSt("⚠️ テキストを入力してください");return}
+  if(tx.length<50){sSt("⚠️ テキストが短すぎます（50文字以上推奨）");return}
+  if(labAbortRef.current){try{labAbortRef.current.forEach(c=>{try{c.abort()}catch{}})}catch{}}
+  setLabCompareTab("all");setLabBusy(true);setLabSaveMsg("");
+  const promptText=(LAB_TEMPLATES[labTemplate]||LAB_TEMPLATES.free).prompt.replace("{TEXT}",tx);
+  const controllers=labModels.map(()=>new AbortController());
+  labAbortRef.current=controllers;
+  const initial=labModels.map(m=>({model:m,status:"running",output:"",error:null,usage:null,startedAt:Date.now(),endedAt:null}));
+  setLabResults(initial);
+  await Promise.allSettled(labModels.map((m,i)=>runSingleLabSummary(m,promptText,controllers[i])
+    .then(r=>{setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,...r,status:"done",endedAt:Date.now()}:x))})
+    .catch(e=>{const aborted=e.name==="AbortError";setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
+  ));
+  setLabBusy(false);labAbortRef.current=null;
+};
+const stopLabAnalyze=()=>{
+  if(labAbortRef.current){try{labAbortRef.current.forEach(c=>{try{c.abort()}catch{}})}catch{}labAbortRef.current=null;sSt("⏹ 要約を停止しました")}
+  setLabBusy(false);
+};
+const saveLabResultsAll=async()=>{
+  if(!supabase){setLabSaveMsg("保存先が未設定です");return}
+  const done=labResults.filter(r=>r.status==="done"&&r.output);
+  if(done.length===0){setLabSaveMsg("保存可能な結果がありません");return}
+  setLabSaving(true);setLabSaveMsg("");
+  const nowStr=new Date().toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  const tplLabel=(LAB_TEMPLATES[labTemplate]||LAB_TEMPLATES.free).label;
+  let ok=0,fail=0;
+  for(const r of done){
+    try{
+      const{error}=await supabase.from("counseling_analyses").insert({
+        title:`[要約ラボ/${csModelLabel(r.model)}/${tplLabel}] ${nowStr}`,
+        analysis_type:"summary_lab",
+        input_text:labText,
+        output_text:r.output,
+        ai_model:r.modelLabel||csModelLabel(r.model),
+        scores:{template:labTemplate,usage:r.usage||null,duration_ms:(r.endedAt||0)-(r.startedAt||0)}
+      });
+      if(error)fail++;else ok++;
+    }catch{fail++}
+  }
+  setLabSaving(false);
+  setLabSaveMsg(`${ok}件保存しました${fail>0?`（${fail}件失敗）`:" ✓"}`);
+  setTimeout(()=>setLabSaveMsg(""),3500);
+};
+const loadLabHistory=async()=>{
+  if(!supabase)return;
+  setLabHistLoading(true);
+  try{
+    const{data}=await supabase.from("counseling_analyses").select("id,title,input_text,output_text,ai_model,scores,created_at").eq("analysis_type","summary_lab").order("created_at",{ascending:false}).limit(100);
+    setLabHistList(data||[]);
+  }catch(e){console.error("[loadLabHistory]",e);setLabHistList([])}
+  finally{setLabHistLoading(false)}
+};
+const restoreLab=(item)=>{
+  setLabText(item.input_text||"");
+  setLabResults([{model:item.ai_model||"gemini-3-5-flash",status:"done",output:item.output_text||"",usage:item.scores?.usage||null,startedAt:0,endedAt:item.scores?.duration_ms||0,isRestored:true}]);
+  if(item.scores?.template&&LAB_TEMPLATES[item.scores.template])setLabTemplate(item.scores.template);
+  setLabCompareTab("all");
+  setLabHistOpen(false);
+  sSt(`✓ ${toJSTDate(item.created_at)} の要約を復元しました`);
+};
+const deleteLabHistOne=async(id)=>{
+  if(!supabase)return;
+  if(!window.confirm("この履歴を削除しますか？"))return;
+  try{
+    await supabase.from("counseling_analyses").delete().eq("id",id);
+    setLabHistList(prev=>prev.filter(x=>x.id!==id));
+  }catch(e){console.error("[deleteLabHistOne]",e)}
+};
+const deleteLabHistSelected=async()=>{
+  if(!supabase||labSelectedIds.length===0)return;
+  if(!window.confirm(`選択した${labSelectedIds.length}件を削除しますか？`))return;
+  try{
+    await supabase.from("counseling_analyses").delete().in("id",labSelectedIds);
+    setLabHistList(prev=>prev.filter(x=>!labSelectedIds.includes(x.id)));
+    setLabSelectedIds([]);setLabSelectMode(false);
+  }catch(e){console.error("[deleteLabHistSelected]",e)}
+};
 const CS_MODE_LABELS={full:"総合分析",listening:"傾聴・共感",needs:"ニーズ把握",marketing:"マーケティング",plan:"年間計画"};
 const saveCounselingAnalysis=async()=>{
   if(!supabase){setCsSaveMsg("保存先が未設定です");return}
@@ -4425,6 +4556,125 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 </div>}
 </div>);
 
+// === SUMMARY TEST LAB ===
+if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={card}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:6,flexWrap:"wrap"}}>
+  <h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📝 要約テストラボ</h2>
+  <div style={{display:"flex",gap:6}}>
+    <button onClick={()=>{setLabHistOpen(true);loadLabHistory()}} style={{padding:"6px 12px",borderRadius:10,border:`1px solid ${C.p}66`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button>
+    <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+  </div>
+</div>
+<p style={{fontSize:13,color:C.g500,marginBottom:12}}>同じテキストを複数のAIで一斉に要約し、品質・速度・コストを横並びで比較できます。</p>
+<div style={{marginBottom:12}}>
+  <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6}}>テンプレート</div>
+  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+    {Object.entries(LAB_TEMPLATES).map(([k,v])=>{const sel=labTemplate===k;return(
+      <button key={k} onClick={()=>{setLabTemplate(k);try{localStorage.setItem("mk_labTemplate",k)}catch{}}} style={{flex:"1 1 120px",padding:"8px 10px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:"pointer",fontFamily:"inherit"}}>{v.label}</button>
+    )})}
+  </div>
+</div>
+<div style={{marginBottom:12}}>
+  <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <span>テキスト入力</span>
+    <span style={{fontSize:11,color:C.g400,fontWeight:500}}>{(labText||"").length.toLocaleString()}文字</span>
+  </div>
+  <textarea value={labText} onChange={e=>setLabText(e.target.value)} placeholder="ここに書き起こしテキストを貼り付け..." style={{width:"100%",minHeight:160,padding:10,borderRadius:8,border:`1px solid ${C.g200}`,fontFamily:"inherit",fontSize:13,resize:"vertical",boxSizing:"border-box"}}/>
+  <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
+    <button onClick={()=>{if(iR.current){setLabText(iR.current);sSt("✓ 録音書き起こしから読み込み")}else{sSt("⚠️ 録音書き起こしがありません")}}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>📥 録音から読み込み</button>
+    <button onClick={()=>{if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(t=>{setLabText(t);sSt("✓ クリップボードから貼り付け")}).catch(()=>{sSt("⚠️ クリップボード読み取り失敗")})}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>📋 クリップボード</button>
+    <button onClick={()=>{setLabText("");sSt("クリアしました")}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>🗑 クリア</button>
+  </div>
+</div>
+<div style={{marginBottom:12}}>
+  <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6}}>モデル選択（複数選択可・最大4つ）</div>
+  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+    {["gemini-pro","gemini-3-pro","gemini-3-5-flash","claude"].map(m=>{const selected=labModels.includes(m);const color=csModelColorByLabel(m);return(
+      <button key={m} onClick={()=>toggleLabModel(m)} disabled={labBusy} style={{position:"relative",flex:"1 1 180px",padding:"12px",borderRadius:10,border:selected?`2px solid ${color}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?color:C.g500,cursor:labBusy?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>
+        {selected&&<span style={{position:"absolute",top:4,left:8,color,fontSize:14,fontWeight:700}}>✓</span>}
+        <div style={{fontWeight:700,fontSize:13}}>{csModelLabel(m)}</div>
+        <div style={{fontSize:10,marginTop:3,fontWeight:400,opacity:0.85}}>{csModelSubLabel(m)}</div>
+      </button>
+    )})}
+  </div>
+</div>
+{labBusy?(
+  <button onClick={stopLabAnalyze} style={{width:"100%",padding:"14px",borderRadius:12,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⏹ AI要約中... (クリックで停止)</button>
+):(
+  <button onClick={runLabAnalyzeAll} disabled={!labText||labText.trim().length<10} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:(!labText||labText.trim().length<10)?C.g200:"linear-gradient(135deg,#5a9040,#3a6820)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:(!labText||labText.trim().length<10)?"not-allowed":"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>📚 {labModels.length}個のAIで{labModels.length>1?"一斉":""}要約</button>
+)}
+</div>
+{labResults.length>0&&<div style={card}>
+{labResults.length>1&&<div style={{display:"flex",gap:4,marginBottom:8,borderBottom:`2px solid ${C.g200}`,overflowX:"auto"}}>
+  <button onClick={()=>setLabCompareTab("all")} style={{padding:"7px 14px",border:"none",background:labCompareTab==="all"?"#888":"transparent",color:labCompareTab==="all"?"#fff":C.g600,fontWeight:labCompareTab==="all"?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2}}>🔬 全体比較</button>
+  {labResults.map((r,i)=>{const color=csModelColorByLabel(r.model);const active=labCompareTab===r.model;return(
+    <button key={i} onClick={()=>setLabCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":C.g600,fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:active?`2px solid ${color}`:"2px solid transparent"}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":""}</button>
+  )})}
+</div>}
+{(labCompareTab==="all"||labResults.length===1)&&<div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${Math.min(labResults.length,2)},minmax(0,1fr))`,gap:12}}>
+  {labResults.map((r,i)=>{const color=csModelColorByLabel(r.model);const dur=r.endedAt&&r.startedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;return(
+    <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden",background:C.w}}>
+      <div style={{padding:"8px 12px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+        <strong style={{fontSize:13,color}}>{csModelLabel(r.model)}</strong>
+        <span style={{fontSize:10,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+      </div>
+      <div style={{padding:10,maxHeight:400,overflowY:"auto"}}>
+        {r.status==="error"?(<div style={{color:"#dc2626",fontSize:12}}>{r.error}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:12,fontFamily:"inherit",lineHeight:1.6}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
+      </div>
+      {r.usage&&<div style={{padding:"6px 10px",fontSize:10,color:C.g500,borderTop:`1px solid ${C.g200}`,background:"#fafaf9"}}>入力: {(r.usage.promptTokens||r.usage.input_tokens||0).toLocaleString()}t / 出力: {(r.usage.completionTokens||r.usage.output_tokens||0).toLocaleString()}t</div>}
+    </div>
+  )})}
+</div>}
+{labCompareTab!=="all"&&labResults.length>1&&labResults.filter(r=>r.model===labCompareTab).map((r,i)=>{const color=csModelColorByLabel(r.model);const dur=r.endedAt&&r.startedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;return(
+  <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden"}}>
+    <div style={{padding:"10px 14px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+      <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>
+      <span style={{fontSize:11,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+    </div>
+    <div style={{padding:14}}>
+      {r.status==="error"?(<div style={{color:"#dc2626",fontSize:13}}>{r.error}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:13,fontFamily:"inherit",lineHeight:1.7}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
+    </div>
+    {r.usage&&<div style={{padding:"8px 14px",fontSize:11,color:C.g500,borderTop:`1px solid ${C.g200}`,background:"#fafaf9"}}>入力: {(r.usage.promptTokens||r.usage.input_tokens||0).toLocaleString()}t / 出力: {(r.usage.completionTokens||r.usage.output_tokens||0).toLocaleString()}t</div>}
+  </div>
+)})}
+{labResults.filter(r=>r.status==="done").length>0&&<div style={{marginTop:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+  <button onClick={saveLabResultsAll} disabled={labSaving} style={{padding:"10px 16px",borderRadius:10,border:"none",background:labSaving?C.g200:C.p,color:"#fff",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:labSaving?"not-allowed":"pointer"}}>{labSaving?"保存中...":"💾 完了分をすべて保存"}</button>
+  {labSaveMsg&&<span style={{fontSize:12,color:C.pD,fontWeight:600}}>{labSaveMsg}</span>}
+</div>}
+</div>}
+{labHistOpen&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setLabHistOpen(false)}>
+  <div style={{background:C.w,borderRadius:14,padding:20,maxWidth:800,width:"100%",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
+      <h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.pD}}>📂 要約テストラボ 履歴 ({labHistList.length}件)</h3>
+      <div style={{display:"flex",gap:6}}>
+        {labSelectMode?(<>
+          <button onClick={deleteLabHistSelected} disabled={labSelectedIds.length===0} style={{padding:"6px 12px",borderRadius:8,border:"none",background:labSelectedIds.length>0?"#dc2626":C.g200,color:"#fff",fontSize:12,fontWeight:600,cursor:labSelectedIds.length>0?"pointer":"not-allowed",fontFamily:"inherit"}}>🗑 {labSelectedIds.length}件削除</button>
+          <button onClick={()=>{setLabSelectMode(false);setLabSelectedIds([])}} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+        </>):(<>
+          <button onClick={()=>setLabSelectMode(true)} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>☑ 選択</button>
+          <button onClick={()=>setLabHistOpen(false)} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+        </>)}
+      </div>
+    </div>
+    <input type="text" placeholder="🔍 タイトル・入力で検索" value={labHistSearch} onChange={e=>setLabHistSearch(e.target.value)} style={{width:"100%",padding:8,borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,marginBottom:10,boxSizing:"border-box",fontFamily:"inherit"}}/>
+    {labHistLoading?(<div style={{textAlign:"center",padding:20,color:C.g500}}>読み込み中...</div>):labHistList.length===0?(<div style={{textAlign:"center",padding:20,color:C.g500}}>履歴がありません</div>):(<div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {labHistList.filter(h=>{const q=labHistSearch.toLowerCase();if(!q)return true;return(h.title||"").toLowerCase().includes(q)||(h.input_text||"").toLowerCase().includes(q)}).map(h=>{const sel=labSelectedIds.includes(h.id);return(
+        <div key={h.id} style={{border:`1px solid ${sel?C.p:C.g200}`,borderRadius:10,padding:10,background:sel?C.pLL:C.w,cursor:"pointer",display:"flex",alignItems:"flex-start",gap:8}} onClick={()=>{if(labSelectMode){setLabSelectedIds(prev=>prev.includes(h.id)?prev.filter(x=>x!==h.id):[...prev,h.id])}else{restoreLab(h)}}}>
+          {labSelectMode&&<input type="checkbox" checked={sel} readOnly style={{marginTop:3}}/>}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600,color:C.pD,marginBottom:3,wordBreak:"break-all"}}>{h.title}</div>
+            <div style={{fontSize:10,color:C.g500,marginBottom:4}}>{toJSTDate(h.created_at)} ・ {csModelLabel(h.ai_model)}</div>
+            <div style={{fontSize:11,color:C.g600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(h.input_text||"").slice(0,120)}{(h.input_text||"").length>120?"...":""}</div>
+          </div>
+          {!labSelectMode&&<button onClick={e=>{e.stopPropagation();deleteLabHistOne(h.id)}} style={{padding:"4px 8px",borderRadius:6,border:"none",background:"transparent",color:"#dc2626",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>}
+        </div>
+      )})}
+    </div>)}
+  </div>
+</div>}
+</div>);
+
 // === COUNSELING ANALYSIS ===
 if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
@@ -5299,7 +5549,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
 <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 3.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
-{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル",f:()=>window.open('/manual.pdf','_blank')}].filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh])).map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
+{[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル",f:()=>window.open('/manual.pdf','_blank')}].filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh])).map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>{const rc=ROOM_COLORS[rm.id]||{bg:"#f3f4f6",text:"#374151",border:"#d1d5db",accent:"#6b7280"};const isSel=rid===rm.id;return(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"4px 10px",borderRadius:8,border:`2px solid ${isSel?rc.accent:rc.border}`,background:isSel?rc.bg:"#fff",color:isSel?rc.text:"#6b7280",fontSize:mob?11:12,fontWeight:isSel?700:500,fontFamily:"inherit",cursor:"pointer",transition:"all 0.15s",boxShadow:isSel?`0 0 0 2px ${rc.accent}33`:"none",whiteSpace:"nowrap",flexShrink:0}}>{rm.i} {rm.l}</button>)})}</div>
 <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
 <span style={{fontSize:10,color:C.g400}}>🎙</span>
