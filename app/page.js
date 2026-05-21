@@ -1039,14 +1039,14 @@ const[labSelectMode,setLabSelectMode]=useState(false);
 const[labSelectedIds,setLabSelectedIds]=useState([]);
 const[labSaving,setLabSaving]=useState(false);
 const[labSaveMsg,setLabSaveMsg]=useState("");
-const[labExamTplId,setLabExamTplId]=useState("soap-std");
+const[labExamTplId,setLabExamTplId]=useState("lab-exam-std");
 useEffect(()=>{try{
   const s=localStorage.getItem("mk_labModels");
   if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setLabModels(valid)}}
   const t=localStorage.getItem("mk_labTemplate");
   if(t&&["exam","minutes","counseling","free"].includes(t))setLabTemplate(t);
   const et=localStorage.getItem("mk_labExamTplId");
-  if(et&&T.find(x=>x.id===et))setLabExamTplId(et);
+  if(et&&LAB_EXAM_TEMPLATES.find(x=>x.id===et))setLabExamTplId(et);
 }catch{}},[]);
 const toggleLabModel=(m)=>{
   setLabModels(prev=>{
@@ -1063,6 +1063,119 @@ const LAB_TEMPLATES={
   counseling:{label:"💬 カウンセリング要約",prompt:"以下のカウンセリング書き起こしを要約してください。\n- 患者の主訴・希望\n- 提示した治療内容\n- 検討した懸念点\n- 患者の反応・合意状況\n\n【書き起こし】\n{TEXT}"},
   free:{label:"✨ フリーフォーマット",prompt:"以下のテキストを、構造化された要約にしてください。\n\n【テキスト】\n{TEXT}"}
 };
+// 要約ラボ専用の診察サブテンプレ（本番T配列とは独立、A)1行目配置の新フォーマット）
+const LAB_EXAM_TEMPLATES=[
+{id:"lab-exam-brief",name:"📋 簡潔",prompt:`皮膚科の医療秘書として最小限にカルテ要約。
+
+【ルール】
+- 1疾患あたり最大4行で完結
+- 修飾語・詳細な説明は全て省く
+- A）は重症度や治療方針判断を1〜2語で簡潔に（例: 軽症 / 慢性化 / 経過良好 / 増悪）
+- 薬剤名と用法のみ
+- 複数疾患は --- で区切る
+- 推測しない
+- # の後は「平易な表現（医学用語）」形式（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）等）
+
+【出力フォーマット（厳守）】
+# 疾患名　A）評価
+S）一言
+O）一言
+P）処方名のみ
+
+【例】
+# かぶれ（接触性皮膚炎）　A）軽症
+S）両前腕の痒み
+O）紅斑性丘疹
+P）リンデロン-VG 1日2回`},
+{id:"lab-exam-std",name:"📋 標準",prompt:`皮膚科の医療秘書として簡潔にカルテ要約。話者分離：丁寧語は医師、訴えは患者。
+
+【ルール】
+- 冗長な表現は避け、要点のみ記載
+- 修飾語は最小限にする
+- A）は評価・治療方針判断を簡潔に（例: 軽症で経過観察 / 増悪傾向 / コントロール良好 など）
+- 薬剤は名称と用法のみ（「〜軟膏を塗布するよう指示」→「〜軟膏 1日2回」）
+- 所見は箇条書き的に短く
+- 複数疾患は --- で区切る
+- 会話にない情報は推測しない
+- 会話に含まれない項目は出力しない（「言及なし」「詳細不明」「記載なし」等は絶対に書かない）
+- 用法が不明な薬剤は薬剤名のみ記載（「用法不明」とは書かない）
+- # の後は「平易な表現（医学用語）」形式で記載（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）、イボ（尋常性疣贅）、かぶれ（接触性皮膚炎）、じんましん（蕁麻疹）、ヘルペス（単純疱疹）、とびひ（伝染性膿痂疹）、あせも（汗疹）、シミ（肝斑）、ホクロ（色素性母斑）、アトピー（アトピー性皮膚炎）、手荒れ（手湿疹）、乾燥肌の湿疹（皮脂欠乏性湿疹）、粉瘤（表皮嚢腫）、赤ら顔（酒さ））
+- 医師が病名を言った場合はそれを優先、なければ所見から推定
+- 患者情報）には直近のイベント・希望・ライフイベント・趣味嗜好など生活背景を記載。情報がない場合は患者情報）行ごと省略する
+
+【出力フォーマット（厳守）】
+# 疾患名　A）評価・治療方針
+S）主訴（1文）
+O）所見（簡潔に）
+P）処方・指示
+患者情報）生活背景・イベント・希望（情報がある場合のみ記載）
+
+【例】
+# アトピー（アトピー性皮膚炎）　A）軽症〜中等症、外用継続で経過観察
+S）手足の痒み、夜間増悪
+O）四肢に紅斑・丘疹、顔面に赤み
+P）ステロイド外用 1日2回、2週後再診
+患者情報）来月結婚式あり、それまでに改善希望
+---
+# イボ（尋常性疣贅）　A）多発性、冷凍凝固で治療開始
+S）手の疣贅
+O）手背に多発
+P）冷凍凝固療法`},
+{id:"lab-exam-detail",name:"📋 詳細",prompt:`あなたは皮膚科専門の医療秘書です。以下の書き起こしテキストをカルテ形式で要約してください。
+
+【話者分離ルール】
+- 「です」「ます」「ください」等の丁寧語・指示語は医師/医療従事者の発言と判断
+- 「痛い」「かゆい」「気になる」「〜してほしい」等の訴え・希望は患者の発言と判断
+- 「塗ってください」「飲んでください」は医師の指示
+- 「塗っています」「飲んでいます」は患者の報告
+- 診断名・処方の決定は医師、症状の訴えは患者として分離
+
+【複数疾患への対応】
+- 会話中に複数の疾患・症状が話題になった場合、疾患ごとに「# 疾患名 A）/S）/O）/P）/患者情報）」をまとめる
+- 各疾患ブロックを --- で区切る
+
+【A）評価のルール】
+- A）は医師の評価・治療方針判断・重症度・経過判断を記載
+- 1〜3行程度の簡潔な記載（重症度 + 治療方針判断）
+- 例: 「軽症、外用継続で改善見込み」「中等症、生物学的製剤導入を検討」「慢性化、長期管理が必要」
+
+【# 疾患名の記載ルール】
+- # の後には「平易な表現（正式な医学用語）」の形式で記載する
+- 例: # 水虫（足白癬）、# ニキビ（尋常性ざ瘡）、# イボ（尋常性疣贅）
+- 医師が病名を明言した場合はその病名を優先
+- 明言がない場合は主訴と所見から推定
+- 変換表: 水虫（足白癬）、爪水虫（爪白癬）、たむし（体部白癬）、しらくも（頭部白癬）、ニキビ（尋常性ざ瘡）、イボ（尋常性疣贅）、アトピー（アトピー性皮膚炎）、かぶれ（接触性皮膚炎）、脂漏性湿疹（脂漏性皮膚炎）、乾燥肌の湿疹（皮脂欠乏性湿疹）、手荒れ（手湿疹）、汗の湿疹（汗疱）、じんましん（蕁麻疹）、薬のアレルギー（薬疹）、ヘルペス（単純疱疹）、帯状ヘルペス（帯状疱疹）、とびひ（伝染性膿痂疹）、水いぼ（伝染性軟属腫）、あせも（汗疹）、しもやけ（凍瘡）、シミ（肝斑）、老人性シミ（日光黒子）、老人性イボ（脂漏性角化症）、ホクロ（色素性母斑）、タコ（胼胝）、ウオノメ（鶏眼）、やけど（熱傷）、床ずれ（褥瘡）、赤ら顔（酒さ）、かゆみ（皮膚掻痒症）、円形ハゲ（円形脱毛症）、薄毛（男性型脱毛症）、白斑（尋常性白斑）、粉瘤（表皮嚢腫）、おでき（せつ）
+- 専門用語が一般的にもわかりやすい場合はそのまま使用: 乾癬（尋常性乾癬）、掌蹠膿疱症、ケロイド、蜂窩織炎、多形紅斑、光線過敏症、扁平苔癬、疥癬
+- 該当がない場合は会話中の表現をそのまま使用
+
+【出力フォーマット（厳守）】
+# 疾患名　A）評価・治療方針
+S）主訴内容
+O）所見内容
+P）計画内容
+患者情報）背景やイベント情報
+
+【複数疾患の場合の例】
+# かぶれ（接触性皮膚炎）　A）軽症、外用で1週間経過観察
+S）両前腕の痒み
+O）紅斑性丘疹を散在性に認める
+P）リンデロン-VG軟膏 1日2回
+---
+# 水虫（足白癬）　A）慢性化、外用継続必要
+S）足指の間がジュクジュクする
+O）第3-4趾間に浸軟・鱗屑
+P）ルリコン液 1日1回
+
+【フォーマットの厳密なルール】
+- 1行目は「# 疾患名」の直後に全角スペースを入れ、続けて「A）評価内容」を同じ1行で記載
+- S）O）P）患者情報）の直後に内容を続ける（改行しない）
+- 各行の間に空行を入れない
+- イベント情報（結婚式・旅行等）は患者情報）に記載
+- 会話にない情報は推測しない
+- 会話に含まれない項目は出力しない（「言及なし」と書かない）
+- コンパクトに詰めて記載`}
+];
+const LAB_EXAM_TPL_IDS=["lab-exam-brief","lab-exam-std","lab-exam-detail"];
 const[insightResult,setInsightResult]=useState("");
 const[insightLoading,setInsightLoading]=useState(false);
 const[insightModal,setInsightModal]=useState(false);
@@ -2313,7 +2426,7 @@ const runLabAnalyzeAll=async()=>{
   // それ以外は従来通りクライアント側でプロンプト組立 → text として送信
   let textBody, systemPrompt;
   if(labTemplate==="exam"){
-    const examTpl=T.find(x=>x.id===labExamTplId)||T.find(x=>x.id==="soap-std")||T[0];
+    const examTpl=LAB_EXAM_TEMPLATES.find(x=>x.id===labExamTplId)||LAB_EXAM_TEMPLATES.find(x=>x.id==="lab-exam-std")||LAB_EXAM_TEMPLATES[0];
     textBody=tx;
     systemPrompt=(examTpl?.prompt||"")+LAB_FORBIDDEN_RULES;
   }else{
@@ -2372,7 +2485,7 @@ const restoreLab=(item)=>{
   setLabText(item.input_text||"");
   setLabResults([{model:item.ai_model||"gemini-3-5-flash",status:"done",output:item.output_text||"",usage:item.scores?.usage||null,startedAt:0,endedAt:item.scores?.duration_ms||0,isRestored:true}]);
   if(item.scores?.template&&LAB_TEMPLATES[item.scores.template])setLabTemplate(item.scores.template);
-  if(item.scores?.exam_tpl_id&&T.find(x=>x.id===item.scores.exam_tpl_id))setLabExamTplId(item.scores.exam_tpl_id);
+  if(item.scores?.exam_tpl_id&&LAB_EXAM_TEMPLATES.find(x=>x.id===item.scores.exam_tpl_id))setLabExamTplId(item.scores.exam_tpl_id);
   setLabCompareTab("all");
   setLabHistOpen(false);
   sSt(`✓ ${toJSTDate(item.created_at)} の要約を復元しました`);
@@ -4590,9 +4703,9 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
     )})}
   </div>
   {labTemplate==="exam"&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"#fafaf9",border:`1px solid ${C.g200}`}}>
-    <div style={{fontSize:11,fontWeight:600,color:C.g600,marginBottom:6}}>📋 診察サブテンプレート（既存の診察画面と同じプロンプトを使用）</div>
+    <div style={{fontSize:11,fontWeight:600,color:C.g600,marginBottom:6}}>📋 診察サブテンプレート（A）評価を1行目配置・要約ラボ専用プロンプト）</div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-      {["soap-min","soap-std","soap"].map(id=>T.find(t=>t.id===id)).filter(Boolean).map(tpl=>{const sel=labExamTplId===tpl.id;return(
+      {LAB_EXAM_TEMPLATES.map(tpl=>{const sel=labExamTplId===tpl.id;return(
         <button key={tpl.id} onClick={()=>{setLabExamTplId(tpl.id);try{localStorage.setItem("mk_labExamTplId",tpl.id)}catch{}}} style={{padding:"5px 10px",borderRadius:8,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:11,fontWeight:sel?700:500,color:sel?C.pD:C.g600,cursor:"pointer",fontFamily:"inherit"}}>{tpl.name}</button>
       )})}
     </div>
