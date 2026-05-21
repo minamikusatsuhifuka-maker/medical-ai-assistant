@@ -683,7 +683,7 @@ const[csOut,setCsOut]=useState(""),[csLd,setCsLd]=useState(false),[csMode,setCsM
 const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState(""),[csUsage,setCsUsage]=useState(null);
 const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useState(false),[csHistoryLd,setCsHistoryLd]=useState(false);
 const[csModel,setCsModel]=useState("gemini-pro");
-const[csModels,setCsModels]=useState(["gemini-pro"]);
+const[csModels,setCsModels]=useState(["gemini-pro","gemini-3-pro","gemini-3-5-flash","claude"]);
 const[csResults,setCsResults]=useState([]);
 const[csCompareTab,setCsCompareTab]=useState("all");
 const[csPickOpen,setCsPickOpen]=useState(false),[csPickList,setCsPickList]=useState([]),[csPickLoading,setCsPickLoading]=useState(false),[csPickSearch,setCsPickSearch]=useState("");
@@ -692,7 +692,7 @@ useEffect(()=>{try{
   if(sm){
     const arr=JSON.parse(sm);
     if(Array.isArray(arr)&&arr.length>0){
-      const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="claude");
+      const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");
       if(valid.length>0){setCsModels(valid);setCsModel(valid[0]);return}
     }
   }
@@ -1004,7 +1004,7 @@ const[journeyResult,setJourneyResult]=useState("");
 const[journeyLoading,setJourneyLoading]=useState(false);
 const[journeyModal,setJourneyModal]=useState(false);
 const[journeyMeta,setJourneyMeta]=useState(null); // {model, usage}
-const[journeyModels,setJourneyModels]=useState(["gemini-pro"]);
+const[journeyModels,setJourneyModels]=useState(["gemini-pro","gemini-3-pro","gemini-3-5-flash","claude"]);
 const[journeyResults,setJourneyResults]=useState([]); // 並列実行用
 const[journeyCompareTab,setJourneyCompareTab]=useState("all");
 const[journeySaving,setJourneySaving]=useState(false),[journeySaveMsg,setJourneySaveMsg]=useState("");
@@ -1012,7 +1012,7 @@ const[journeyHistOpen,setJourneyHistOpen]=useState(false),[journeyHistList,setJo
 const journeyAbortRef=useRef(null);
 useEffect(()=>{try{
   const s=localStorage.getItem("mk_journeyModels");
-  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="claude");if(valid.length>0)setJourneyModels(valid)}}
+  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setJourneyModels(valid)}}
 }catch{}},[]);
 const toggleJourneyModel=(m)=>{
   setJourneyModels(prev=>{
@@ -4821,7 +4821,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {[{k:"full",l:"📊 総合分析"},{k:"listening",l:"👂 傾聴・共感"},{k:"needs",l:"🎯 ニーズ把握"},{k:"marketing",l:"💡 マーケティング"},{k:"plan",l:"📅 年間計画"}].map(m=>(<button key={m.k} onClick={()=>setCsMode(m.k)} style={{padding:"5px 12px",borderRadius:10,border:csMode===m.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:csMode===m.k?C.pLL:C.w,fontSize:12,fontWeight:csMode===m.k?700:500,color:csMode===m.k?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{m.l}</button>))}
 </div>
 <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=csModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleCsModel(m.v)} disabled={csLd} style={{position:"relative",flex:"1 1 140px",padding:"10px 12px 8px",borderRadius:10,border:selected?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?C.pD:C.g500,cursor:csLd?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:4,left:6,color:C.pD,fontSize:13,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
+{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash ✨",desc:"最新・超高速"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=csModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleCsModel(m.v)} disabled={csLd} style={{position:"relative",flex:"1 1 140px",padding:"10px 12px 8px",borderRadius:10,border:selected?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?C.pD:C.g500,cursor:csLd?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:4,left:6,color:C.pD,fontSize:13,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
 </div>
 <div style={{marginBottom:10}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -5007,7 +5007,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 </div>
 <p style={{fontSize:12,color:"#0c4a6e",marginBottom:10,lineHeight:1.6}}>カウンセリング・診療記録をAIが分析し、患者が「初回来院 → 検討 → 決断 → リピート」の各フェーズで感じている不安・期待・行動パターンを可視化します。ホームページ改善・問診票設計・接遇向上に活用できます。</p>
 <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=journeyModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleJourneyModel(m.v)} disabled={journeyLoading} style={{position:"relative",flex:"1 1 140px",padding:"8px 10px 6px",borderRadius:10,border:selected?"2px solid #0369a1":"1px solid #cbd5e1",background:selected?"#e0f2fe":"#fff",fontSize:11,fontWeight:selected?700:500,color:selected?"#0369a1":"#64748b",cursor:journeyLoading?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:3,left:6,color:"#0369a1",fontSize:12,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:9,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
+{[{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash ✨",desc:"最新・超高速"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=journeyModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleJourneyModel(m.v)} disabled={journeyLoading} style={{position:"relative",flex:"1 1 140px",padding:"8px 10px 6px",borderRadius:10,border:selected?"2px solid #0369a1":"1px solid #cbd5e1",background:selected?"#e0f2fe":"#fff",fontSize:11,fontWeight:selected?700:500,color:selected?"#0369a1":"#64748b",cursor:journeyLoading?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:3,left:6,color:"#0369a1",fontSize:12,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:9,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
 </div>
 {journeyLoading?(<button onClick={stopJourneyMap} style={{width:"100%",padding:"14px",borderRadius:12,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⏹ AI生成中... (クリックで停止)</button>):(<button onClick={journeyModels.length>1?runJourneyMapAll:runJourneyMap} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>{journeyModels.length>1?`🗺️ ${journeyModels.length}個のAIで一斉生成`:"🗺️ 患者ジャーニーマップを生成する"}</button>)}
 </div>
