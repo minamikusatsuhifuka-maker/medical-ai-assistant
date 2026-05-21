@@ -135,9 +135,8 @@ async function callGeminiSingle(geminiModel, text, prompt, maxOutputTokens) {
   return { summary, model: geminiModel, finishReason };
 }
 
-// Gemini フォールバック呼び出し（flash → pro）
-async function callGeminiFallback(text, prompt, maxOutputTokens = 8192) {
-  const models = ["gemini-2.5-flash", "gemini-2.5-pro"];
+// Gemini フォールバック呼び出し（モデルリストを順に試行）
+async function callGeminiList(models, text, prompt, maxOutputTokens = 8192) {
   let lastError = null;
   for (const m of models) {
     try {
@@ -147,6 +146,10 @@ async function callGeminiFallback(text, prompt, maxOutputTokens = 8192) {
     }
   }
   throw new Error("Gemini全モデル失敗: " + lastError);
+}
+// 既存互換: flash → 2.5 pro フォールバック（呼び出し元が変わるまで維持）
+async function callGeminiFallback(text, prompt, maxOutputTokens = 8192) {
+  return await callGeminiList(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"], text, prompt, maxOutputTokens);
 }
 
 // Claude 呼び出し
@@ -195,10 +198,16 @@ async function callModel(model, text, prompt, maxOutputTokens) {
     return await callClaude(text, prompt, maxOutputTokens);
   }
   if (model === "gemini-pro") {
-    return await callGeminiSingle("gemini-2.5-pro", text, prompt, maxOutputTokens);
+    return await callGeminiList(["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"], text, prompt, maxOutputTokens);
   }
-  // デフォルト: flash → pro フォールバック
-  return await callGeminiFallback(text, prompt, maxOutputTokens);
+  if (model === "gemini-3-pro") {
+    return await callGeminiList(["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"], text, prompt, maxOutputTokens);
+  }
+  if (model === "gemini-3-5-flash") {
+    return await callGeminiList(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"], text, prompt, maxOutputTokens);
+  }
+  // デフォルト（gemini-flash 等の既存互換キー含む）: 3.5 Flash 優先
+  return await callGeminiList(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"], text, prompt, maxOutputTokens);
 }
 
 // チャンク要約（既存プロンプト維持）
@@ -236,7 +245,7 @@ export async function POST(request) {
   const startTime = Date.now();
   try {
     const { text, prompt, model: reqModel } = await request.json();
-    const model = reqModel || "gemini-flash"; // デフォルトは既存互換（flash→pro フォールバック）
+    const model = reqModel || "gemini-3-5-flash"; // デフォルトは Gemini 3.5 Flash（2026-05-19 GA）
     if (!text || !text.trim()) {
       return Response.json({ error: "テキストが必要です" }, { status: 400 });
     }
