@@ -1039,11 +1039,14 @@ const[labSelectMode,setLabSelectMode]=useState(false);
 const[labSelectedIds,setLabSelectedIds]=useState([]);
 const[labSaving,setLabSaving]=useState(false);
 const[labSaveMsg,setLabSaveMsg]=useState("");
+const[labExamTplId,setLabExamTplId]=useState("soap-std");
 useEffect(()=>{try{
   const s=localStorage.getItem("mk_labModels");
   if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setLabModels(valid)}}
   const t=localStorage.getItem("mk_labTemplate");
   if(t&&["exam","minutes","counseling","free"].includes(t))setLabTemplate(t);
+  const et=localStorage.getItem("mk_labExamTplId");
+  if(et&&T.find(x=>x.id===et))setLabExamTplId(et);
 }catch{}},[]);
 const toggleLabModel=(m)=>{
   setLabModels(prev=>{
@@ -2287,11 +2290,12 @@ const saveCsResultsAll=async()=>{
 };
 
 // 要約テストラボ ハンドラ
-const runSingleLabSummary=async(model,promptText,controller)=>{
+const LAB_FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント";
+const runSingleLabSummary=async(model,textBody,systemPrompt,controller)=>{
   const res=await fetch("/api/summarize",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({text:promptText,mode:model==="claude"?"claude":"gemini",prompt:"以下のテキストを要約してください。",model_preference:model,context:"summary-lab"}),
+    body:JSON.stringify({text:textBody,mode:model==="claude"?"claude":"gemini",prompt:systemPrompt,model_preference:model,context:"summary-lab"}),
     signal:controller.signal
   });
   if(!res.ok)throw new Error("HTTP "+res.status);
@@ -2305,12 +2309,22 @@ const runLabAnalyzeAll=async()=>{
   if(tx.length<50){sSt("⚠️ テキストが短すぎます（50文字以上推奨）");return}
   if(labAbortRef.current){try{labAbortRef.current.forEach(c=>{try{c.abort()}catch{}})}catch{}}
   setLabCompareTab("all");setLabBusy(true);setLabSaveMsg("");
-  const promptText=(LAB_TEMPLATES[labTemplate]||LAB_TEMPLATES.free).prompt.replace("{TEXT}",tx);
+  // 診察テンプレは既存 T 配列のプロンプトを system prompt として使用、text は生の書き起こし
+  // それ以外は従来通りクライアント側でプロンプト組立 → text として送信
+  let textBody, systemPrompt;
+  if(labTemplate==="exam"){
+    const examTpl=T.find(x=>x.id===labExamTplId)||T.find(x=>x.id==="soap-std")||T[0];
+    textBody=tx;
+    systemPrompt=(examTpl?.prompt||"")+LAB_FORBIDDEN_RULES;
+  }else{
+    textBody=(LAB_TEMPLATES[labTemplate]||LAB_TEMPLATES.free).prompt.replace("{TEXT}",tx);
+    systemPrompt="以下のテキストを要約してください。";
+  }
   const controllers=labModels.map(()=>new AbortController());
   labAbortRef.current=controllers;
   const initial=labModels.map(m=>({model:m,status:"running",output:"",error:null,usage:null,startedAt:Date.now(),endedAt:null}));
   setLabResults(initial);
-  await Promise.allSettled(labModels.map((m,i)=>runSingleLabSummary(m,promptText,controllers[i])
+  await Promise.allSettled(labModels.map((m,i)=>runSingleLabSummary(m,textBody,systemPrompt,controllers[i])
     .then(r=>{setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,...r,status:"done",endedAt:Date.now()}:x))})
     .catch(e=>{const aborted=e.name==="AbortError";setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
   ));
@@ -2336,7 +2350,7 @@ const saveLabResultsAll=async()=>{
         input_text:labText,
         output_text:r.output,
         ai_model:r.modelLabel||csModelLabel(r.model),
-        scores:{template:labTemplate,usage:r.usage||null,duration_ms:(r.endedAt||0)-(r.startedAt||0)}
+        scores:{template:labTemplate,exam_tpl_id:labTemplate==="exam"?labExamTplId:null,usage:r.usage||null,duration_ms:(r.endedAt||0)-(r.startedAt||0)}
       });
       if(error)fail++;else ok++;
     }catch{fail++}
@@ -2358,6 +2372,7 @@ const restoreLab=(item)=>{
   setLabText(item.input_text||"");
   setLabResults([{model:item.ai_model||"gemini-3-5-flash",status:"done",output:item.output_text||"",usage:item.scores?.usage||null,startedAt:0,endedAt:item.scores?.duration_ms||0,isRestored:true}]);
   if(item.scores?.template&&LAB_TEMPLATES[item.scores.template])setLabTemplate(item.scores.template);
+  if(item.scores?.exam_tpl_id&&T.find(x=>x.id===item.scores.exam_tpl_id))setLabExamTplId(item.scores.exam_tpl_id);
   setLabCompareTab("all");
   setLabHistOpen(false);
   sSt(`✓ ${toJSTDate(item.created_at)} の要約を復元しました`);
@@ -4574,6 +4589,14 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
       <button key={k} onClick={()=>{setLabTemplate(k);try{localStorage.setItem("mk_labTemplate",k)}catch{}}} style={{flex:"1 1 120px",padding:"8px 10px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:"pointer",fontFamily:"inherit"}}>{v.label}</button>
     )})}
   </div>
+  {labTemplate==="exam"&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"#fafaf9",border:`1px solid ${C.g200}`}}>
+    <div style={{fontSize:11,fontWeight:600,color:C.g600,marginBottom:6}}>📋 診察サブテンプレート（既存の診察画面と同じプロンプトを使用）</div>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+      {T.map(tpl=>{const sel=labExamTplId===tpl.id;return(
+        <button key={tpl.id} onClick={()=>{setLabExamTplId(tpl.id);try{localStorage.setItem("mk_labExamTplId",tpl.id)}catch{}}} style={{padding:"5px 10px",borderRadius:8,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:11,fontWeight:sel?700:500,color:sel?C.pD:C.g600,cursor:"pointer",fontFamily:"inherit"}}>{tpl.name}</button>
+      )})}
+    </div>
+  </div>}
 </div>
 <div style={{marginBottom:12}}>
   <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
