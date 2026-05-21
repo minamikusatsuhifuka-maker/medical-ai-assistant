@@ -4592,7 +4592,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
   {labTemplate==="exam"&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"#fafaf9",border:`1px solid ${C.g200}`}}>
     <div style={{fontSize:11,fontWeight:600,color:C.g600,marginBottom:6}}>📋 診察サブテンプレート（既存の診察画面と同じプロンプトを使用）</div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-      {T.map(tpl=>{const sel=labExamTplId===tpl.id;return(
+      {["soap-min","soap-std","soap"].map(id=>T.find(t=>t.id===id)).filter(Boolean).map(tpl=>{const sel=labExamTplId===tpl.id;return(
         <button key={tpl.id} onClick={()=>{setLabExamTplId(tpl.id);try{localStorage.setItem("mk_labExamTplId",tpl.id)}catch{}}} style={{padding:"5px 10px",borderRadius:8,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:11,fontWeight:sel?700:500,color:sel?C.pD:C.g600,cursor:"pointer",fontFamily:"inherit"}}>{tpl.name}</button>
       )})}
     </div>
