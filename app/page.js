@@ -1654,7 +1654,7 @@ minAutoSaveRef.current=setInterval(()=>{saveMinDraft(true)},30*60*1000)};
 const minStop=()=>{
 if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
 if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
-if(minMR.current&&minMR.current.state==="recording")minMR.current.stop();
+if(minMR.current&&minMR.current.state!=="inactive"){try{minMR.current.stop()}catch{}}
 setMinRS("inactive");minSR.current="inactive";xAM();
 // 録音停止時もドラフトを削除
 if(minDraftId&&supabase){
@@ -1667,6 +1667,22 @@ const blob=new Blob(minAllAudioChunks.current,{type:"audio/webm"});
 minAllAudioChunks.current=[];
 saveMinAudio(blob,minTitle);
 }
+};
+// Stage 2: 議事録 pause/resume （minGo本体は無改修。minTI から ti/ci を取り出して操作する純粋追加）
+const pauseMin=()=>{
+  if(!minMR.current||minMR.current.state!=="recording")return;
+  try{minMR.current.pause()}catch(e){console.warn("[pauseMin] MR pause error:",e);return}
+  if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null;}
+  setMinRS("paused");
+};
+const resumeMin=()=>{
+  if(!minMR.current||minMR.current.state!=="paused")return;
+  try{minMR.current.resume()}catch(e){console.warn("[resumeMin] MR resume error:",e);return}
+  // minGo の ti/ci と完全に同じコードをコピー
+  const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);
+  const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);
+  minTI.current={ti,ci};
+  setMinRS("recording");
 };
 // === セミナー学習: 録音（議事録 minGo/minStop を流用、書き起こし出力先のみ smnTranscript に差し替え） ===
 const smnGo=async()=>{
@@ -4361,10 +4377,10 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {minOut.trim()&&!minOut.startsWith("エラー")&&!minLd&&<button onClick={saveMinOutputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.p}`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📋 要約を保存</button>}
 <button onClick={minNext} style={{padding:"10px 24px",borderRadius:14,border:"2px solid "+C.p,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.12)"}}>次へ ▶</button></div>
 :minRS==="paused"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
-<button onClick={()=>{minMR.current&&minMR.current.state==="paused"&&minMR.current.resume();setMinRS("recording")}} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
+<button onClick={resumeMin} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
 <button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button></div>
 :<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
-<button onClick={()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.pause();setMinRS("paused")}}} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
+<button onClick={pauseMin} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
 <button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button>
 </div>}
 <span style={{fontSize:12,color:minRS==="recording"?C.rG:minRS==="paused"?C.warn:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":minRS==="paused"?"⏸ 一時停止中":"停止"}</span>
