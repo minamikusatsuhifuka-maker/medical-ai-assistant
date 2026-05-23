@@ -1050,6 +1050,73 @@ const[labSelectedIds,setLabSelectedIds]=useState([]);
 const[labSaving,setLabSaving]=useState(false);
 const[labSaveMsg,setLabSaveMsg]=useState("");
 const[labExamTplId,setLabExamTplId]=useState("lab-exam-std");
+// === 履歴タイトル インライン編集（4画面共通） ===
+const[editingTitleId,setEditingTitleId]=useState(null);
+const[editingTitleValue,setEditingTitleValue]=useState("");
+const editingTitleInputRef=useRef(null);
+const startEditTitle=(item)=>{
+  setEditingTitleId(item.id);
+  setEditingTitleValue(item.title||"");
+  setTimeout(()=>{
+    if(editingTitleInputRef.current){
+      editingTitleInputRef.current.focus();
+      editingTitleInputRef.current.select();
+    }
+  },0);
+};
+const cancelEditTitle=()=>{
+  setEditingTitleId(null);
+  setEditingTitleValue("");
+};
+const saveEditTitle=async(item,reloadFn,localUpdater)=>{
+  const newTitle=editingTitleValue.trim();
+  if(!newTitle){sSt("⚠️ タイトルを入力してください");return}
+  if(newTitle===item.title){cancelEditTitle();return}
+  if(!supabase){sSt("⚠️ Supabase未接続");return}
+  try{
+    const{error}=await supabase.from("counseling_analyses").update({title:newTitle}).eq("id",item.id);
+    if(error)throw error;
+    setEditingTitleId(null);
+    setEditingTitleValue("");
+    sSt("✓ タイトルを更新しました");
+    if(typeof localUpdater==="function")localUpdater(item.id,newTitle);
+    else if(typeof reloadFn==="function")await reloadFn();
+  }catch(e){
+    console.error("[saveEditTitle] error:",e);
+    sSt("⚠️ タイトル更新失敗: "+(e.message||e));
+  }
+};
+const renderTitleEditor=(item,opts)=>{
+  const{reloadFn,isSelectMode,localUpdater,titleStyle,wrapperStyle}=opts||{};
+  const isEditing=editingTitleId===item.id;
+  if(isEditing){
+    return(<div style={{display:"flex",gap:4,alignItems:"center",flex:1,minWidth:0,...(wrapperStyle||{})}} onClick={e=>e.stopPropagation()}>
+      <input ref={editingTitleInputRef} type="text" value={editingTitleValue}
+        onChange={e=>setEditingTitleValue(e.target.value)}
+        onKeyDown={e=>{
+          if(e.key==="Enter"){e.preventDefault();saveEditTitle(item,reloadFn,localUpdater)}
+          else if(e.key==="Escape"){e.preventDefault();cancelEditTitle()}
+        }}
+        onClick={e=>e.stopPropagation()}
+        style={{flex:1,minWidth:0,padding:"4px 8px",border:"2px solid #7c3aed",borderRadius:6,fontSize:13,fontWeight:600,fontFamily:"inherit",outline:"none"}}
+      />
+      <button onClick={e=>{e.stopPropagation();saveEditTitle(item,reloadFn,localUpdater)}}
+        style={{padding:"4px 8px",background:"#10b981",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,flexShrink:0}}
+        title="保存（Enter）">✓</button>
+      <button onClick={e=>{e.stopPropagation();cancelEditTitle()}}
+        style={{padding:"4px 8px",background:"#888",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,flexShrink:0}}
+        title="キャンセル（Esc）">✕</button>
+    </div>);
+  }
+  return(<div
+    onClick={e=>{if(isSelectMode)return;e.stopPropagation();startEditTitle(item)}}
+    onMouseEnter={e=>{if(!isSelectMode)e.currentTarget.style.background="#f0eaff"}}
+    onMouseLeave={e=>{e.currentTarget.style.background="transparent"}}
+    title={isSelectMode?"":"クリックして編集"}
+    style={{cursor:isSelectMode?"default":"text",padding:"2px 4px",borderRadius:4,transition:"background 0.15s",wordBreak:"break-word",...(titleStyle||{})}}>
+    {item.title||"（タイトルなし）"}{!isSelectMode&&<span style={{fontSize:11,color:"#888",marginLeft:4}}>✏️</span>}
+  </div>);
+};
 useEffect(()=>{try{
   const s=localStorage.getItem("mk_labModels");
   if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setLabModels(valid)}}
@@ -4752,7 +4819,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
             {smnSelectMode&&<input type="checkbox" checked={smnSel} onChange={()=>{}} onClick={e=>e.stopPropagation()} style={{width:18,height:18,cursor:"pointer",flexShrink:0,accentColor:"#dc2626"}}/>}
             <div style={{flex:1,minWidth:200}}>
-              <div style={{fontSize:13,fontWeight:700,color:C.pD}}>{it.title||"無題"}</div>
+              {renderTitleEditor(it,{reloadFn:openSmnHist,isSelectMode:smnSelectMode,localUpdater:(id,t)=>setSmnHistList(p=>p.map(x=>x.id===id?{...x,title:t}:x)),titleStyle:{fontSize:13,fontWeight:700,color:C.pD}})}
               <div style={{fontSize:10,color:C.g400,marginTop:2}}>{new Date(it.created_at).toLocaleString("ja-JP")} ・ {it.ai_model||""}</div>
             </div>
             {!smnSelectMode&&<div style={{display:"flex",gap:6}}>
@@ -4883,7 +4950,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
         <div key={h.id} style={{border:`1px solid ${sel?C.p:C.g200}`,borderRadius:10,padding:10,background:sel?C.pLL:C.w,cursor:"pointer",display:"flex",alignItems:"flex-start",gap:8}} onClick={()=>{if(labSelectMode){setLabSelectedIds(prev=>prev.includes(h.id)?prev.filter(x=>x!==h.id):[...prev,h.id])}else{restoreLab(h)}}}>
           {labSelectMode&&<input type="checkbox" checked={sel} readOnly style={{marginTop:3}}/>}
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:600,color:C.pD,marginBottom:3,wordBreak:"break-all"}}>{h.title}</div>
+            {renderTitleEditor(h,{reloadFn:loadLabHistory,isSelectMode:labSelectMode,localUpdater:(id,t)=>setLabHistList(p=>p.map(x=>x.id===id?{...x,title:t}:x)),titleStyle:{fontSize:13,fontWeight:600,color:C.pD,marginBottom:3,wordBreak:"break-all"}})}
             <div style={{fontSize:10,color:C.g500,marginBottom:4}}>{toJSTDate(h.created_at)} ・ {csModelLabel(h.ai_model)}</div>
             <div style={{fontSize:11,color:C.g600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(h.input_text||"").slice(0,120)}{(h.input_text||"").length>120?"...":""}</div>
           </div>
@@ -5030,7 +5097,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
           <span style={{fontSize:10,fontWeight:700,color:typeColor,padding:"2px 8px",borderRadius:6,background:typeColor+"15",border:`1px solid ${typeColor}44`}}>{r.analysis_type||"分析"}</span>
           <span style={{fontSize:10,color:"#94a3b8"}}>{dateStr}</span>
         </div>
-        <div style={{fontSize:13,fontWeight:600,color:"#334155",wordBreak:"break-word"}}>{r.title||"（無題）"}</div>
+        {renderTitleEditor(r,{reloadFn:loadCsHistory,isSelectMode:csSelectMode,localUpdater:(id,t)=>setCsHistory(p=>p.map(x=>x.id===id?{...x,title:t}:x)),titleStyle:{fontSize:13,fontWeight:600,color:"#334155",wordBreak:"break-word"}})}
         {r.scores&&Object.keys(r.scores).length>0&&<div style={{fontSize:10,color:"#6b5fd1",marginTop:4}}>📊 スコア{Object.keys(r.scores).length}項目</div>}
       </div>
       {!csSelectMode&&<div style={{display:"flex",gap:4}}>
@@ -5223,7 +5290,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
             {journeySelectMode&&<input type="checkbox" checked={jrnSel} onChange={()=>{}} onClick={e=>e.stopPropagation()} style={{width:18,height:18,marginTop:2,cursor:"pointer",flexShrink:0,accentColor:"#dc2626"}}/>}
             <div onClick={journeySelectMode?undefined:()=>restoreJourney(item)} style={{cursor:journeySelectMode?"pointer":"pointer",paddingRight:journeySelectMode?0:36,flex:1,minWidth:0}}>
               <div style={{fontSize:11,color:"#0369a1",fontWeight:600,marginBottom:4}}>📅 {formatCsPickDate(item.created_at)}{item.ai_model?<span style={{marginLeft:6,color:"#94a3b8"}}>／ {item.ai_model}</span>:null}</div>
-              <div style={{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}}>{item.title||"無題"}</div>
+              {renderTitleEditor(item,{reloadFn:openJourneyHist,isSelectMode:journeySelectMode,localUpdater:(id,t)=>setJourneyHistList(p=>p.map(x=>x.id===id?{...x,title:t}:x)),titleStyle:{fontSize:13,fontWeight:700,color:"#0c4a6e",marginBottom:6,wordBreak:"break-word"}})}
               <div style={{fontSize:12,color:"#475569",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{preview||"（プレビューなし）"}</div>
             </div>
             {!journeySelectMode&&<button onClick={e=>{e.stopPropagation();deleteJourneyHist(item.id)}} title="この履歴を削除" style={{position:"absolute",top:8,right:8,padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:"#fff",fontSize:11,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>}
