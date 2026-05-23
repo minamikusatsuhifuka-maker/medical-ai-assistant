@@ -612,7 +612,7 @@ const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-5-flash","gemini-pro","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae)}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-5-flash","gemini-pro","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-pro","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae)}catch{}},[]);
 useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}
 // ノイズパターンをSupabaseから読み込む
 try{const{data:npData}=await supabase.from("noise_patterns").select("pattern").order("created_at",{ascending:false});if(npData&&npData.length>0){const patterns=npData.map(r=>r.pattern);setNoisePatterns(patterns);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(patterns))}catch{}}}catch(e){console.error("noise_patterns load error:",e)}
@@ -848,7 +848,7 @@ const[smnTitle,setSmnTitle]=useState("");
 const[smnTranscript,setSmnTranscript]=useState("");
 const[smnSummary,setSmnSummary]=useState("");
 const[smnSummaryLoading,setSmnSummaryLoading]=useState(false);
-const[smnSummaryModel,setSmnSummaryModel]=useState("gemini-3-pro");
+const[smnSummaryModel,setSmnSummaryModel]=useState("gemini-3-5-flash");
 const[smnSummaryModelUsed,setSmnSummaryModelUsed]=useState("");
 const[smnGensparkText,setSmnGensparkText]=useState("");
 const[smnGensparkLoading,setSmnGensparkLoading]=useState(false);
@@ -856,6 +856,8 @@ const[smnInsights,setSmnInsights]=useState("");
 const[smnInsightsLoading,setSmnInsightsLoading]=useState(false);
 const[smnHistOpen,setSmnHistOpen]=useState(false);
 const[smnHistList,setSmnHistList]=useState([]);
+// セミナー保存済み状態（保存完了で true、内容変更で false）
+const[smnSaved,setSmnSaved]=useState(false);
 // R-3: セミナー音声保存切替
 const[smnAudioSave,setSmnAudioSave]=useState(()=>{if(typeof window==="undefined")return false;try{return localStorage.getItem("mk_smnAudioSave")==="true"}catch{return false}});
 // === D-1〜D-3 複数選択削除モード state ===
@@ -871,6 +873,8 @@ const smnTR=useRef(null);
 // R-3: 音声保存用
 const smnAllAudioChunksRef=useRef([]);
 const smnAudioPathRef=useRef(null);
+// restore中フラグ: 復元時の内容変更で smnSaved を false に戻さないため
+const smnRestoringRef=useRef(false);
 const smnTextRef=useRef("");
 useEffect(()=>{smnTextRef.current=smnTranscript},[smnTranscript]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
@@ -1815,6 +1819,7 @@ const saveSmnResult=async()=>{
     if(smnAudioPathRef.current)insertData.audio_path=smnAudioPathRef.current;
     const{error}=await supabase.from("counseling_analyses").insert(insertData);
     if(error)throw error;
+    setSmnSaved(true);
     sSt("✓ 保存しました");
   }catch(e){
     console.error("[smnSave] error:",e);
@@ -1834,6 +1839,7 @@ const openSmnHist=async()=>{
   }
 };
 const restoreSmnRecord=(item)=>{
+  smnRestoringRef.current=true;
   setSmnTitle(item.title?item.title.replace(/^\[セミナー\]\s*/,""):"");
   setSmnTranscript(item.input_text||"");
   setSmnSummary(item.output_text||"");
@@ -1846,6 +1852,7 @@ const restoreSmnRecord=(item)=>{
   // R-3: 音声パスも復元
   smnAudioPathRef.current=item.audio_path||null;
   setSmnHistOpen(false);
+  setSmnSaved(true);
   sSt("✓ "+new Date(item.created_at).toLocaleDateString("ja-JP")+" のセミナーを復元しました");
 };
 const deleteSmnRecord=async(id)=>{
@@ -1865,10 +1872,13 @@ const clearSmnAll=()=>{
   if(!window.confirm("入力中のセミナー学習内容（書き起こし・要約・Genspark・気づき）をすべてクリアしますか？"))return;
   smnStop();
   setSmnTitle("");setSmnTranscript("");setSmnSummary("");setSmnGensparkText("");setSmnInsights("");setSmnSummaryModelUsed("");
+  setSmnSaved(false);
   // R-3: 音声状態もリセット
   smnAudioPathRef.current=null;smnAllAudioChunksRef.current=[];
 };
 const loadMinHist=async()=>{if(!supabase)return;try{const[{data},{count}]=await Promise.all([supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(500),supabase.from("minutes").select("*",{count:"exact",head:true})]);if(data)setMinHist(data);if(typeof count==="number")setMinHistTotal(count);console.log(`[minHist] fetched: ${data?.length||0}件 / total: ${count||0}件`)}catch(e){console.error("[minHist] load error:",e)}};
+// 議事録画面を開いた時に履歴を自動取得
+useEffect(()=>{if(page==="minutes"&&supabase){loadMinHist()}},[page]);
 const saveMinInputOnly=async()=>{
   if(!supabase||!minIR.current?.trim()){
     sSt("書き起こしがありません");return;
@@ -2264,6 +2274,8 @@ const minNextDiscardAndProceed=()=>{
   sSt("次の打合せへ ✓（保存せず）");
 };
 useEffect(()=>{minSR.current=minRS},[minRS]);
+// セミナー保存済み状態の解除: 書き起こし・要約・Genspark・気づきが変わったら未保存に（復元時は除外）
+useEffect(()=>{if(smnRestoringRef.current){smnRestoringRef.current=false;return}setSmnSaved(false)},[smnTranscript,smnSummary,smnGensparkText,smnInsights]);
 const suggestSnippets=async()=>{if(!supabase)return;setSuggestLd(true);setSuggestedSnippets([]);try{const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(!data||data.length<3){setSuggestedSnippets([{title:"履歴不足",text:"要約履歴が少なすぎます。もう少し使ってから再度お試しください。"}]);return}
 let summaries=data.map(r=>r.output_text).filter(Boolean).slice(0,50).join("\n---\n");
 try{const{data:pd}=await supabase.from("past_records").select("content").order("created_at",{ascending:false}).limit(30);if(pd&&pd.length>0)summaries+="\n\n【過去のカルテ記録】\n"+pd.map(r=>r.content).join("\n---\n")}catch{}
@@ -4412,6 +4424,7 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button>
 </div>}
 <span style={{fontSize:12,color:minRS==="recording"?C.rG:minRS==="paused"?C.warn:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":minRS==="paused"?"⏸ 一時停止中":"停止"}</span>
+{(minRS==="recording"||minRS==="paused")&&<div style={{flex:"1 1 200px",minWidth:120,maxWidth:300,height:10,background:C.g100||"#f0f0f0",borderRadius:5,overflow:"hidden",border:`1px solid ${C.g200}`}}><div style={{width:`${Math.min(100,lv)}%`,height:"100%",background:lv>40?"#10b981":lv>10?"#f59e0b":"#94a3b8",transition:"width 120ms linear, background 200ms"}}/></div>}
 {(minRS==="recording"||minRS==="paused")&&minInp.trim()&&
 <button onClick={()=>saveMinDraft(false)} disabled={minAutoSaving} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.p}`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:minAutoSaving?"wait":"pointer",whiteSpace:"nowrap"}}>
 {minAutoSaving?"💾 保存中...":"💾 今すぐ保存"}
@@ -4528,7 +4541,7 @@ finally{setMinTypoLd(false)}
 {selMinutes.length>=2&&<button onClick={mergeSelectedMinutes} disabled={mergeLd} style={{padding:"4px 12px",borderRadius:8,border:"none",background:mergeLd?C.g200:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:C.w,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>{mergeLd?"⏳ まとめ中...":"🔗 選択分をまとめる("+selMinutes.length+"件)"}</button>}
 <button onClick={deleteMinSelected} title="選択した議事録を一括削除" style={{padding:"4px 10px",borderRadius:8,border:"none",background:"#dc2626",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>🗑 削除({selMinutes.length})</button>
 <button onClick={()=>setSelMinutes([])} style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button></>}
-<button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>🔄 更新</button></div></div>
+<button onClick={loadMinHist} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴を見る</button></div></div>
 {mergeLd&&<div style={{textAlign:"center",padding:16}}><div style={{width:28,height:28,border:"3px solid #e5e7eb",borderTop:"3px solid #7c3aed",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 8px"}}/><span style={{color:"#6b7280",fontSize:12}}>AIが議事録をまとめ中...</span></div>}
 {minHist.filter(m=>m.output_text!=="（録音中・未要約）").map(m=>{const sel=selMinutes.includes(m.id);return(<div key={m.id} style={{padding:10,borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,marginBottom:6,background:sel?C.pLL:C.g50}}>
 <div onClick={()=>setOpenMinId(openMinId===m.id?null:m.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,cursor:"pointer"}}>
@@ -4609,7 +4622,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 
 {/* モデル選択 */}
 <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-{[{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const sel=smnSummaryModel===m.v;return(<button key={m.v} onClick={()=>setSmnSummaryModel(m.v)} disabled={smnSummaryLoading||smnGensparkLoading||smnInsightsLoading} style={{flex:"1 1 140px",padding:"8px 12px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}><div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
+{[{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash ✨",desc:"最新・超高速"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"バランス型"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const sel=smnSummaryModel===m.v;return(<button key={m.v} onClick={()=>{setSmnSummaryModel(m.v);try{localStorage.setItem("mk_smnSummaryModel",m.v)}catch{}}} disabled={smnSummaryLoading||smnGensparkLoading||smnInsightsLoading} style={{flex:"1 1 140px",padding:"8px 10px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}><div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
 </div>
 
 {/* 入力モード切替 */}
@@ -4644,6 +4657,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
       </>
     }
     <span style={{fontSize:12,color:smnRS==="recording"?C.rG:smnRS==="paused"?"#d97706":C.g400,fontWeight:600}}>{smnRS==="recording"?"● 録音中（10秒毎に書き起こし）":smnRS==="paused"?"⏸ 一時停止中":"停止"}</span>
+    {(smnRS==="recording"||smnRS==="paused")&&<div style={{flex:"1 1 200px",minWidth:120,maxWidth:300,height:10,background:C.g100||"#f0f0f0",borderRadius:5,overflow:"hidden",border:`1px solid ${C.g200}`}}><div style={{width:`${Math.min(100,lv)}%`,height:"100%",background:lv>40?"#10b981":lv>10?"#f59e0b":"#94a3b8",transition:"width 120ms linear, background 200ms"}}/></div>}
   </div>
 </div>}
 
@@ -4675,7 +4689,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
     <h3 style={{fontSize:15,fontWeight:700,color:"#2a5018",margin:0}}>📚 詳細要約・まとめ</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnSummary);sSt("✓ 要約をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.p}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
-      <button onClick={saveSmnResult} style={{padding:"4px 12px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+      <button onClick={saveSmnResult} disabled={smnSaved} style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
     </div>
   </div>
   <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{smnSummary}</div>
@@ -4693,7 +4707,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
     <h3 style={{fontSize:15,fontWeight:700,color:"#5b21b6",margin:0}}>📋 Genspark共有資料用テキスト</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnGensparkText);sSt("✓ Genspark用テキストをコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #7c3aed",background:C.w,fontSize:11,fontWeight:600,color:"#5b21b6",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
-      <button onClick={saveSmnResult} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+      <button onClick={saveSmnResult} disabled={smnSaved} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
       <a href="https://www.genspark.ai/" target="_blank" rel="noreferrer" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",textDecoration:"none"}}>🔗 Gensparkを開く</a>
     </div>
   </div>
@@ -4707,7 +4721,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
     <h3 style={{fontSize:15,fontWeight:700,color:"#92400e",margin:0}}>💡 AI気づき・提案（経営・人材・見逃し・応用）</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnInsights);sSt("✓ 気づき・提案をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:C.w,fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
-      <button onClick={saveSmnResult} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#f59e0b",color:"#78350f",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+      <button onClick={saveSmnResult} disabled={smnSaved} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":"#f59e0b",color:smnSaved?C.w:"#78350f",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
     </div>
   </div>
   <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:"1px solid #fde047"}}>{smnInsights}</div>
