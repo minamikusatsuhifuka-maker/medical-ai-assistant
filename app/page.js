@@ -1645,7 +1645,7 @@ const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"app
 const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
 const minGo=async()=>{minAudioPathsRef.current=[];const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
-if(lvRef.current<8)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
+if(lvRef.current<1)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
 // 30分ごとの自動下書き保存タイマー開始
 if(minAutoSaveRef.current)clearInterval(minAutoSaveRef.current);
 updateMinDraftId(null);
@@ -1679,7 +1679,7 @@ const smnGo=async()=>{
     if(ch.length>0){
       const b=new Blob(ch,{type:"audio/webm"});ch=[];
       if(b.size<500)return;
-      if(lvRef.current<8)return;
+      if(lvRef.current<1)return;
       try{
         const f=new FormData();f.append("audio",b,"audio.webm");
         const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";
