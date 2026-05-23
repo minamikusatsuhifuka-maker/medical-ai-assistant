@@ -856,6 +856,8 @@ const[smnInsights,setSmnInsights]=useState("");
 const[smnInsightsLoading,setSmnInsightsLoading]=useState(false);
 const[smnHistOpen,setSmnHistOpen]=useState(false);
 const[smnHistList,setSmnHistList]=useState([]);
+// R-3: セミナー音声保存切替
+const[smnAudioSave,setSmnAudioSave]=useState(()=>{if(typeof window==="undefined")return false;try{return localStorage.getItem("mk_smnAudioSave")==="true"}catch{return false}});
 // === D-1〜D-3 複数選択削除モード state ===
 const[csSelectMode,setCsSelectMode]=useState(false);
 const[csSelectedIds,setCsSelectedIds]=useState(new Set());
@@ -864,7 +866,11 @@ const[journeySelectedIds,setJourneySelectedIds]=useState(new Set());
 const[smnSelectMode,setSmnSelectMode]=useState(false);
 const[smnSelectedIds,setSmnSelectedIds]=useState(new Set());
 const smnMR=useRef(null);
+const smnSR=useRef(null);
 const smnTR=useRef(null);
+// R-3: 音声保存用
+const smnAllAudioChunksRef=useRef([]);
+const smnAudioPathRef=useRef(null);
 const smnTextRef=useRef("");
 useEffect(()=>{smnTextRef.current=smnTranscript},[smnTranscript]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
@@ -1684,43 +1690,58 @@ const resumeMin=()=>{
   minTI.current={ti,ci};
   setMinRS("recording");
 };
-// === セミナー学習: 録音（議事録 minGo/minStop を流用、書き起こし出力先のみ smnTranscript に差し替え） ===
-const smnGo=async()=>{
-  const s=await sAM();if(!s)return;
-  const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});
-  smnMR.current=mr;
-  let ch=[];
-  mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data)}};
-  mr.onstop=async()=>{
-    if(ch.length>0){
-      const b=new Blob(ch,{type:"audio/webm"});ch=[];
-      if(b.size<500)return;
-      if(lvRef.current<1)return;
-      try{
-        const f=new FormData();f.append("audio",b,"audio.webm");
-        const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";
-        const r=await fetch(endpoint,{method:"POST",body:f});
-        const d=await r.json();
-        if(endpoint==="/api/transcribe"){
-          fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-seminar",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});
-        }
-        if(d.text&&d.text.trim()){
-          const noise=filterTranscriptNoise(d.text.trim());
-          if(noise){setSmnTranscript(p=>p+(p?"\n":"")+noise)}
-        }
-      }catch{}
+// === セミナー学習: 録音（議事録 minGo/minStop/pauseMin/resumeMin の完全コピー＋R-3音声保存3箇所追加） ===
+// R-3: セミナー音声保存（議事録 saveMinAudio の seminar-audio/ バケットパス版）
+const saveSmnAudio=async(blob,title)=>{
+  if(!supabase||!blob||blob.size<1000)return null;
+  try{
+    const ts=new Date().toISOString().replace(/[:.]/g,"-");
+    const safeName=(title||"seminar").replace(/[^a-zA-Z0-9぀-鿿\-_]/g,"_").substring(0,30);
+    const path=`seminar-audio/${ts}_${safeName}.webm`;
+    const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});
+    if(error){
+      console.error("Seminar audio save error:",error);
+      sSt("⚠️ 音声保存エラー: "+error.message);
+      return null;
     }
-  };
-  mr.start();
-  setSmnRS("recording");setSmnEl(0);
-  const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);
-  const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.start()}catch{}}},200)}},10000);
-  smnTR.current={ti,ci};
+    console.log("Seminar audio saved:",path);
+    smnAudioPathRef.current=path;
+    sSt("🎙️ 音声を保存しました");
+    return path;
+  }catch(e){
+    console.error("[saveSmnAudio] exception:",e);
+    return null;
+  }
 };
+const smnGo=async()=>{smnAllAudioChunksRef.current=[];smnAudioPathRef.current=null;const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});smnMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(smnAudioSave)smnAllAudioChunksRef.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
+// セミナーも無音スキップ（音声レベル参照）
+if(lvRef.current<1)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-seminar",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setSmnTranscript(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setSmnRS("recording");setSmnEl(0);const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnSR.current!=="inactive"){smnMR.current.start()}},200)}},10000);smnTR.current={ti,ci};};
 const smnStop=()=>{
-  if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null}
-  if(smnMR.current&&smnMR.current.state==="recording"){try{smnMR.current.stop()}catch{}}
-  setSmnRS("inactive");xAM();
+if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null}
+if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.stop()}catch{}}
+setSmnRS("inactive");smnSR.current="inactive";xAM();
+// R-3: 音声保存ONの場合、停止時に保存
+if(smnAudioSave&&smnAllAudioChunksRef.current.length>0){
+const blob=new Blob(smnAllAudioChunksRef.current,{type:"audio/webm"});
+smnAllAudioChunksRef.current=[];
+saveSmnAudio(blob,smnTitle);
+}
+};
+// Stage 3: セミナー pause/resume （議事録 pauseMin/resumeMin の完全コピー、変数名のみ smn* に置換）
+const pauseSmn=()=>{
+  if(!smnMR.current||smnMR.current.state!=="recording")return;
+  try{smnMR.current.pause()}catch(e){console.warn("[pauseSmn] MR pause error:",e);return}
+  if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null;}
+  setSmnRS("paused");
+};
+const resumeSmn=()=>{
+  if(!smnMR.current||smnMR.current.state!=="paused")return;
+  try{smnMR.current.resume()}catch(e){console.warn("[resumeSmn] MR resume error:",e);return}
+  // smnGo の ti/ci と完全に同じコードをコピー
+  const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);
+  const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnSR.current!=="inactive"){smnMR.current.start()}},200)}},10000);
+  smnTR.current={ti,ci};
+  setSmnRS("recording");
 };
 // === セミナー学習: 詳細要約生成 ===
 const runSmnSummary=async()=>{
@@ -1779,7 +1800,8 @@ const saveSmnResult=async()=>{
   if(!smnSummary){sSt("⚠️ 要約がまだ生成されていません");return;}
   try{
     const title=smnTitle||`[セミナー] ${new Date().toLocaleString("ja-JP")}`;
-    const{error}=await supabase.from("counseling_analyses").insert({
+    // R-3: audio_path カラム有無に関わらず安全に動作させるため、ref がある場合のみ追加
+    const insertData={
       title,
       analysis_type:"seminar",
       input_text:smnTranscript||"",
@@ -1789,7 +1811,9 @@ const saveSmnResult=async()=>{
         genspark:smnGensparkText||null,
         insights:smnInsights||null,
       },
-    });
+    };
+    if(smnAudioPathRef.current)insertData.audio_path=smnAudioPathRef.current;
+    const{error}=await supabase.from("counseling_analyses").insert(insertData);
     if(error)throw error;
     sSt("✓ 保存しました");
   }catch(e){
@@ -1801,7 +1825,7 @@ const openSmnHist=async()=>{
   if(!supabase){sSt("Supabase未接続");return;}
   setSmnHistOpen(true);
   try{
-    const{data,error}=await supabase.from("counseling_analyses").select("id,title,input_text,output_text,ai_model,scores,created_at").eq("analysis_type","seminar").order("created_at",{ascending:false}).limit(50);
+    const{data,error}=await supabase.from("counseling_analyses").select("id,title,input_text,output_text,ai_model,scores,audio_path,created_at").eq("analysis_type","seminar").order("created_at",{ascending:false}).limit(50);
     if(error)throw error;
     setSmnHistList(data||[]);
   }catch(e){
@@ -1819,6 +1843,8 @@ const restoreSmnRecord=(item)=>{
   }else{
     setSmnGensparkText("");setSmnInsights("");
   }
+  // R-3: 音声パスも復元
+  smnAudioPathRef.current=item.audio_path||null;
   setSmnHistOpen(false);
   sSt("✓ "+new Date(item.created_at).toLocaleDateString("ja-JP")+" のセミナーを復元しました");
 };
@@ -1839,6 +1865,8 @@ const clearSmnAll=()=>{
   if(!window.confirm("入力中のセミナー学習内容（書き起こし・要約・Genspark・気づき）をすべてクリアしますか？"))return;
   smnStop();
   setSmnTitle("");setSmnTranscript("");setSmnSummary("");setSmnGensparkText("");setSmnInsights("");setSmnSummaryModelUsed("");
+  // R-3: 音声状態もリセット
+  smnAudioPathRef.current=null;smnAllAudioChunksRef.current=[];
 };
 const loadMinHist=async()=>{if(!supabase)return;try{const[{data},{count}]=await Promise.all([supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(500),supabase.from("minutes").select("*",{count:"exact",head:true})]);if(data)setMinHist(data);if(typeof count==="number")setMinHistTotal(count);console.log(`[minHist] fetched: ${data?.length||0}件 / total: ${count||0}件`)}catch(e){console.error("[minHist] load error:",e)}};
 const saveMinInputOnly=async()=>{
@@ -4592,14 +4620,30 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 
 {/* 録音モード */}
 {smnMode==="record"&&<div style={{marginBottom:12}}>
+  {/* R-3: 音声保存トグル */}
+  <div style={{marginBottom:10,padding:"8px 12px",background:C.pLL,borderRadius:10,border:`1px solid ${C.g200}`}}>
+    <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:smnRS==="inactive"?"pointer":"not-allowed",opacity:smnRS==="inactive"?1:0.6}}>
+      <input type="checkbox" checked={smnAudioSave} disabled={smnRS!=="inactive"} onChange={e=>{setSmnAudioSave(e.target.checked);try{localStorage.setItem("mk_smnAudioSave",String(e.target.checked))}catch{}}} style={{cursor:smnRS==="inactive"?"pointer":"not-allowed"}}/>
+      🎙 音声ファイルも保存する（後で聴き返したい場合）
+    </label>
+    {smnAudioSave&&<div style={{fontSize:11,color:C.g400,marginLeft:24,marginTop:2}}>※ 長時間録音時にメモリを使うため、必要なときのみONを推奨。録音停止時に Supabase Storage に保存されます。</div>}
+  </div>
   <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
     <span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(smnEl/60)).padStart(2,"0")}:{String(smnEl%60).padStart(2,"0")}</span>
     {smnRS==="inactive"?
       <button onClick={smnGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap"}}>🎙 録音開始</button>
+      :smnRS==="paused"?
+      <>
+        <button onClick={resumeSmn} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
+        <button onClick={smnStop} style={{padding:"10px 20px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>⏹ 録音停止</button>
+      </>
       :
-      <button onClick={smnStop} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap"}}>⏹ 録音停止</button>
+      <>
+        <button onClick={pauseSmn} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
+        <button onClick={smnStop} style={{padding:"10px 20px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>⏹ 録音停止</button>
+      </>
     }
-    <span style={{fontSize:12,color:smnRS==="recording"?C.rG:C.g400,fontWeight:600}}>{smnRS==="recording"?"● 録音中（10秒毎に書き起こし）":"停止"}</span>
+    <span style={{fontSize:12,color:smnRS==="recording"?C.rG:smnRS==="paused"?"#d97706":C.g400,fontWeight:600}}>{smnRS==="recording"?"● 録音中（10秒毎に書き起こし）":smnRS==="paused"?"⏸ 一時停止中":"停止"}</span>
   </div>
 </div>}
 
