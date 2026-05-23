@@ -840,6 +840,9 @@ const[minAutoSaving,setMinAutoSaving]=useState(false);
 const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
 const minAllAudioChunks=useRef([]);
+// R-1: pause/resume バグ修正用 ref（ci/ti を外部から制御可能にする）
+const minCiRef=useRef(null);
+const minTiRef=useRef(null);
 // === セミナー学習機能 state ===
 const[smnMode,setSmnMode]=useState("record"); // 'record' | 'paste'
 const[smnRS,setSmnRS]=useState("inactive"); // 'inactive' | 'recording' | 'paused'
@@ -866,7 +869,9 @@ const[journeySelectedIds,setJourneySelectedIds]=useState(new Set());
 const[smnSelectMode,setSmnSelectMode]=useState(false);
 const[smnSelectedIds,setSmnSelectedIds]=useState(new Set());
 const smnMR=useRef(null);
-const smnTR=useRef(null);
+// R-2: pause/resume 対応のため smnTR を分離
+const smnCiRef=useRef(null);
+const smnTiRef=useRef(null);
 // R-3: 音声保存用
 const smnAllAudioChunksRef=useRef([]);
 const smnAudioPathRef=useRef(null);
@@ -1647,10 +1652,13 @@ const sysPromptFinal=sysPrompt+langInst;
 setProg(50);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPromptFinal,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
 
-const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
+const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null);minIR.current=minInp;
 const minGo=async()=>{minAudioPathsRef.current=[];const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
-if(lvRef.current<8)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
+if(lvRef.current<8)return;try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>p+(p?"\n":"")+noise)}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);
+// R-1: ti/ci を ref に格納（pause/resume から制御するため）
+minTiRef.current=setInterval(()=>{setMinEl(t=>t+1)},1000);
+minCiRef.current=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);
 // 30分ごとの自動下書き保存タイマー開始
 if(minAutoSaveRef.current)clearInterval(minAutoSaveRef.current);
 updateMinDraftId(null);
@@ -1658,8 +1666,10 @@ console.log("[saveMinDraft] auto-save interval: 30 minutes");
 minAutoSaveRef.current=setInterval(()=>{saveMinDraft(true)},30*60*1000)};
 const minStop=()=>{
 if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
-if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
-if(minMR.current&&minMR.current.state==="recording")minMR.current.stop();
+// R-1: ci/ti を個別にクリア
+if(minCiRef.current){clearInterval(minCiRef.current);minCiRef.current=null;}
+if(minTiRef.current){clearInterval(minTiRef.current);minTiRef.current=null;}
+if(minMR.current&&minMR.current.state!=="inactive")try{minMR.current.stop()}catch{}
 setMinRS("inactive");minSR.current="inactive";xAM();
 // 録音停止時もドラフトを削除
 if(minDraftId&&supabase){
@@ -1677,15 +1687,15 @@ saveMinAudio(blob,minTitle);
 const pauseMin=()=>{
   if(!minMR.current||minMR.current.state!=="recording")return;
   try{minMR.current.pause()}catch{}
-  if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null;}
+  if(minCiRef.current){clearInterval(minCiRef.current);minCiRef.current=null;}
+  if(minTiRef.current){clearInterval(minTiRef.current);minTiRef.current=null;}
   setMinRS("paused");minSR.current="paused";
 };
 const resumeMin=()=>{
   if(!minMR.current||minMR.current.state!=="paused")return;
   try{minMR.current.resume()}catch{}
-  const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);
-  const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){try{minMR.current.start()}catch{}}},200)}},10000);
-  minTI.current={ti,ci};
+  minTiRef.current=setInterval(()=>{setMinEl(t=>t+1)},1000);
+  minCiRef.current=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){try{minMR.current.start()}catch{}}},200)}},10000);
   setMinRS("recording");minSR.current="recording";
 };
 // === セミナー学習: 録音（議事録 minGo/minStop を流用、書き起こし出力先のみ smnTranscript に差し替え） ===
@@ -1742,13 +1752,15 @@ const smnGo=async()=>{
   };
   mr.start();
   setSmnRS("recording");setSmnEl(0);
-  const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);
-  const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.start()}catch{}}},200)}},10000);
-  smnTR.current={ti,ci};
+  // R-2: ti/ci を ref に格納（pause/resume から制御）
+  smnTiRef.current=setInterval(()=>{setSmnEl(t=>t+1)},1000);
+  smnCiRef.current=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.start()}catch{}}},200)}},10000);
 };
 const smnStop=()=>{
-  if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null}
-  if(smnMR.current&&smnMR.current.state==="recording"){try{smnMR.current.stop()}catch{}}
+  // R-2: ci/ti を個別にクリア
+  if(smnCiRef.current){clearInterval(smnCiRef.current);smnCiRef.current=null;}
+  if(smnTiRef.current){clearInterval(smnTiRef.current);smnTiRef.current=null;}
+  if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.stop()}catch{}}
   setSmnRS("inactive");xAM();
   // R-3: 音声保存ONの場合、停止時に保存
   if(smnAudioSave&&smnAllAudioChunksRef.current.length>0){
@@ -1761,15 +1773,15 @@ const smnStop=()=>{
 const pauseSmn=()=>{
   if(!smnMR.current||smnMR.current.state!=="recording")return;
   try{smnMR.current.pause()}catch{}
-  if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null;}
+  if(smnCiRef.current){clearInterval(smnCiRef.current);smnCiRef.current=null;}
+  if(smnTiRef.current){clearInterval(smnTiRef.current);smnTiRef.current=null;}
   setSmnRS("paused");
 };
 const resumeSmn=()=>{
   if(!smnMR.current||smnMR.current.state!=="paused")return;
   try{smnMR.current.resume()}catch{}
-  const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);
-  const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.start()}catch{}}},200)}},10000);
-  smnTR.current={ti,ci};
+  smnTiRef.current=setInterval(()=>{setSmnEl(t=>t+1)},1000);
+  smnCiRef.current=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.start()}catch{}}},200)}},10000);
   setSmnRS("recording");
 };
 // === セミナー学習: 詳細要約生成 ===
