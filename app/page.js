@@ -840,6 +840,9 @@ const[minAutoSaving,setMinAutoSaving]=useState(false);
 const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
 const minAllAudioChunks=useRef([]);
+// 議事録削除確認モーダル（null=非表示, {ids,count,hasAudio}=表示）
+const[minDeleteConfirm,setMinDeleteConfirm]=useState(null);
+const[minDeleting,setMinDeleting]=useState(false);
 // === セミナー学習機能 state ===
 const[smnMode,setSmnMode]=useState("record"); // 'record' | 'paste'
 const[smnRS,setSmnRS]=useState("inactive"); // 'inactive' | 'recording' | 'paused'
@@ -3132,18 +3135,47 @@ const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_s
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === D-1〜D-3 複数選択削除 共通ヘルパー & 削除関数 ===
 const toggleIdInSet=(setter,id)=>{setter(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n})};
-// 議事録一括削除（既存 selMinutes を流用）
+// 議事録一括削除（既存 selMinutes を流用）→ カスタム確認モーダルを開く
 const deleteMinSelected=async()=>{
   const ids=Array.from(selMinutes);
   if(ids.length===0){sSt("⚠️ 削除する議事録を選択してください");return}
-  if(!window.confirm(`選択した ${ids.length} 件の議事録を削除しますか？\n（この操作は取り消せません）`))return;
+  // 選択された議事録に音声があるか確認
+  const hasAudio=minHist.some(m=>ids.includes(m.id)&&m.audio_path);
+  setMinDeleteConfirm({ids,count:ids.length,hasAudio});
+};
+// 議事録削除の実行（モーダル「削除する」押下時）
+const executeMinDelete=async(ids)=>{
+  if(!supabase||!ids||ids.length===0)return;
+  setMinDeleting(true);
   try{
+    // 1. Storage の音声を削除（audio_path はカンマ区切りで複数パス）
+    const{data:targets,error:selErr}=await supabase
+      .from("minutes")
+      .select("id,audio_path")
+      .in("id",ids);
+    if(selErr)throw selErr;
+    const audioPaths=(targets||[])
+      .map(t=>t.audio_path)
+      .filter(Boolean)
+      .flatMap(p=>String(p).split(",").map(s=>s.trim()).filter(Boolean));
+    if(audioPaths.length>0){
+      const{error:stErr}=await supabase.storage.from("audio").remove(audioPaths);
+      if(stErr)console.warn("[executeMinDelete] storage remove warning:",stErr);
+    }
+    // 2. DB レコード削除
     const{error}=await supabase.from("minutes").delete().in("id",ids);
     if(error)throw error;
     setSelMinutes([]);
+    setMinDeleteConfirm(null);
     await loadMinHist();
-    sSt(`✓ ${ids.length} 件を削除しました`);
-  }catch(e){console.error("[deleteMinSelected] error:",e);sSt("⚠️ 削除に失敗: "+e.message)}
+    const audioMsg=audioPaths.length>0?`（音声${audioPaths.length}件含む）`:"";
+    sSt(`✓ ${ids.length}件削除しました${audioMsg}`);
+  }catch(e){
+    console.error("[executeMinDelete] error:",e);
+    sSt("⚠️ 削除に失敗: "+e.message);
+  }finally{
+    setMinDeleting(false);
+  }
 };
 // カウンセリング分析一括削除
 const deleteCsSelected=async()=>{
@@ -4649,6 +4681,7 @@ finally{setMinTypoLd(false)}
       <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={(e)=>{e.stopPropagation();setEditMinId(m.id);setEditMinText(m.output_text||"");setEditMinTitle(m.title||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️ 編集</button>
       {m.output_text&&m.output_text!=="（録音中・未要約）"&&<button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 タスク生成</button>}
+      <button onClick={(e)=>{e.stopPropagation();setMinDeleteConfirm({ids:[m.id],count:1,hasAudio:!!m.audio_path})}} title={m.audio_path?"議事録と音声を削除":"議事録を削除"} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #dc2626",background:C.w,fontSize:10,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
     </div>
   </div>
 )}
@@ -4670,6 +4703,22 @@ finally{setMinTypoLd(false)}
 </div>
 {typoModalEl}
 {noiseModalEl}
+{/* 議事録削除確認モーダル */}
+{minDeleteConfirm&&(
+  <div onClick={()=>!minDeleting&&setMinDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"90%",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+      <div style={{fontSize:16,fontWeight:700,marginBottom:12,color:"#dc2626"}}>🗑 議事録を削除しますか？</div>
+      <div style={{fontSize:14,color:"#555",marginBottom:20,lineHeight:1.6}}>
+        {minDeleteConfirm.count}件の議事録（要約・書き起こし{minDeleteConfirm.hasAudio?"・音声":""}）を削除します。<br/>
+        <span style={{color:"#dc2626",fontWeight:600}}>この操作は取り消せません。</span>
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button onClick={()=>setMinDeleteConfirm(null)} disabled={minDeleting} style={{padding:"8px 16px",background:"#e5e5e5",border:"none",borderRadius:8,cursor:minDeleting?"not-allowed":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600,color:"#555",opacity:minDeleting?0.6:1}}>キャンセル</button>
+        <button onClick={()=>executeMinDelete(minDeleteConfirm.ids)} disabled={minDeleting} style={{padding:"8px 16px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:minDeleting?"wait":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,opacity:minDeleting?0.8:1}}>{minDeleting?"削除中...":"削除する"}</button>
+      </div>
+    </div>
+  </div>
+)}
 </div></div>);
 
 // === SEMINAR LEARNING ===
