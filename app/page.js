@@ -732,6 +732,8 @@ const csModelSubLabel=(m)=>{
   return"";
 };
 const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 3.5 Flash")return"#10b981";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
+// 生成モデル名バッジ（csModelLabel で表示名に変換、内部キーは露出させない）
+const modelBadge=(model)=>{if(!model)return null;const col=csModelColorByLabel(model);return(<span style={{display:"inline-block",fontSize:11,fontWeight:600,color:col,background:col+"18",border:`1px solid ${col}55`,borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle",whiteSpace:"nowrap"}}>{csModelLabel(model)}</span>)};
 const csModelDesc=(m)=>m==="gemini-3-pro"?"最新・最高精度 ⭐":m==="claude"?"日本語精度":"バランス型";
 const csModelColor=(m)=>m==="gemini-3-pro"?"#9333ea":m==="claude"?"#d97706":"#4285f4";
 const csAbortRef=useRef(null);
@@ -822,6 +824,7 @@ const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[minOutFontSize,setMinOutFontSize]=useState(14);
 const[minOutHeight,setMinOutHeight]=useState(300);
+const[minutesGenModel,setMinutesGenModel]=useState("");
 const[minTruncated,setMinTruncated]=useState(false);
 const[minChunkSummaries,setMinChunkSummaries]=useState([]);
 const[minFinalIntegrationFailed,setMinFinalIntegrationFailed]=useState(false);
@@ -1913,6 +1916,7 @@ const restoreSmnRecord=(item)=>{
   setSmnTitle(item.title?item.title.replace(/^\[セミナー\]\s*/,""):"");
   setSmnTranscript(item.input_text||"");
   setSmnSummary(item.output_text||"");
+  setSmnSummaryModelUsed(item.ai_model||"");
   if(item.scores){
     setSmnGensparkText(item.scores.genspark||"");
     setSmnInsights(item.scores.insights||"");
@@ -2241,7 +2245,7 @@ const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
 setProg(50);
-try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||"",model:minutesModel})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("")}else{setMinOut(d.summary);setMinTruncated(!!d.truncated);setMinChunkSummaries(Array.isArray(d.chunkSummaries)?d.chunkSummaries:[]);setMinFinalIntegrationFailed(!!d.finalIntegrationFailed);setMinFinalIntegrationError(d.finalIntegrationError||"");const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理${d.midIntegrated?"・中間統合あり":""}）`:"";sSt((d.finalIntegrationFailed?"⚠️ 最終統合失敗（部分結果表示）":"議事録作成完了 ✓")+chunkMsg+(d.finalIntegrationFailed?"":" → 次へで新規打合せ"));setGeminiModel(d.model||"");if(supabase&&d.summary){try{let minData=null;
+try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||"",model:minutesModel})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("")}else{setMinOut(d.summary);setMinTruncated(!!d.truncated);setMinChunkSummaries(Array.isArray(d.chunkSummaries)?d.chunkSummaries:[]);setMinFinalIntegrationFailed(!!d.finalIntegrationFailed);setMinFinalIntegrationError(d.finalIntegrationError||"");const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理${d.midIntegrated?"・中間統合あり":""}）`:"";sSt((d.finalIntegrationFailed?"⚠️ 最終統合失敗（部分結果表示）":"議事録作成完了 ✓")+chunkMsg+(d.finalIntegrationFailed?"":" → 次へで新規打合せ"));setGeminiModel(d.model||"");setMinutesGenModel(d.model||minutesModel);if(supabase&&d.summary){try{let minData=null;
 const minAudioPath=minAudioPathsRef.current.length>0?minAudioPathsRef.current.join(","):null;
 if(minDraftId){
 const updateData={title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",input_text:minIR.current||"",output_text:d.summary};
@@ -2293,6 +2297,7 @@ const performMinReset=()=>{
   minAudioPathsRef.current=[];
   minStop();
   setMinOut("");
+  setMinutesGenModel("");
   setMinTruncated(false);
   setMinChunkSummaries([]);
   setMinFinalIntegrationFailed(false);
@@ -4568,7 +4573,7 @@ finally{setMinTypoLd(false)}
 </div>}
 {minTruncated&&!minFinalIntegrationFailed&&!minOut.startsWith("エラー")&&<div style={{marginBottom:10,padding:"10px 14px",borderRadius:10,background:"#fef3c7",border:"1px solid #f59e0b",fontSize:12,color:"#92400e",lineHeight:1.6}}>⚠️ 要約が長すぎて途中で切れている可能性があります。AIモデルを「Gemini 2.5 Pro」または「Claude Sonnet 4.6」に切り替えて再生成してください。</div>}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録</span>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録{modelBadge(minutesGenModel)}</span>
 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
 <div style={{display:"flex",alignItems:"center",gap:4}}>
 <span style={{fontSize:11,color:C.g500}}>文字</span>
@@ -4646,7 +4651,7 @@ finally{setMinTypoLd(false)}
 <div onClick={()=>setOpenMinId(openMinId===m.id?null:m.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,cursor:"pointer"}}>
 <div style={{display:"flex",alignItems:"center",gap:6}}>
 <input type="checkbox" checked={sel} onChange={(e)=>{e.stopPropagation();setSelMinutes(prev=>prev.includes(m.id)?prev.filter(x=>x!==m.id):[...prev,m.id])}} style={{cursor:"pointer",accentColor:C.p}}/>
-{(m.title||"").startsWith("【まとめ】")&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#ede9fe",color:"#7c3aed",fontWeight:700,marginRight:2}}>統合</span>}<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{m.title||"無題"}</span>
+{(m.title||"").startsWith("【まとめ】")&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"#ede9fe",color:"#7c3aed",fontWeight:700,marginRight:2}}>統合</span>}<span style={{fontSize:13,fontWeight:700,color:C.pD}}>{m.title||"無題"}</span>{m.ai_model&&modelBadge(m.ai_model)}
 <span style={{fontSize:10,color:C.g400}}>{openMinId===m.id?"▼":"▶"}</span></div>
 <span style={{fontSize:10,color:C.g400}}>{new Date(m.created_at).toLocaleDateString("ja-JP")}</span></div>
 {openMinId===m.id?<div style={{marginBottom:4}}>{(()=>{try{const src=JSON.parse(m.input_text);if(src&&src.source_titles){return(<div style={{padding:6,borderRadius:6,background:"#f5f3ff",border:"1px solid #c4b5fd",marginBottom:6,fontSize:11}}>
@@ -4802,7 +4807,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {/* 詳細要約結果 */}
 {smnSummary&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#f0fdf4",border:`2px solid ${C.p}88`}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-    <h3 style={{fontSize:15,fontWeight:700,color:"#2a5018",margin:0}}>📚 詳細要約・まとめ</h3>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#2a5018",margin:0}}>📚 詳細要約・まとめ{modelBadge(smnSummaryModelUsed||smnSummaryModel)}</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnSummary);sSt("✓ 要約をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.p}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={saveSmnResult} disabled={smnSaved} style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
@@ -4820,7 +4825,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {/* Genspark用テキスト結果 */}
 {smnGensparkText&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#f5f3ff",border:"2px solid #a78bfa"}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-    <h3 style={{fontSize:15,fontWeight:700,color:"#5b21b6",margin:0}}>📋 Genspark共有資料用テキスト</h3>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#5b21b6",margin:0}}>📋 Genspark共有資料用テキスト{modelBadge(smnSummaryModelUsed||smnSummaryModel)}</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnGensparkText);sSt("✓ Genspark用テキストをコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #7c3aed",background:C.w,fontSize:11,fontWeight:600,color:"#5b21b6",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={saveSmnResult} disabled={smnSaved} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":"#7c3aed",color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
@@ -4834,7 +4839,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {/* AI気づき・提案 */}
 {smnInsights&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#fffbeb",border:"2px solid #f59e0b"}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-    <h3 style={{fontSize:15,fontWeight:700,color:"#92400e",margin:0}}>💡 AI気づき・提案（経営・人材・見逃し・応用）</h3>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#92400e",margin:0}}>💡 AI気づき・提案（経営・人材・見逃し・応用）{modelBadge(smnSummaryModelUsed||smnSummaryModel)}</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{navigator.clipboard.writeText(smnInsights);sSt("✓ 気づき・提案をコピーしました")}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #f59e0b",background:C.w,fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={saveSmnResult} disabled={smnSaved} title="この時点で生成されているもの全部（要約・Genspark・AI気づき・書き起こし）を一括保存" style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":"#f59e0b",color:smnSaved?C.w:"#78350f",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
@@ -5997,7 +6002,7 @@ const fn=actions[sc.id];if(fn)fn();
 {/* 右カラム: 要約結果 */}
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果</span>
+<span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果{out&&modelBadge(geminiModel)}</span>
 {out&&<div style={{display:"flex",gap:3,whiteSpace:"nowrap",flexWrap:"wrap"}}><button onClick={runTypoCheckOut} disabled={typoLdOut} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLdOut?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLdOut?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLdOut?"wait":"pointer"}}>{typoLdOut?"🔬...":"🔬"}</button><button onClick={()=>cp(out)} title="要約をコピー" onMouseEnter={e=>showTip(e,"要約をコピー")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}
