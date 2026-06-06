@@ -3140,13 +3140,24 @@ const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_s
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === D-1〜D-3 複数選択削除 共通ヘルパー & 削除関数 ===
 const toggleIdInSet=(setter,id)=>{setter(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n})};
+// クリックされたボタンの座標から、ポップオーバーの表示位置(left/top)を算出（画面端ガード付き）
+const calcPopAnchor=(e)=>{
+  try{
+    const r=e.currentTarget.getBoundingClientRect();
+    const W=300,H=190; // ポップオーバーの想定サイズ
+    let left=Math.max(8,Math.min(r.left,window.innerWidth-W-8));   // 右端で見切れたら左へ寄せる
+    let top=r.bottom+8;                                            // 通常はボタン直下8px
+    if(top+H>window.innerHeight)top=Math.max(8,r.top-H-8);         // 下端で見切れたらボタン上へ
+    return{left,top};
+  }catch{return{left:16,top:16}}
+};
 // 議事録一括削除（既存 selMinutes を流用）→ カスタム確認モーダルを開く
-const deleteMinSelected=async()=>{
+const deleteMinSelected=async(e)=>{
   const ids=Array.from(selMinutes);
   if(ids.length===0){sSt("⚠️ 削除する議事録を選択してください");return}
   // 選択された議事録に音声があるか確認
   const hasAudio=minHist.some(m=>ids.includes(m.id)&&m.audio_path);
-  setMinDeleteConfirm({ids,count:ids.length,hasAudio});
+  setMinDeleteConfirm({ids,count:ids.length,hasAudio,anchor:calcPopAnchor(e)});
 };
 // 議事録削除の実行（モーダル「削除する」押下時）
 const executeMinDelete=async(ids)=>{
@@ -4686,7 +4697,7 @@ finally{setMinTypoLd(false)}
       <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={(e)=>{e.stopPropagation();setEditMinId(m.id);setEditMinText(m.output_text||"");setEditMinTitle(m.title||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️ 編集</button>
       {m.output_text&&m.output_text!=="（録音中・未要約）"&&<button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 タスク生成</button>}
-      <button onClick={(e)=>{e.stopPropagation();setMinDeleteConfirm({ids:[m.id],count:1,hasAudio:!!m.audio_path})}} title={m.audio_path?"議事録と音声を削除":"議事録を削除"} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #dc2626",background:C.w,fontSize:10,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
+      <button onClick={(e)=>{e.stopPropagation();setMinDeleteConfirm({ids:[m.id],count:1,hasAudio:!!m.audio_path,anchor:calcPopAnchor(e)})}} title={m.audio_path?"議事録と音声を削除":"議事録を削除"} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #dc2626",background:C.w,fontSize:10,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
     </div>
   </div>
 )}
@@ -4708,21 +4719,24 @@ finally{setMinTypoLd(false)}
 </div>
 {typoModalEl}
 {noiseModalEl}
-{/* 議事録削除確認モーダル */}
+{/* 議事録削除確認ポップオーバー（押した削除ボタンのすぐ近くに表示／中央表示をやめスクロール不要に） */}
 {minDeleteConfirm&&(
-  <div onClick={()=>!minDeleting&&setMinDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-    <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"90%",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
-      <div style={{fontSize:16,fontWeight:700,marginBottom:12,color:"#dc2626"}}>🗑 議事録を削除しますか？</div>
-      <div style={{fontSize:14,color:"#555",marginBottom:20,lineHeight:1.6}}>
+  <>
+    {/* 透明オーバーレイ：外側クリックで閉じる */}
+    <div onClick={()=>!minDeleting&&setMinDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"transparent",zIndex:1000}}/>
+    {/* ポップオーバー本体：クリックされたボタンの座標(anchor)直下に固定表示 */}
+    <div style={{position:"fixed",top:(minDeleteConfirm.anchor?.top??80),left:(minDeleteConfirm.anchor?.left??16),zIndex:1001,background:"#fff",borderRadius:12,padding:18,width:300,maxWidth:"calc(100vw - 16px)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",border:"1px solid #eee"}}>
+      <div style={{fontSize:15,fontWeight:700,marginBottom:10,color:"#dc2626"}}>🗑 議事録を削除しますか？</div>
+      <div style={{fontSize:13,color:"#555",marginBottom:16,lineHeight:1.6}}>
         {minDeleteConfirm.count}件の議事録（要約・書き起こし{minDeleteConfirm.hasAudio?"・音声":""}）を削除します。<br/>
         <span style={{color:"#dc2626",fontWeight:600}}>この操作は取り消せません。</span>
       </div>
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-        <button onClick={()=>setMinDeleteConfirm(null)} disabled={minDeleting} style={{padding:"8px 16px",background:"#e5e5e5",border:"none",borderRadius:8,cursor:minDeleting?"not-allowed":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600,color:"#555",opacity:minDeleting?0.6:1}}>キャンセル</button>
-        <button onClick={()=>executeMinDelete(minDeleteConfirm.ids)} disabled={minDeleting} style={{padding:"8px 16px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:minDeleting?"wait":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,opacity:minDeleting?0.8:1}}>{minDeleting?"削除中...":"削除する"}</button>
+        <button onClick={()=>setMinDeleteConfirm(null)} disabled={minDeleting} style={{padding:"7px 14px",background:"#e5e5e5",border:"none",borderRadius:8,cursor:minDeleting?"not-allowed":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600,color:"#555",opacity:minDeleting?0.6:1}}>キャンセル</button>
+        <button onClick={()=>executeMinDelete(minDeleteConfirm.ids)} disabled={minDeleting} style={{padding:"7px 14px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:minDeleting?"wait":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,opacity:minDeleting?0.8:1}}>{minDeleting?"削除中...":"削除する"}</button>
       </div>
     </div>
-  </div>
+  </>
 )}
 </div></div>);
 
