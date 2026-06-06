@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 import dynamic from "next/dynamic";
 
@@ -3151,6 +3152,13 @@ const calcPopAnchor=(e)=>{
     return{left,top};
   }catch{return{left:16,top:16}}
 };
+// ポップオーバー表示中にスクロールするとボタンと位置がずれるため閉じる（capture:trueで内側スクロール容器も検知）
+useEffect(()=>{
+  if(!minDeleteConfirm)return;
+  const close=()=>setMinDeleteConfirm(null);
+  window.addEventListener("scroll",close,true);
+  return()=>window.removeEventListener("scroll",close,true);
+},[minDeleteConfirm]);
 // 議事録一括削除（既存 selMinutes を流用）→ カスタム確認モーダルを開く
 const deleteMinSelected=async(e)=>{
   const ids=Array.from(selMinutes);
@@ -4719,13 +4727,14 @@ finally{setMinTypoLd(false)}
 </div>
 {typoModalEl}
 {noiseModalEl}
-{/* 議事録削除確認ポップオーバー（押した削除ボタンのすぐ近くに表示／中央表示をやめスクロール不要に） */}
-{minDeleteConfirm&&(
+{/* 議事録削除確認ポップオーバー（押した削除ボタンのすぐ近くに表示／中央表示をやめスクロール不要に）
+    ★ Portalで document.body 直下に描画し、祖先のtransform/filter等に影響されず viewport基準で固定表示 */}
+{minDeleteConfirm&&typeof document!=="undefined"&&createPortal(
   <>
     {/* 透明オーバーレイ：外側クリックで閉じる */}
-    <div onClick={()=>!minDeleting&&setMinDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"transparent",zIndex:1000}}/>
+    <div onClick={()=>!minDeleting&&setMinDeleteConfirm(null)} style={{position:"fixed",inset:0,background:"transparent",zIndex:100000}}/>
     {/* ポップオーバー本体：クリックされたボタンの座標(anchor)直下に固定表示 */}
-    <div style={{position:"fixed",top:(minDeleteConfirm.anchor?.top??80),left:(minDeleteConfirm.anchor?.left??16),zIndex:1001,background:"#fff",borderRadius:12,padding:18,width:300,maxWidth:"calc(100vw - 16px)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",border:"1px solid #eee"}}>
+    <div style={{position:"fixed",top:(minDeleteConfirm.anchor?.top??80),left:(minDeleteConfirm.anchor?.left??16),zIndex:100001,background:"#fff",borderRadius:12,padding:18,width:300,maxWidth:"calc(100vw - 16px)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",border:"1px solid #eee"}}>
       <div style={{fontSize:15,fontWeight:700,marginBottom:10,color:"#dc2626"}}>🗑 議事録を削除しますか？</div>
       <div style={{fontSize:13,color:"#555",marginBottom:16,lineHeight:1.6}}>
         {minDeleteConfirm.count}件の議事録（要約・書き起こし{minDeleteConfirm.hasAudio?"・音声":""}）を削除します。<br/>
@@ -4736,7 +4745,8 @@ finally{setMinTypoLd(false)}
         <button onClick={()=>executeMinDelete(minDeleteConfirm.ids)} disabled={minDeleting} style={{padding:"7px 14px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:minDeleting?"wait":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,opacity:minDeleting?0.8:1}}>{minDeleting?"削除中...":"削除する"}</button>
       </div>
     </div>
-  </>
+  </>,
+  document.body
 )}
 </div></div>);
 
