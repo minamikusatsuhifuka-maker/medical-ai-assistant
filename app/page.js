@@ -2768,6 +2768,14 @@ const selectCsRecord=(item)=>{
   sSt(`✓ 書き起こしを読み込みました${tag}（${formatCsPickDate(item.created_at)}）`);
 };
 
+// 引き継ぎ元の患者ID・書き起こし日時ラベル（書き起こし選択時のみ表示・分析テキスト欄/分析結果で共用）
+const renderSourceInfo=()=>{
+  if(!csSourcePatientId&&!csSourceDate)return null;
+  return(<div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",fontSize:13,color:"#555",background:"#f0f7ff",border:"1px solid #cce0ff",borderRadius:8,padding:"8px 12px",marginBottom:8}}>
+    {csSourcePatientId&&<span>📋 患者ID: <strong>{csSourcePatientId}</strong></span>}
+    {csSourceDate&&<span>📅 {(()=>{try{return new Date(csSourceDate).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}catch{return csSourceDate}})()}</span>}
+  </div>);
+};
 const loadPastCount=async()=>{if(!supabase)return;try{const{count}=await supabase.from("past_records").select("*",{count:"exact",head:true});setPastCount(count||0)}catch{}};
 const savePastRecords=async()=>{if(!supabase||!pastInput.trim())return;setPastLd(true);setPastMsg("");try{
 const chunks=pastInput.split(/\n{2,}|\r\n{2,}/).map(c=>c.trim()).filter(c=>c.length>10);
@@ -5072,12 +5080,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:12,fontWeight:600,color:C.g500}}>分析テキスト</span>
 <button onClick={openCsPickModal} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 書き起こしを選択</button></div>
-{(csSourcePatientId||csSourceDate)&&(
-<div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",fontSize:13,color:"#555",background:"#f0f7ff",border:"1px solid #cce0ff",borderRadius:8,padding:"8px 12px",marginBottom:8}}>
-  <span style={{fontSize:11,color:"#888",fontWeight:600}}>引き継ぎ元</span>
-  {csSourcePatientId&&<span>📋 患者ID: <strong>{csSourcePatientId}</strong></span>}
-  {csSourceDate&&<span>📅 {(()=>{try{return new Date(csSourceDate).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}catch{return csSourceDate}})()}</span>}
-</div>)}
+{renderSourceInfo()}
 <textarea value={csTx} onChange={e=>{const v=e.target.value;setCsTx(v);if(!v.trim()){setCsSourcePatientId("");setCsSourceDate("")}}} placeholder="📋ボタンでカウンセリング履歴から選択、または会話のテキストを直接貼り付けてください" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 {csLd?(<button onClick={stopCsAnalyze} title="クリックで分析を停止" style={{padding:"10px 24px",borderRadius:14,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>⏹ AI分析中... (クリックで停止)</button>):(<button onClick={csModels.length>1?runCsAnalyzeAll:analyzeCounseling} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>{csModels.length>1?`🧠 ${csModels.length}個のAIで一斉分析`:"🧠 分析開始"}</button>)}
 {csLd&&csResults.length===0&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>{csModelLabel(csModel)} で分析中...</span></div>}
@@ -5089,6 +5092,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {!csLd&&csResults.some(r=>r.status==="done")&&<button onClick={saveCsResultsAll} disabled={csSaving} style={{padding:"6px 14px",borderRadius:10,border:"none",background:csSaving?C.g200:"linear-gradient(135deg,#7f77dd,#5a4fc4)",color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:csSaving?"not-allowed":"pointer"}}>{csSaving?"⏳ 保存中...":"💾 完了分をすべて保存"}</button>}
 </div>
 {csSaveMsg&&<div style={{fontSize:12,fontWeight:600,color:csSaveMsg.includes("失敗")?"#dc2626":"#16a34a",marginBottom:8}}>{csSaveMsg}</div>}
+{renderSourceInfo()}
 
 {/* タブ切替バー */}
 <div style={{display:"flex",gap:2,marginBottom:8,borderBottom:`2px solid ${C.g200}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
@@ -5151,6 +5155,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 分析結果</span>
 <button onClick={()=>navigator.clipboard.writeText(csOut)} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
+{renderSourceInfo()}
 {csScores&&Object.keys(csScores).length>0&&<div style={{marginBottom:12}}>
 <div style={{fontSize:12,fontWeight:700,color:"#6b5fd1",marginBottom:6,display:"flex",alignItems:"center",gap:6}}><span>📊 評価スコア（10点満点）</span><span style={{fontSize:11,color:"#94a3b8",fontWeight:500}}>{Object.keys(csScores).length}/8項目</span></div>
 <ScoreRadar scores={csScores}/>
@@ -5197,6 +5202,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
           <span style={{fontSize:10,fontWeight:700,color:typeColor,padding:"2px 8px",borderRadius:6,background:typeColor+"15",border:`1px solid ${typeColor}44`}}>{r.analysis_type||"分析"}</span>
           <span style={{fontSize:10,color:"#94a3b8"}}>{dateStr}</span>
           {r.source_patient_id&&<span style={{fontSize:10,fontWeight:600,color:"#3a6ea5",padding:"2px 7px",borderRadius:6,background:"#f0f7ff",border:"1px solid #cce0ff"}}>📋 患者ID: {r.source_patient_id}</span>}
+          {r.source_date&&<span style={{fontSize:10,fontWeight:600,color:"#3a6ea5",padding:"2px 7px",borderRadius:6,background:"#f0f7ff",border:"1px solid #cce0ff"}}>📅 {(()=>{try{return new Date(r.source_date).toLocaleDateString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit"})}catch{return r.source_date}})()}</span>}
         </div>
         {renderTitleEditor(r,{reloadFn:loadCsHistory,isSelectMode:csSelectMode,localUpdater:(id,t)=>setCsHistory(p=>p.map(x=>x.id===id?{...x,title:t}:x)),titleStyle:{fontSize:13,fontWeight:600,color:"#334155",wordBreak:"break-word"}})}
         {r.scores&&Object.keys(r.scores).length>0&&<div style={{fontSize:10,color:"#6b5fd1",marginTop:4}}>📊 スコア{Object.keys(r.scores).length}項目</div>}
