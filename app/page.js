@@ -1903,6 +1903,34 @@ const saveSmnResult=async()=>{
     sSt("⚠️ 保存に失敗: "+e.message);
   }
 };
+// セミナー: 停止して書き起こしを保存（要約なし）。議事録 minStopAndSaveOnly のセミナー版。
+// セミナーはドラフト機構が無く競合しないため smnStop() をそのまま呼ぶ（音声保存ONならStorage保存も実施）。
+// 要約APIは呼ばず、counseling_analyses に書き起こしのみ保存（saveSmnResult は要約必須のため流用不可）。再開は「録音開始」で続きから追記。
+const smnStopAndSaveOnly=async()=>{
+  const txt=smnTranscript||smnTextRef.current||"";
+  if(!txt.trim()){sSt("書き起こしがありません");return}
+  smnStop();
+  if(!supabase){sSt("Supabase未接続");return}
+  try{
+    const title=smnTitle||`[セミナー] ${new Date().toLocaleString("ja-JP")}`;
+    const insertData={
+      title,
+      analysis_type:"seminar",
+      input_text:txt,
+      output_text:"（要約未完了）",
+      ai_model:smnSummaryModelUsed||smnSummaryModel,
+      scores:{genspark:null,insights:null},
+    };
+    if(smnAudioPathRef.current)insertData.audio_path=smnAudioPathRef.current;
+    const{error}=await supabase.from("counseling_analyses").insert(insertData);
+    if(error)throw error;
+    setSmnSaved(true);
+    sSt("✅ 書き起こしを保存しました（要約なし）");
+  }catch(e){
+    console.error("[smnStopSave] error:",e);
+    sSt("⚠️ 保存に失敗: "+e.message);
+  }
+};
 const openSmnHist=async()=>{
   if(!supabase){sSt("Supabase未接続");return;}
   setSmnHistOpen(true);
@@ -2958,6 +2986,31 @@ h=h.replace(/(⚠️[^\n]+|注意[：:][^\n]+|禁忌[：:][^\n]+)/g,'<span style
 h=h.replace(/^([SOPC]\uff09|^患者情報\uff09)/gm,'<span style="color:#6d28d9;font-weight:700">$&</span>');
 h=h.replace(/^(■[^　\n]+)/gm,'<span style="color:#0369a1;font-weight:700">$1</span>');
 return h;
+};
+// セミナー詳細要約の表示用: Markdown記号(#/##/###, **, ---, 箇条書き)を軽量に整形表示する（読み取り専用div向け）。
+// ※ highlightSummary は薬剤名ハイライト等が混ざるため流用せず、セミナー専用に分離。lookbehind不使用でiOS Safari互換。
+const renderSmnMarkdown=(text)=>{
+  if(!text)return "";
+  const esc=(s)=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const inline=(s)=>esc(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  const lines=text.split(/\r?\n/);
+  let html="",inList=false;
+  const closeList=()=>{if(inList){html+="</ul>";inList=false}};
+  for(const raw of lines){
+    const line=raw.replace(/\s+$/,"");
+    let m;
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)){closeList();html+='<hr style="border:none;border-top:1px solid #d1d5db;margin:10px 0"/>';continue}
+    if(m=line.match(/^###\s+(.+)/)){closeList();html+=`<div style="font-size:13px;font-weight:700;color:#047857;margin:8px 0 4px">${inline(m[1])}</div>`;continue}
+    if(m=line.match(/^##\s+(.+)/)){closeList();html+=`<div style="font-size:15px;font-weight:700;color:#065f46;margin:12px 0 6px;border-bottom:2px solid #a7f3d0;padding-bottom:3px">${inline(m[1])}</div>`;continue}
+    if(m=line.match(/^#\s+(.+)/)){closeList();html+=`<div style="font-size:17px;font-weight:800;color:#064e3b;margin:14px 0 8px">${inline(m[1])}</div>`;continue}
+    if(m=line.match(/^\s*(?:[-*・]|•)\s+(.+)/)){if(!inList){html+='<ul style="margin:4px 0;padding-left:20px">';inList=true}html+=`<li style="margin:2px 0">${inline(m[1])}</li>`;continue}
+    if(m=line.match(/^\s*(\d+)[.)]\s+(.+)/)){closeList();html+=`<div style="margin:3px 0;padding-left:8px"><span style="font-weight:700;color:#059669">${m[1]}.</span> ${inline(m[2])}</div>`;continue}
+    if(line.trim()===""){closeList();html+='<div style="height:6px"></div>';continue}
+    closeList();
+    html+=`<div style="margin:3px 0">${inline(line)}</div>`;
+  }
+  closeList();
+  return html;
 };
 const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else{r=r.split(from).join(to)}}return r};
 const saveDictLocal=(d)=>{try{localStorage.setItem("mk_dict",JSON.stringify(d))}catch{}};
@@ -4840,12 +4893,12 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
       :smnRS==="paused"?
       <>
         <button onClick={resumeSmn} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
-        <button onClick={smnStop} style={{padding:"10px 20px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>⏹ 録音停止</button>
+        <button onClick={smnStop} style={{padding:"10px 20px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>⏹ 録音停止</button><button type="button" onClick={smnStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して書き起こしを保存</button>
       </>
       :
       <>
         <button onClick={pauseSmn} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
-        <button onClick={smnStop} style={{padding:"10px 20px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>⏹ 録音停止</button>
+        <button onClick={smnStop} style={{padding:"10px 20px",borderRadius:14,border:"none",background:"#dc2626",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>⏹ 録音停止</button><button type="button" onClick={smnStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して書き起こしを保存</button>
       </>
     }
     <span style={{fontSize:12,color:smnRS==="recording"?C.rG:smnRS==="paused"?"#d97706":C.g400,fontWeight:600}}>{smnRS==="recording"?"● 録音中（10秒毎に書き起こし）":smnRS==="paused"?"⏸ 一時停止中":"停止"}</span>
@@ -4884,7 +4937,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
       <button onClick={saveSmnResult} disabled={smnSaved} style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
     </div>
   </div>
-  <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`}}>{smnSummary}</div>
+  <div style={{fontSize:13,lineHeight:1.8,color:C.g900,maxHeight:600,overflowY:"auto",padding:10,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`,wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:renderSmnMarkdown(smnSummary)}}/>
 
   {/* 応用機能ボタン */}
   <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
