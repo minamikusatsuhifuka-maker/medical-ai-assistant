@@ -1984,6 +1984,25 @@ const saveMinInputOnly=async()=>{
     sSt("保存エラー: "+e.message);
   }
 };
+// 停止して内容を保存（要約なし）: 録音停止のみ行い書き起こしを保存。再開は「録音開始」で続きから追記（minInpは消さない）。
+// ※ minStop() は呼ばない（minStop はドラフト行を削除するため、saveMinInputOnly のドラフト昇格と競合する）。
+//   録音停止の手順は minStop と同等（音声保存含む）だが、ドラフト削除ブロックのみ意図的に省く。
+const minStopAndSaveOnly=async()=>{
+  if(!minIR.current?.trim()){sSt("書き起こしがありません");return}
+  // --- 録音停止（minStop 同等：タイマー停止・MediaRecorder停止・状態inactive） ---
+  if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
+  if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
+  if(minMR.current&&minMR.current.state!=="inactive"){try{minMR.current.stop()}catch{}}
+  setMinRS("inactive");minSR.current="inactive";xAM();
+  // 音声保存ONなら音声も保存（minStop と同じ）
+  if(minAudioSave&&minAllAudioChunks.current.length>0){
+    const blob=new Blob(minAllAudioChunks.current,{type:"audio/webm"});
+    minAllAudioChunks.current=[];
+    saveMinAudio(blob,minTitle);
+  }
+  // --- 要約APIは呼ばない。書き起こしのみ保存（既存 saveMinInputOnly を流用：draftがあれば昇格・なければinsert） ---
+  await saveMinInputOnly();
+};
 // 要約のみをSupabaseに保存（画面リセットなし）
 const saveMinOutputOnly=async()=>{
   if(!supabase){sSt("Supabase未接続");return;}
@@ -4566,10 +4585,10 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={minNext} style={{padding:"10px 24px",borderRadius:14,border:"2px solid "+C.p,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.12)"}}>次へ ▶</button></div>
 :minRS==="paused"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={resumeMin} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
-<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button></div>
+<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button></div>
 :<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={pauseMin} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
-<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button>
+<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
 </div>}
 <span style={{fontSize:12,color:minRS==="recording"?C.rG:minRS==="paused"?C.warn:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":minRS==="paused"?"⏸ 一時停止中":"停止"}</span>
 {(minRS==="recording"||minRS==="paused")&&<div style={{flex:"1 1 200px",minWidth:120,maxWidth:300,height:10,background:C.g100||"#f0f0f0",borderRadius:5,overflow:"hidden",border:`1px solid ${C.g200}`}}><div style={{width:`${Math.min(100,lv)}%`,height:"100%",background:lv>40?"#10b981":lv>10?"#f59e0b":"#94a3b8",transition:"width 120ms linear, background 200ms"}}/></div>}
