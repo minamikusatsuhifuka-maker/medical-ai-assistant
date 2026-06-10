@@ -1,0 +1,11 @@
+/* iOS Safari の入力フォーカス時の自動ズーム防止
+   原因: font-size が 16px 未満の input/textarea/select にフォーカスすると iOS が自動拡大する。
+   本アプリは fontSize を inline 指定しているため、CSS 側は !important で上書きする。
+   user-scalable=no は使わない（ピンチズームは従来どおり可能）。 */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

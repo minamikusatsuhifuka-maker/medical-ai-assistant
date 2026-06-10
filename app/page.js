@@ -4603,7 +4603,9 @@ finally{setMinTypoLd(false)}
 }} disabled={minTypoLd} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:11,fontWeight:600,color:"#5a3e8a",fontFamily:"inherit",cursor:minTypoLd?"wait":"pointer",whiteSpace:"nowrap"}}>
 {minTypoLd?"🔍...":"🔬 用語スキャン"}
 </button>
-<span style={{fontSize:11,color:C.g400}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span></div></div>
+<span style={{fontSize:11,color:C.g400}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span>
+{minInp&&<button type="button" onClick={()=>setMinInp('')} style={{fontSize:13,color:'#c0392b',background:'#fff0f0',border:'1px solid #f0c0c0',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>🗑 クリア</button>}
+</div></div>
 <textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:120,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 {minLd&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>AIが議事録を作成中...</span></div>}
 {minOut.startsWith("エラー")&&minInp.trim()&&<div style={{marginTop:8,padding:"10px 14px",borderRadius:10,background:"#fef9c3",border:"1px solid #fde047",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -4628,6 +4630,7 @@ finally{setMinTypoLd(false)}
 {[[200,"小"],[300,"中"],[500,"大"],[800,"特大"]].map(([h,label])=><button key={h} onClick={()=>setMinOutHeight(h)} style={{padding:"2px 7px",borderRadius:6,border:minOutHeight===h?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minOutHeight===h?C.pLL:C.w,fontSize:10,fontWeight:minOutHeight===h?700:500,color:minOutHeight===h?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{label}</button>)}
 </div>
 <button onClick={()=>{navigator.clipboard.writeText(minOut)}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+{minOut&&<button type="button" onClick={()=>setMinOut('')} style={{fontSize:13,color:'#c0392b',background:'#fff0f0',border:'1px solid #f0c0c0',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>🗑 クリア</button>}
 </div>
 <button onClick={async()=>{
 const t=minOut;

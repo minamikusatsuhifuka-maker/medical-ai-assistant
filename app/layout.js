@@ -1,3 +1,5 @@
+import './globals.css'
+
 export const metadata = {
   title: 'AI診療アシスタント',
   description: '音声書き起こし・カルテ要約AI',
