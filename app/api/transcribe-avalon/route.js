@@ -44,14 +44,16 @@ export async function POST(request) {
       return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
     }
 
-    // Avalon は OpenAI 互換（base_url を Aqua に向けるだけ）。送信形式は Whisper と同じ。
+    // Avalon は OpenAI 互換。送信形式は Whisper と同じ。
+    // ※ 実エンドポイントは api.aquavoice.com/api/v1/...（公式記載の api.aqua.sh/v1 はさくらの
+    //   パーキングに解決され到達不能。2026-06-18 実機検証で確定）。
+    // ※ model は送らない。"avalon-1" 等を送ると 400 "not a valid choice"。省略でデフォルトAvalonが使われる。
     const avalonForm = new FormData();
     avalonForm.append("file", audioFile, "audio.webm");
-    avalonForm.append("model", "avalon-1");
     avalonForm.append("language", "ja");
     avalonForm.append("response_format", "json");
 
-    const res = await fetch("https://api.aqua.sh/v1/audio/transcriptions", {
+    const res = await fetch("https://api.aquavoice.com/api/v1/audio/transcriptions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}` },
       body: avalonForm,
@@ -72,7 +74,7 @@ export async function POST(request) {
     try {
       await logUsage({
         route: "/api/transcribe-avalon",
-        model: "avalon-1",
+        model: "avalon",
         context: "transcribe",
         input_tokens: 0,
         output_tokens: 0,
