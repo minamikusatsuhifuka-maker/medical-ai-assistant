@@ -18,8 +18,9 @@ async function runWhisperFallback(audioFile) {
     body: whisperForm,
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error("Whisper fallback error: " + res.status + " " + err.substring(0, 200));
+    // 上流のエラー本文はAPIキー断片を含みうるためログのみ。例外メッセージはステータスのみ。
+    console.error("Whisper fallback error:", res.status, (await res.text()).substring(0, 200));
+    throw new Error("Whisper fallback failed (status " + res.status + ")");
   }
   const data = await res.json();
   return (data.text || "").trim();
@@ -28,9 +29,13 @@ async function runWhisperFallback(audioFile) {
 export async function POST(request) {
   const t0 = Date.now();
   let audioFile = null;
+  let compare = false;
   try {
     const formData = await request.formData();
     audioFile = formData.get("audio");
+    // compare=1（両方比較/A/B検証）時は Whisper で穴埋めせず、Avalon の生の成否を返す。
+    // → クライアントが「Avalon: 接続失敗(理由)」を明示表示できる。
+    compare = formData.get("compare") === "1";
 
     if (!audioFile) {
       return Response.json({ error: "音声ファイルがありません" }, { status: 400 });
@@ -38,8 +43,11 @@ export async function POST(request) {
 
     const apiKey = process.env.AQUA_API_KEY;
 
-    // キー未設定 → Whisper にフォールバック（落とさない）
+    // キー未設定: compare は明示失敗 / 単独は通知付き Whisper フォールバック
     if (!apiKey) {
+      if (compare) {
+        return Response.json({ failed: true, engine: "avalon", error: "AQUA_API_KEY 未設定", ms: Date.now() - t0 });
+      }
       const text = await runWhisperFallback(audioFile);
       return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
     }
@@ -59,10 +67,25 @@ export async function POST(request) {
       body: avalonForm,
     });
 
-    // Avalon 失敗 → Whisper にフォールバック（エラーで落とさない）
+    // Avalon 失敗: compare は明示失敗 / 単独は通知付き Whisper フォールバック
     if (!res.ok) {
       const err = await res.text();
       console.error("Avalon API error:", res.status, err.substring(0, 200));
+      if (compare) {
+        return Response.json({ failed: true, engine: "avalon", error: `Avalon ${res.status}: ${err.substring(0, 120)}`, ms: Date.now() - t0 });
+      }
+      const text = await runWhisperFallback(audioFile);
+      return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
+    }
+
+    // 念のため Content-Type を確認（JSON 以外＝HTML等が返ったら失敗扱い）
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("json")) {
+      const body = await res.text();
+      console.error("Avalon non-JSON response:", ct, body.substring(0, 120));
+      if (compare) {
+        return Response.json({ failed: true, engine: "avalon", error: `Avalon 非JSON応答(${ct})`, ms: Date.now() - t0 });
+      }
       const text = await runWhisperFallback(audioFile);
       return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
     }
@@ -85,7 +108,11 @@ export async function POST(request) {
     return Response.json({ text, engine: "avalon", ms });
   } catch (e) {
     console.error("transcribe-avalon error:", e);
-    // 例外時も可能なら Whisper にフォールバック
+    // compare は明示失敗（Whisper で穴埋めしない）
+    if (compare) {
+      return Response.json({ failed: true, engine: "avalon", error: "Avalon 例外: " + (e.message || "unknown"), ms: Date.now() - t0 });
+    }
+    // 単独 Avalon は例外時も可能なら通知付き Whisper にフォールバック
     try {
       if (audioFile) {
         const text = await runWhisperFallback(audioFile);
