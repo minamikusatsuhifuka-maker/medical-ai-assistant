@@ -49,7 +49,7 @@ export async function POST(request) {
         return Response.json({ failed: true, engine: "avalon", error: "AQUA_API_KEY 未設定", ms: Date.now() - t0 });
       }
       const text = await runWhisperFallback(audioFile);
-      return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
+      return Response.json({ text, engine: "whisper", fallback: true, avalonError: "AQUA_API_KEY 未設定", ms: Date.now() - t0 });
     }
 
     // Avalon は OpenAI 互換。送信形式は Whisper と同じ。
@@ -71,11 +71,12 @@ export async function POST(request) {
     if (!res.ok) {
       const err = await res.text();
       console.error("Avalon API error:", res.status, err.substring(0, 200));
+      const reason = `Avalon ${res.status}: ${err.substring(0, 120)}`;
       if (compare) {
-        return Response.json({ failed: true, engine: "avalon", error: `Avalon ${res.status}: ${err.substring(0, 120)}`, ms: Date.now() - t0 });
+        return Response.json({ failed: true, engine: "avalon", error: reason, ms: Date.now() - t0 });
       }
       const text = await runWhisperFallback(audioFile);
-      return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
+      return Response.json({ text, engine: "whisper", fallback: true, avalonError: reason, ms: Date.now() - t0 });
     }
 
     // 念のため Content-Type を確認（JSON 以外＝HTML等が返ったら失敗扱い）
@@ -83,11 +84,12 @@ export async function POST(request) {
     if (!ct.includes("json")) {
       const body = await res.text();
       console.error("Avalon non-JSON response:", ct, body.substring(0, 120));
+      const reason = `Avalon 非JSON応答(${ct})`;
       if (compare) {
-        return Response.json({ failed: true, engine: "avalon", error: `Avalon 非JSON応答(${ct})`, ms: Date.now() - t0 });
+        return Response.json({ failed: true, engine: "avalon", error: reason, ms: Date.now() - t0 });
       }
       const text = await runWhisperFallback(audioFile);
-      return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
+      return Response.json({ text, engine: "whisper", fallback: true, avalonError: reason, ms: Date.now() - t0 });
     }
 
     const data = await res.json();
@@ -116,7 +118,7 @@ export async function POST(request) {
     try {
       if (audioFile) {
         const text = await runWhisperFallback(audioFile);
-        return Response.json({ text, engine: "whisper", fallback: true, ms: Date.now() - t0 });
+        return Response.json({ text, engine: "whisper", fallback: true, avalonError: "Avalon 例外: " + (e.message || "unknown"), ms: Date.now() - t0 });
       }
     } catch (e2) { console.error("transcribe-avalon fallback error:", e2); }
     return Response.json({ error: e.message }, { status: 500 });
