@@ -5707,7 +5707,7 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <p style={{fontSize:11,color:C.g400,margin:0}}>
 {asrEngine==="whisper"?"✓ Whisper（OpenAI）で書き起こし中":asrEngine==="qwen"?"✓ Qwen3-ASR（Alibaba Cloud）で書き起こし中":asrEngine==="gemini"?"✓ Gemini 3.1 Flash-Lite（Google）で書き起こし中":asrEngine==="avalon"?"✓ Avalon（Aqua Voice）で書き起こし中。キー未設定/失敗時はWhisperに自動フォールバック":"⚖️ 両方比較（A/B検証）: 議事録の録音で Whisper と Avalon の結果を並べて表示します"}
 </p>
-{isIOSDevice&&(asrEngine==="avalon"||asrEngine==="both")&&<p style={{fontSize:11,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 10px",margin:"8px 0 0"}}>ℹ️ iPhone/iPadでは、Avalonが扱えない音声形式（iOSの録音仕様）のため、Avalon・両方比較を選んでも<b>Whisperで書き起こします</b>。PCではAvalon／両方比較が動作します。</p>}
+{isIOSDevice&&<p style={{fontSize:11,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 10px",margin:"8px 0 0"}}>※ iPhone・iPad では Avalon は使用できないため、選択しても <b>Whisper で書き起こします</b>（音声形式の制約）。Avalon の比較は PC でご利用ください。</p>}
 </div>
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🎤 音声コマンド</h3>
