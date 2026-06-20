@@ -48,8 +48,9 @@ ${text.substring(0, 5000)}`;
       ({ data, model: usedModel } = await callGeminiWithFallback(apiKey, requestBody, "scan-noise"));
     } catch (apiErr) {
       // 旧実装はここで {candidates:[]} を返し失敗を「0件」に偽装していた。成功偽装をやめ500で返す。
-      // ★一時計測用: Geminiの実ステータス(404等)を _debug で透過。確認後にこの _debug は除去する。
-      return Response.json({ candidates: [], error: "ノイズAI呼び出しに失敗しました", _debug: apiErr.message }, { status: 500 });
+      // 実ステータス(404等)はlib側のconsole.errorに残す（機密のためレスポンスへは透過しない）。
+      console.error("[scan-noise] Gemini all-models failed:", apiErr.message);
+      return Response.json({ candidates: [], error: "ノイズAI呼び出しに失敗しました" }, { status: 500 });
     }
 
     try { await logUsage({ route: "/api/scan-noise", model: usedModel, context: "noise-scan", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] scan-noise:", e); }
