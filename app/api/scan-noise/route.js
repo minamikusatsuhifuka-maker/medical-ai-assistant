@@ -1,4 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -37,22 +38,22 @@ JSON形式のみで返してください：
 書き起こしテキスト：
 ${text.substring(0, 5000)}`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1000 },
-      }),
+    const requestBody = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1000 },
     });
 
-    if (!res.ok) return Response.json({ candidates: [] });
+    let data, usedModel;
+    try {
+      ({ data, model: usedModel } = await callGeminiWithFallback(apiKey, requestBody, "scan-noise"));
+    } catch (apiErr) {
+      // 旧実装はここで {candidates:[]} を返し失敗を「0件」に偽装していた。成功偽装をやめ500で返す。
+      // ★一時計測用: Geminiの実ステータス(404等)を _debug で透過。確認後にこの _debug は除去する。
+      return Response.json({ candidates: [], error: "ノイズAI呼び出しに失敗しました", _debug: apiErr.message }, { status: 500 });
+    }
 
-    const data = await res.json();
-    try { await logUsage({ route: "/api/scan-noise", model: "gemini-2.0-flash", context: "noise-scan", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] scan-noise:", e); }
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    let content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
+    try { await logUsage({ route: "/api/scan-noise", model: usedModel, context: "noise-scan", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] scan-noise:", e); }
+    let content = extractGeminiText(data);
     content = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
 
     let parsed = { candidates: [] };
@@ -68,6 +69,6 @@ ${text.substring(0, 5000)}`;
     return Response.json({ candidates: filtered });
   } catch (e) {
     console.error("scan-noise error:", e);
-    return Response.json({ candidates: [], error: e.message });
+    return Response.json({ candidates: [], error: e.message }, { status: 500 });
   }
 }

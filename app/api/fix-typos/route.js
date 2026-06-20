@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -39,30 +40,25 @@ export async function POST(request) {
       userPrompt += `\n\n【登録済み辞書（参考）】\n${dictText}`;
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
-      }),
+    const requestBody = JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "AI校正APIエラー" }, { status: 500 });
+    let data, usedModel;
+    try {
+      ({ data, model: usedModel } = await callGeminiWithFallback(apiKey, requestBody, "fix-typos"));
+    } catch (apiErr) {
+      // 全モデル失敗。成功に偽装せず500で返す。
+      // ★一時計測用: Geminiの実ステータス(404等)を _debug で透過。確認後にこの _debug は除去する。
+      return NextResponse.json({ error: "AI校正APIエラー", _debug: apiErr.message }, { status: 500 });
     }
 
-    const data = await res.json();
-    try { await logUsage({ route: "/api/fix-typos", model: "gemini-2.0-flash", context: "typos-fix", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] fix-typos:", e); }
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    console.log("fix-typos parts count:", parts.length, "parts:", JSON.stringify(parts.map(p => ({ thought: p.thought, textLen: (p.text||"").length, textPreview: (p.text||"").slice(0,100) }))));
+    try { await logUsage({ route: "/api/fix-typos", model: usedModel, context: "typos-fix", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] fix-typos:", e); }
     // thinking partを除外してtext partのみ結合
-    const content = parts.filter(p => !p.thought).map(p => p.text || "").join("") || "";
-    console.log("fix-typos content:", content.slice(0, 500));
+    const content = extractGeminiText(data) || "";
+    console.log("fix-typos model:", usedModel, "content:", content.slice(0, 500));
 
     if (!content.trim()) {
       console.error("fix-typos: empty response");
