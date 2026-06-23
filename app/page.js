@@ -288,8 +288,13 @@ const T=[
 - 診断名・処方の決定は医師、症状の訴えは患者として分離
 
 【複数疾患への対応】
-- 会話中に複数の疾患・症状が話題になった場合、疾患ごとにASOPをまとめる
+- 会話中に複数の疾患・症状が話題になった場合、疾患ごとに「# 疾患名 A）/S）/O）/P）/患者情報）」をまとめる
 - 各疾患ブロックを --- で区切る
+
+【A）評価のルール】
+- A）は医師の評価・治療方針判断・重症度・経過判断を記載
+- 1〜3行程度の簡潔な記載（重症度 + 治療方針判断）
+- 例: 「軽症、外用継続で改善見込み」「中等症、生物学的製剤導入を検討」「慢性化、長期管理が必要」
 
 【# 疾患名の記載ルール】
 - # の後には「平易な表現（正式な医学用語）」の形式で記載する
@@ -301,25 +306,25 @@ const T=[
 - 該当がない場合は会話中の表現をそのまま使用
 
 【出力フォーマット（厳守）】
-# 疾患名
+# 疾患名　A）評価・治療方針
 S）主訴内容
 O）所見内容
 P）計画内容
 患者情報）背景やイベント情報
 
 【複数疾患の場合の例】
-# かぶれ（接触性皮膚炎）
+# かぶれ（接触性皮膚炎）　A）軽症、外用で1週間経過観察
 S）両前腕の痒み
 O）紅斑性丘疹を散在性に認める
 P）リンデロン-VG軟膏 1日2回
 ---
-# 水虫（足白癬）
+# 水虫（足白癬）　A）慢性化、外用継続必要
 S）足指の間がジュクジュクする
 O）第3-4趾間に浸軟・鱗屑
 P）ルリコン液 1日1回
 
 【フォーマットの厳密なルール】
-- # の後に半角スペース1つ、その後に「平易な表現（医学用語）」形式で疾患名を記載
+- 1行目は「# 疾患名」の直後に全角スペースを入れ、続けて「A）評価内容」を同じ1行で記載
 - S）O）P）患者情報）の直後に内容を続ける（改行しない）
 - 各行の間に空行を入れない
 - イベント情報（結婚式・旅行等）は患者情報）に記載
@@ -337,46 +342,48 @@ P）ルリコン液 1日1回
 - 会話にない情報は推測しない
 - 会話に含まれない項目は出力しない（「言及なし」「詳細不明」「記載なし」等は絶対に書かない）
 - 用法が不明な薬剤は薬剤名のみ記載（「用法不明」とは書かない）
+- A）は評価・治療方針判断を簡潔に（例: 軽症で経過観察 / 増悪傾向 / コントロール良好 など）
 - # の後は「平易な表現（医学用語）」形式で記載（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）、イボ（尋常性疣贅）、かぶれ（接触性皮膚炎）、じんましん（蕁麻疹）、ヘルペス（単純疱疹）、とびひ（伝染性膿痂疹）、あせも（汗疹）、シミ（肝斑）、ホクロ（色素性母斑）、アトピー（アトピー性皮膚炎）、手荒れ（手湿疹）、乾燥肌の湿疹（皮脂欠乏性湿疹）、粉瘤（表皮嚢腫）、赤ら顔（酒さ））
 - 医師が病名を言った場合はそれを優先、なければ所見から推定
 - 患者情報）には直近のイベント・希望・ライフイベント・趣味嗜好など生活背景を記載。情報がない場合は患者情報）行ごと省略する
 
 【出力フォーマット（厳守）】
-# 疾患名
+# 疾患名　A）評価・治療方針
 S）主訴（1文）
 O）所見（簡潔に）
 P）処方・指示
 患者情報）生活背景・イベント・希望（情報がある場合のみ記載）
 
 【例】
-# アトピー（アトピー性皮膚炎）
+# アトピー（アトピー性皮膚炎）　A）軽症〜中等症、外用継続で経過観察
 S）手足の痒み、夜間増悪
 O）四肢に紅斑・丘疹、顔面に赤み
 P）ステロイド外用 1日2回、2週後再診
 患者情報）来月結婚式あり、それまでに改善希望
 ---
-# イボ（尋常性疣贅）
+# イボ（尋常性疣贅）　A）多発性、冷凍凝固で治療開始
 S）手の疣贅
 O）手背に多発
 P）冷凍凝固療法`},
 {id:"soap-min",name:"📋 簡潔",prompt:`皮膚科の医療秘書として最小限にカルテ要約。
 
 【ルール】
-- 1疾患あたり最大3行で完結
+- 1疾患あたり最大4行で完結
 - 修飾語・詳細な説明は全て省く
+- A）は重症度や治療方針判断を1〜2語で簡潔に（例: 軽症 / 慢性化 / 経過良好 / 増悪）
 - 薬剤名と用法のみ
 - 複数疾患は --- で区切る
 - 推測しない
 - # の後は「平易な表現（医学用語）」形式（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）等）
 
 【出力フォーマット（厳守）】
-# 疾患名
+# 疾患名　A）評価
 S）一言
 O）一言
 P）処方名のみ
 
 【例】
-# かぶれ（接触性皮膚炎）
+# かぶれ（接触性皮膚炎）　A）軽症
 S）両前腕の痒み
 O）紅斑性丘疹
 P）リンデロン-VG 1日2回`},
@@ -3167,16 +3174,8 @@ const tc=async(b)=>{if(b.size<500)return;
 // 音声レベルが低すぎる場合は書き起こしAPI送信のみスキップ
 if(lvRef.current<1){return;}if(await isSilentChunk(b)){return}sPC(p=>p+1);sSt("🔄 書き起こし中...");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-medical",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length,room:rid}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(!noise)return;const fixed=applyDict(noise);sInp(p=>{
 const newInp=p+(p?"\n":"")+fixed;
-// 自動テンプレート判定（まだ発動していない場合のみ）
-if(!autoTplRef.current&&newInp.length>50){
-const detected=detectTemplate(newInp);
-if(detected&&detected!==tidRef.current){
-autoTplRef.current=true;
-sTid(detected);
-const tplNames={"cosmetic":"✨ 美容","procedure":"🔧 処置","disease":"🏥 疾患名","soap":"📋 詳細","soap-std":"📋 標準","soap-min":"📋 簡潔"};
-setAutoTplMsg(`🎯 ${tplNames[detected]||detected}テンプレに自動切替`);
-setTimeout(()=>setAutoTplMsg(""),4000);
-}}
+// 自動テンプレ切替は廃止（処置/美容キーワード(冷凍凝固・レーザー等)で誤切替し、診察カルテのA-S-O-P疾患別が処置記録形式に倒れるデグレの原因のため）。
+// テンプレはユーザーの手動選択／既定(soap-std=A-S-O-P疾患別)を常に尊重する。処置・美容テンプレは手動選択で利用可。
 return newInp;
 });sSt(`録音中 ✓ [${asrEngine==="qwen"?"Qwen3":asrEngine==="gemini"?"Gemini":(asrEngine==="avalon"&&!isIOSDevice)?"Avalon":(asrEngine==="both"&&!isIOSDevice)?"両方比較→Whisper":(isIOSDevice&&(asrEngine==="avalon"||asrEngine==="both"))?"Whisper(iOS代替)":"Whisper"}]`)}else{sSt("録音中")}}catch{sSt("録音中（エラー）")}finally{sPC(p=>Math.max(0,p-1))}};
 const cMR=(s)=>{const m=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});m.ondataavailable=(e)=>{if(e.data.size>0)tc(e.data)};return m};
