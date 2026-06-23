@@ -1849,7 +1849,7 @@ const runSmnSummary=async()=>{
   let txt=smnTextRef.current||smnTranscript;
   if(!txt||txt.length<100){sSt("⚠️ 書き起こしが短すぎます（100文字以上必要）");return;}
   setSmnSummaryLoading(true);setProg(20);
-  try{const _c=await cleanTranscript(txt);if(_c&&_c!==txt){txt=_c;smnTextRef.current=_c;setSmnTranscript(_c)}}catch{}
+  // 高速化のため要約直前の自動補正(直列)は廃止。補正は手動「✨書き起こしを補正」ボタンで明示実行する。
   try{
     const r=await fetch("/api/seminar-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({transcript:txt,model_preference:smnSummaryModel})});
     setProg(70);
@@ -2313,7 +2313,7 @@ if(!isAuto)sSt("保存エラー: "+e.message);
 setMinAutoSaving(false);
 }
 };
-const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);setProg(10);try{const _c=await cleanTranscript(minIR.current);if(_c&&_c!==minIR.current){minIR.current=_c;setMinInp(_c)}}catch{}
+const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);setProg(10);/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
 setProg(50);
@@ -2442,7 +2442,7 @@ if(d.error){setSuggestedSnippets([{title:"エラー",text:d.error,cat:""}]);retu
 try{const cleaned=d.summary.replace(/```json|```/g,"").trim();const arr=JSON.parse(cleaned);setSuggestedSnippets(arr)}catch{setSuggestedSnippets([{title:"解析エラー",text:d.summary,cat:""}])}
 }catch(e){setSuggestedSnippets([{title:"エラー",text:e.message,cat:""}])}finally{setSuggestLd(false)}};
 
-const analyzeCounseling=async()=>{let tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);setCsResults([]);try{const _cc=await cleanTranscript(tx);if(_cc&&_cc!==tx){tx=_cc;if(csTx.trim())setCsTx(_cc);else iR.current=_cc}}catch{}
+const analyzeCounseling=async()=>{let tx=csTx.trim()||iR.current;if(!tx){setCsOut("分析するテキストがありません。録音→書き起こし後、または直接テキストを入力してください。");return}setCsLd(true);setProg(10);setCsOut("");setCsScores({});setCsSaveMsg("");setCsUsage(null);setCsResults([]);/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */
 let pastRef="";if(supabase){try{
 const{data:csData}=await supabase.from("counseling_records").select("transcription,summary,patient_name").order("created_at",{ascending:false}).limit(20);
 if(csData&&csData.length>0){pastRef="\n\n【当院の過去のカウンセリング記録（"+csData.length+"件）】\n"+csData.map((r,i)=>`--- カウンセリング${i+1}${r.patient_name?" ("+r.patient_name+")":""}---\n書き起こし: ${r.transcription}\n${r.summary?"要約: "+r.summary:""}`).join("\n")}
@@ -3235,7 +3235,7 @@ setUsageGuide(d.summary||"");
 }catch(e){setUsageGuide("エラー: "+e.message)}
 finally{setUsageGuideLd(false)}
 };
-const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");return}sumDoneRef.current=false;sLd(true);setProg(10);try{const _c=await cleanTranscript(t);if(_c&&_c!==t){t=_c;iR.current=_c;sInp(_c)}}catch{}sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.5 Flash で要約中...");try{
+const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");return}sumDoneRef.current=false;sLd(true);setProg(10);/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.5 Flash で要約中...");try{
 const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント";
 const enhancedPrompt=ct.prompt+FORBIDDEN_RULES;
 setProg(40);
