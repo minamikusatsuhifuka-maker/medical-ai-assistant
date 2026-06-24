@@ -2926,23 +2926,41 @@ const baseFilteredHist=search?hist.filter(r=>{const s=search.toLowerCase();const
 const filteredHist=roomFilter==="all"?baseFilteredHist:baseFilteredHist.filter(r=>r.room===roomFilter);
 
 // 書き起こしノイズフィルター（TV・動画・環境音由来のテキストを除去）
-// 無音ハルシネーション対策: 同一短文の「連続」をN回以上で1行に畳む（軽量・エンジン非依存）。
-// Avalonは沈黙時に「うん。」「お疲れ様です。」等を数十〜数百回連続捏造する。無音スキップ(isSilentChunk)を
-// すり抜けた沈黙チャンクでも、この連続重複を畳んで画面汚染を防ぐ。Geminiは呼ばない純粋な文字列処理。
-// ⚠️正当な繰り返し（実際に2回言った等）を消さないよう、短文(SHORT_MAX文字以下)がMIN_REPEAT回以上連続した時のみ対象。
+// 無音ハルシネーション対策: 同一系統の短文の「連続」をN回以上で1行に畳む（軽量・エンジン非依存）。
+// Avalonは沈黙時に「うん。」「お疲れ様です。」「ちょっと聞こえた。」等を数十〜数百回連続捏造する。
+// 無音スキップ(isSilentChunk)をすり抜けた沈黙チャンクでも、この連続重複を畳んで画面汚染を防ぐ。Geminiは呼ばない純粋な文字列処理。
+// ⚠️完全一致だけでなく「前方一致・ほぼ同一」の崩れ（…聞こえた。→…聞こえ。→…聞こえ→…聞 等、チャンク末で切れた残骸）も
+//   同一系統として一括で畳む。特定フレーズ指定ではなく「短文(SHORT_MAX字以下)がMIN_REPEAT回以上連続」の汎用ルール。
+//   正当な繰り返し（実際に2回言った等）を消さないよう連続MIN_REPEAT回以上のみ対象。前方一致はMIN_PREFIX字以上＋
+//   短い方が長い方の完全な接頭辞である場合に限定（「今日は寒い」「今日はいい天気」のような分岐は畳まない）。
 const collapseRepeats=(text)=>{
   if(!text)return text;
-  const SHORT_MAX=14, MIN_REPEAT=3;
+  const SHORT_MAX=16, MIN_REPEAT=3, MIN_PREFIX=3;
+  // 末尾の句読点・記号・空白を除いて比較（「…聞こえた。」と「…聞こえた」を同一視）
+  const strip=s=>s.trim().replace(/[。、，．,.!?！？…・\s]+$/u,"");
+  const sameFamily=(a,b)=>{
+    const ta=a.trim(),tb=b.trim();
+    if(ta===tb)return true;
+    if(ta.length>SHORT_MAX||tb.length>SHORT_MAX)return false;
+    const sa=strip(a),sb=strip(b);
+    if(!sa||!sb)return false;
+    const[shrt,lng]=sa.length<=sb.length?[sa,sb]:[sb,sa];
+    // 短い方が丸ごと長い方の接頭辞（＝崩れ・残骸）のときのみ同系統とみなす
+    return shrt.length>=MIN_PREFIX&&lng.startsWith(shrt);
+  };
   const lines=text.split("\n");
   const out=[];
   let i=0;
   while(i<lines.length){
-    const key=lines[i].trim();
-    let j=i+1;
-    while(j<lines.length&&lines[j].trim()===key)j++;
+    if(lines[i].trim().length>SHORT_MAX){out.push(lines[i]);i++;continue;}
+    let j=i+1,canonical=lines[i]; // 同系統の最長を代表（崩れる前の完全形）にする
+    while(j<lines.length&&lines[j].trim().length<=SHORT_MAX&&sameFamily(canonical,lines[j])){
+      if(lines[j].trim().length>canonical.trim().length)canonical=lines[j];
+      j++;
+    }
     const run=j-i;
-    if(run>=MIN_REPEAT&&key.length>0&&key.length<=SHORT_MAX){
-      out.push(`${lines[i]}（×${run}）`);
+    if(run>=MIN_REPEAT&&canonical.trim().length>0){
+      out.push(`${canonical.trim()}（×${run}）`);
     }else{
       for(let k=i;k<j;k++)out.push(lines[k]);
     }
