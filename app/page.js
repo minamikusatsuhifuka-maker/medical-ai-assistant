@@ -641,6 +641,9 @@ useEffect(()=>{const sizes={small:"12px",medium:"14px",large:"16px"};document.do
 useEffect(()=>{document.documentElement.style.fontFamily=`'${fontFamily}', sans-serif`;document.body.style.fontFamily=`'${fontFamily}', sans-serif`;localStorage.setItem("mk_fontFamily",fontFamily)},[fontFamily]);
 useEffect(()=>{const t=THEMES[themeName]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh";const isDark=themeName.startsWith("dark");document.body.style.color=isDark?(t.g700||"#f1f5f9"):"";return()=>{document.body.style.color=""}},[themeName]);
 const[micDevices,setMicDevices]=useState([]),[selectedMic,setSelectedMic]=useState("");
+// マイク入力テスト（録音コアとは独立。専用のctx/stream/refで録音用 msR/acR/anR を一切共有しない）
+const[micTesting,setMicTesting]=useState(false),[micTestLv,setMicTestLv]=useState(0),[micTestMsg,setMicTestMsg]=useState("");
+const micTestRef=useRef(null);
 const loadMics=async()=>{try{await navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop()));const devs=await navigator.mediaDevices.enumerateDevices();const mics=devs.filter(d=>d.kind==="audioinput");setMicDevices(mics);if(!selectedMic&&mics.length>0)setSelectedMic(mics[0].deviceId)}catch(e){console.error("Mic enumeration error:",e)}};
 useEffect(()=>{loadMics();navigator.mediaDevices.addEventListener("devicechange",loadMics);return()=>navigator.mediaDevices.removeEventListener("devicechange",loadMics)},[]);
 useEffect(()=>{if(!document.getElementById("spin-kf")){const s=document.createElement("style");s.id="spin-kf";s.textContent="@keyframes spin{to{transform:rotate(360deg)}} button{transition:all 0.15s ease !important} button:hover{transform:translateY(-1px) !important;box-shadow:0 4px 12px rgba(0,0,0,.2), 0 2px 4px rgba(0,0,0,.1) !important} button:active{transform:translateY(1px) !important;box-shadow:0 1px 3px rgba(0,0,0,.15) !important}";document.head.appendChild(s)}},[]);
@@ -3240,6 +3243,29 @@ const runTreatmentMaterial=async()=>{
 // Audio
 const sAM=async()=>{try{const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};const s=await navigator.mediaDevices.getUserMedia(constraints);msR.current=s;const c=new(window.AudioContext||window.webkitAudioContext)(),sr=c.createMediaStreamSource(s),a=c.createAnalyser();a.fftSize=256;a.smoothingTimeConstant=0.7;sr.connect(a);acR.current=c;anR.current=a;const d=new Uint8Array(a.frequencyBinCount),tk=()=>{if(!anR.current)return;anR.current.getByteFrequencyData(d);let sm=0;for(let i=0;i<d.length;i++)sm+=d[i];sLv(Math.min(100,Math.round((sm/d.length/128)*100)));laR.current=requestAnimationFrame(tk)};laR.current=requestAnimationFrame(tk);return s}catch(e){console.error("Mic error:",e);sSt("マイク取得失敗：ブラウザの許可設定を確認してください");return null}};
 const xAM=()=>{if(laR.current)cancelAnimationFrame(laR.current);laR.current=null;if(acR.current){try{acR.current.close()}catch{}}acR.current=null;if(msR.current){msR.current.getTracks().forEach(t=>t.stop())}msR.current=null;anR.current=null;sLv(0)};
+// === マイク入力テスト（録音と独立・専用リソース）===
+const stopMicTest=()=>{const r=micTestRef.current;micTestRef.current=null;if(r){if(r.raf)cancelAnimationFrame(r.raf);if(r.timer)clearTimeout(r.timer);if(r.stream){try{r.stream.getTracks().forEach(t=>t.stop())}catch{}}if(r.ctx){try{r.ctx.close()}catch{}}}setMicTestLv(0);setMicTesting(false);};
+const startMicTest=async()=>{
+  if(rsRef.current!=="inactive"){setMicTestMsg("⚠️ 録音中はテストできません（録音を停止してからお試しください）");return;}
+  if(micTestRef.current)return;
+  setMicTestMsg("テスト中… マイクに話しかけてください");setMicTestLv(0);setMicTesting(true);
+  let peak=0;
+  try{
+    const constraints=selectedMic?{audio:{deviceId:{exact:selectedMic}}}:{audio:true};
+    const stream=await navigator.mediaDevices.getUserMedia(constraints);
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    if(ctx.state==="suspended"){try{await ctx.resume()}catch{}}
+    const src=ctx.createMediaStreamSource(stream),an=ctx.createAnalyser();an.fftSize=256;an.smoothingTimeConstant=0.7;src.connect(an);
+    const data=new Uint8Array(an.frequencyBinCount);
+    const label=(stream.getAudioTracks&&stream.getAudioTracks()[0]&&stream.getAudioTracks()[0].label)||"";
+    micTestRef.current={ctx,stream,raf:0,timer:0};
+    const tick=()=>{if(!micTestRef.current)return;an.getByteFrequencyData(data);let sm=0;for(let i=0;i<data.length;i++)sm+=data[i];const lvl=Math.min(100,Math.round((sm/data.length/128)*100));setMicTestLv(lvl);if(lvl>peak)peak=lvl;micTestRef.current.raf=requestAnimationFrame(tick);};
+    micTestRef.current.raf=requestAnimationFrame(tick);
+    micTestRef.current.timer=setTimeout(()=>{stopMicTest();if(peak>=6){setMicTestMsg(`✅ 音声を検出しました${label?`（${label}）`:""}`);}else{setMicTestMsg("⚠️ 音が届いていません。マイクの接続・ミュート・許可を確認してください");}},4000);
+  }catch(e){stopMicTest();setMicTestMsg("⚠️ マイクを起動できませんでした（許可・接続・端末をご確認ください）");}
+};
+// 録音が始まったらテストは即解放（同一マイク競合回避・録音コアには触れない）
+useEffect(()=>{if(rs!=="inactive"&&micTestRef.current)stopMicTest()},[rs]);
 const tc=async(b)=>{if(b.size<500)return;
 // 音声保存は mR_save 側で連続録音中（tcは書き起こし専用）
 // 音声レベルが低すぎる場合は書き起こしAPI送信のみスキップ
@@ -6154,13 +6180,17 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {[{p:"hist",i:"📂",t:"履歴",f:()=>{loadHist();setPage("hist")}},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary",f:()=>{loadFavorites();setPage("caselib")}},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks",f:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")}},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル",f:()=>window.open('/manual.pdf','_blank')}].filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh])).map(m=>(<button key={m.p} onClick={m.f||(()=>setPage(m.p))} style={{padding:mob?"6px 10px":"7px 12px",borderRadius:12,border:"1px solid #e7e5e4",background:"#ffffff",fontSize:mob?10:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",color:"#65a30d",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",boxShadow:"0 1px 4px rgba(0,0,0,.08)",flexShrink:0,whiteSpace:"nowrap"}}><span style={{fontSize:14}}>{m.i}</span>{m.t}</button>))}</div>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>{R.map(rm=>{const rc=ROOM_COLORS[rm.id]||{bg:"#f3f4f6",text:"#374151",border:"#d1d5db",accent:"#6b7280"};const isSel=rid===rm.id;return(<button key={rm.id} onClick={()=>sRid(rm.id)} style={{padding:"4px 10px",borderRadius:8,border:`2px solid ${isSel?rc.accent:rc.border}`,background:isSel?rc.bg:"#fff",color:isSel?rc.text:"#6b7280",fontSize:mob?11:12,fontWeight:isSel?700:500,fontFamily:"inherit",cursor:"pointer",transition:"all 0.15s",boxShadow:isSel?`0 0 0 2px ${rc.accent}33`:"none",whiteSpace:"nowrap",flexShrink:0}}>{rm.i} {rm.l}</button>)})}</div>
-<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
 <span style={{fontSize:10,color:C.g400}}>🎙</span>
-<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:1,padding:"3px 6px",borderRadius:6,border:`1px solid ${C.g200}`,fontSize:9,color:C.g500,fontFamily:"inherit",background:C.w,maxWidth:200}}>
-{micDevices.length===0?<option value="">マイクが見つかりません</option>:micDevices.map((d,i)=>(<option key={d.deviceId} value={d.deviceId}>{d.label||`マイク ${i+1}`}</option>))}
+<span style={{fontSize:10,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>入力:</span>
+<select value={selectedMic} onChange={e=>setSelectedMic(e.target.value)} style={{flex:"0 1 180px",padding:"3px 6px",borderRadius:6,border:`1px solid ${C.g200}`,fontSize:9,color:C.g500,fontFamily:"inherit",background:C.w,maxWidth:200}}>
+{micDevices.length===0?<option value="">マイク未検出（許可が必要）</option>:micDevices.map((d,i)=>(<option key={d.deviceId} value={d.deviceId}>{d.label||`マイク ${i+1}`}</option>))}
 </select>
-<button onClick={loadMics} style={{padding:"2px 5px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.w,fontSize:9,cursor:"pointer"}}>🔄</button>
+<button onClick={loadMics} title="マイク一覧を更新" style={{padding:"2px 5px",borderRadius:5,border:`1px solid ${C.g200}`,background:C.w,fontSize:9,cursor:"pointer"}}>🔄</button>
+{(()=>{const bl=micTesting?micTestLv:(rs!=="inactive"?lv:0);return(<div title="入力レベル（録音中・テスト中に反応）" style={{flex:"1 1 110px",minWidth:90,height:10,borderRadius:6,background:"#e7efe0",overflow:"hidden",border:`1px solid ${C.g200}`}}><div style={{width:`${bl}%`,height:"100%",borderRadius:6,background:bl>=45?"#ef4444":bl>=6?"#84cc16":"#cbd5e1",transition:"width 0.08s"}}/></div>);})()}
+<button onClick={micTesting?stopMicTest:startMicTest} disabled={rs!=="inactive"} title={rs!=="inactive"?"録音中はテストできません":"マイクに音が届くか数秒テスト"} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:rs!=="inactive"?"#f1f5f9":(micTesting?"#fef2f2":C.w),fontSize:10,fontWeight:700,color:rs!=="inactive"?C.g400:C.pD,fontFamily:"inherit",cursor:rs!=="inactive"?"not-allowed":"pointer",whiteSpace:"nowrap",opacity:rs!=="inactive"?0.5:1}}>{micTesting?"⏹ 停止":"🎤 マイクテスト"}</button>
 </div>
+{micTestMsg&&<div style={{margin:"0 0 6px",fontSize:11,fontWeight:600,color:micTestMsg.startsWith("✅")?"#15803d":micTestMsg.startsWith("⚠️")?"#b45309":C.g500}}>{micTestMsg}</div>}
 {todayStats&&<div style={{margin:"0 0 10px",padding:"8px 12px",borderRadius:10,background:C.pLL,border:`1px solid ${C.g200}`,cursor:"pointer"}} onClick={()=>setStatsOpen(v=>!v)}>
 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
 <span style={{fontSize:12,fontWeight:700,color:C.pD}}>📊 本日の診察</span>
