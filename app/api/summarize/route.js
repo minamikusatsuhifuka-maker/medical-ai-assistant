@@ -28,13 +28,17 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
   for (const model of modelList) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
+      // Gemini 3.x は思考が既定ONで、ストリーミングでは思考完了まで出力が始まらず要約が遅くなる。
+      // 要約は抽出・整形タスクで深い推論は不要のため思考を最小化（2.5系は thinkingLevel 非対応のため付けない）。
+      const genConfig = { temperature: 0.3, maxOutputTokens: 8192 };
+      if (model.startsWith("gemini-3")) genConfig.thinkingConfig = { thinkingLevel: "minimal" };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ parts: [{ text }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+          generationConfig: genConfig,
         }),
       });
       if (!res.ok) continue;
@@ -102,13 +106,16 @@ async function callGemini(text, prompt, model_preference) {
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      // Gemini 3.x は思考が既定ONで要約が遅くなる。要約は抽出・整形タスクで深い推論は不要のため最小化（2.5系は thinkingLevel 非対応のため付けない）。
+      const genConfig = { temperature: 0.3, maxOutputTokens: 8192 };
+      if (model.startsWith("gemini-3")) genConfig.thinkingConfig = { thinkingLevel: "minimal" };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ parts: [{ text }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+          generationConfig: genConfig,
         }),
       });
       if (!res.ok) {
