@@ -88,14 +88,14 @@ function buildGeminiModelList(model_preference) {
   }
   // gemini-pro: 既存の2.5 Pro優先（診察要約等）
   if (model_preference === "gemini-pro") {
-    return ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+    return ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"];
   }
   // gemini-3-5-flash: 明示的に Gemini 3.5 Flash を指定（要約テストラボ用）
   if (model_preference === "gemini-3-5-flash") {
     return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
   }
   // デフォルト（gemini）: 3.5 Flash 優先（2026-05-19 GA・上位互換）
-  return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+  return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 }
 
 async function callGemini(text, prompt, model_preference) {

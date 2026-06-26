@@ -52,9 +52,9 @@ const SEMINAR_PROMPT = `あなたは医療クリニックの学習支援AIです
 
 function buildGeminiModelList(model_preference) {
   if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"];
-  if (model_preference === "gemini-pro") return ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
-  if (model_preference === "gemini-3-5-flash") return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
-  return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+  if (model_preference === "gemini-pro") return ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"];
+  if (model_preference === "gemini-3-5-flash") return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+  return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 }
 
 async function callGemini(transcript, model_preference) {

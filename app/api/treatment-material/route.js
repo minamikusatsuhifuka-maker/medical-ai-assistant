@@ -1,4 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -45,25 +46,14 @@ export async function POST(request) {
 診察記録:
 ${combined.substring(0, 8000)}`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
-      }),
+    // 旧 gemini-2.0-flash 直叩きは404（廃番）。中央ヘルパーの有効モデルフォールバックに統一。
+    const requestBody = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
     });
-
-    if (!res.ok) {
-      const err = await res.text();
-      return Response.json({ error: "AI APIエラー: " + res.status }, { status: 500 });
-    }
-
-    const data = await res.json();
-    try { await logUsage({ route: "/api/treatment-material", model: "gemini-2.0-flash", context: "treatment-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0 } }); } catch(e) { console.error("[logUsage] treatment-material:", e); }
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    const material = parts.filter(p => !p.thought).map(p => p.text || "").join("").trim();
+    const { data, model } = await callGeminiWithFallback(apiKey, requestBody, "treatment-material");
+    try { await logUsage({ route: "/api/treatment-material", model, context: "treatment-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0 } }); } catch(e) { console.error("[logUsage] treatment-material:", e); }
+    const material = extractGeminiText(data).trim();
 
     // Gensparkプロンプトを生成
     const gensparkPrompt = `以下は皮膚科クリニックの実際の診察記録をもとに整理した治療内容です。

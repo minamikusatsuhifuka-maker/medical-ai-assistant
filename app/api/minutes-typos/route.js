@@ -1,3 +1,5 @@
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+
 export const maxDuration = 60;
 
 const SCAN_CHUNK_SIZE = 5000;
@@ -31,20 +33,14 @@ const SYSTEM_PROMPT = `あなたはクリニック経営・医療・マーケテ
 - 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい用語","reason":"理由（カテゴリも明記）"}]}]}`;
 
 async function scanChunk(text, apiKey) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ parts: [{ text: `以下はクリニックの会議・ミーティングの音声書き起こしテキストです。\n医療・経営・マーケティング用語の音声認識誤りを全て見つけてください：\n\n${text}` }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-    }),
+  // 旧 gemini-2.0-flash 直叩きは404（廃番）。中央ヘルパーの有効モデルフォールバックに統一。
+  const requestBody = JSON.stringify({
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ parts: [{ text: `以下はクリニックの会議・ミーティングの音声書き起こしテキストです。\n医療・経営・マーケティング用語の音声認識誤りを全て見つけてください：\n\n${text}` }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
+  const { data } = await callGeminiWithFallback(apiKey, requestBody, "minutes-typos");
+  const content = extractGeminiText(data);
   if (!content.trim()) return [];
 
   let parsed = { corrections: [] };
