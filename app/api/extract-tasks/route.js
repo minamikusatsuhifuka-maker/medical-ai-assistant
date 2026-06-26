@@ -1,4 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 300;
 
@@ -143,31 +144,20 @@ urgency/importance: 1=低 2=やや低 3=やや高 4=高
 議事録:
 ${text}`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
-    }),
+  // 旧 gemini-2.0-flash は404（提供終了）。校正系と同じ中央フォールバック（3.5-flash→2.5-flash→2.5-pro）に統一。
+  const requestBody = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    const err = new Error(`Gemini API HTTP ${res.status}: ${errText.slice(0, 200)}`);
-    err.status = res.status;
-    throw err;
-  }
-
-  const data = await res.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  let content = parts.filter(p => !p.thought).map(p => p.text || "").join("");
+  const { data, model: usedModel } = await callGeminiWithFallback(apiKey, requestBody, "extract-tasks");
+  // thinking partを除外してtext partのみ結合
+  let content = extractGeminiText(data) || "";
 
   try {
     await logUsage({
       route: "/api/extract-tasks",
-      model: "gemini-2.0-flash",
+      model: usedModel,
       context: "task-extract",
       input_tokens: data.usageMetadata?.promptTokenCount || 0,
       output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
@@ -201,12 +191,14 @@ export async function POST(request) {
         const tasks = await callWithRetry(() => extractTasksFromText(text));
         return Response.json({ tasks, chunked: false });
       } catch (err) {
-        const status = err?.status || 500;
-        console.error("[extract-tasks] single request failed:", err?.message);
-        if (status === 429) {
+        const msg = err?.message || String(err);
+        // 中央ヘルパーは status を立てないため message から判定（429=レート制限）
+        const isRateLimit = err?.status === 429 || msg.includes("429") || msg.includes("rate limit") || msg.includes("quota");
+        console.error("[extract-tasks] single request failed:", msg);
+        if (isRateLimit) {
           return Response.json({ tasks: [], error: `HTTP 429 (レート制限)` }, { status: 429 });
         }
-        return Response.json({ tasks: [], error: err?.message || "unknown error" }, { status: status >= 500 ? 502 : 500 });
+        return Response.json({ tasks: [], error: msg || "unknown error" }, { status: 502 });
       }
     }
 
