@@ -4831,6 +4831,7 @@ finally{setMinTypoLd(false)}
 <button onClick={saveMinPartial} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>💾 チャンク要約のみで保存</button>
 </div>}
 {minTruncated&&!minFinalIntegrationFailed&&!minOut.startsWith("エラー")&&<div style={{marginBottom:10,padding:"10px 14px",borderRadius:10,background:"#fef3c7",border:"1px solid #f59e0b",fontSize:12,color:"#92400e",lineHeight:1.6}}>⚠️ 要約が長すぎて途中で切れている可能性があります。AIモデルを「Gemini 2.5 Pro」または「Claude Sonnet 4.6」に切り替えて再生成してください。</div>}
+{(()=>{if(!minOut||minOut.startsWith("エラー"))return null;const m=minOut.match(/【端的な要約】([\s\S]*?)(?:【議事録】|$)/);const sum=m?m[1].trim():"";if(!sum)return null;return(<div style={{marginBottom:10,padding:"12px 16px",borderRadius:12,background:C.pLL,border:`1.5px solid ${C.p}55`}}><div style={{fontSize:12,fontWeight:700,color:C.pD,marginBottom:6}}>📝 端的な要約</div><div style={{fontSize:13,color:C.g900,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{sum}</div></div>)})()}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 議事録{modelBadge(minutesGenModel)}</span>
 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
