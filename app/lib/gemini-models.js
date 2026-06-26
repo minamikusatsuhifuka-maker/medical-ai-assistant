@@ -3,6 +3,13 @@
 // ※二重管理を避けるため、校正系のモデル変更はこの1ファイルのみで行う。
 export const GEMINI_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 
+// 定期チェック（gemini-model-check）の照合対象。このアプリが要約系で実際に呼ぶ「安定版」モデル。
+// 廃番検知は ListModels の結果とこのリストを照合する（GEMINI_MODELS と同一の安定3モデル）。
+// 廃番疑いが出たら、人が判断してこのファイルのモデル名を更新する（1ファイルで全ルートに反映）。
+export const ACTIVE_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+// 一部ルートが選好「gemini-3-pro」で使うプレビュー版。提供が流動的なので廃番警告は控えめに扱う（参考情報）。
+export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"];
+
 // 指定モデルへ generateContent を投げ、フォールバックしながら最初に成功したレスポンスを返す。
 // 全滅時は throw（呼び出し元でエラーをUIに表面化する）。
 // 返り値: { data, model } / 例外: Error(message に各モデルのHTTPステータスと本文断片)
