@@ -562,6 +562,46 @@ const DEFAULT_DICT=[
 ["あずのーる","アズノール"],["げんたしん","ゲンタシン"],["ふしじんさん","フシジン酸"],
 ];
 
+// 議事録の「表示専用」整形レンダラ。保存テキストは一切変えず、CSSの余白だけで可読化する。
+// ・見出し(■/【】) ・箇条書き(・/･/-) ・番号(1.) ・空行 を判定し、項目間の余白とぶら下げインデントを付ける。
+// 長い項目は句点「。」で“表示上だけ”文分割し、2文ごとに小さな空きを入れて壁を崩す（元テキストは不変）。
+function mvSplitLong(s){
+  const sentences=String(s).split(/(?<=。)/).filter(x=>x.length>0);
+  if(sentences.length<=1)return [s];
+  const groups=[];for(let i=0;i<sentences.length;i+=2){groups.push(sentences.slice(i,i+2).join(""))}
+  return groups;
+}
+function mvBody(s){
+  const text=String(s);
+  const isLong=text.length>100||(text.match(/。/g)||[]).length>=3;
+  if(!isLong)return text;
+  const groups=mvSplitLong(text);
+  return groups.map((g,i)=>(<div key={i} style={{marginBottom:i<groups.length-1?"0.35em":0}}>{g}</div>));
+}
+function MinutesFormatted({text}){
+  const raw=String(text||"");
+  if(!raw.trim())return null;
+  const lines=raw.split("\n");
+  const out=[];let k=0;
+  for(const line of lines){
+    const t=line.trim();
+    if(t===""){out.push(<div key={k++} style={{height:"0.5em"}}/>);continue;}
+    if(t.startsWith("■")||/^【.+】$/.test(t)){
+      out.push(<div key={k++} style={{fontWeight:700,fontSize:"1.06em",color:"#2a5018",margin:"0.95em 0 0.3em",lineHeight:1.5}}>{t.replace(/^■\s*/,"")}</div>);continue;
+    }
+    const numM=t.match(/^(\d+)[.．]\s*(.*)$/);
+    if(numM){
+      out.push(<div key={k++} style={{display:"flex",gap:6,marginBottom:"0.55em",lineHeight:1.85}}><span style={{flex:"0 0 auto",fontWeight:600,minWidth:"1.5em"}}>{numM[1]}.</span><div style={{flex:1,minWidth:0}}>{mvBody(numM[2])}</div></div>);continue;
+    }
+    const bulM=t.match(/^[・･\-]\s*(.*)$/);
+    if(bulM){
+      out.push(<div key={k++} style={{display:"flex",gap:6,marginBottom:"0.55em",lineHeight:1.85}}><span style={{flex:"0 0 auto"}}>・</span><div style={{flex:1,minWidth:0}}>{mvBody(bulM[1])}</div></div>);continue;
+    }
+    out.push(<div key={k++} style={{marginBottom:"0.5em",lineHeight:1.85}}>{mvBody(t)}</div>);
+  }
+  return <div style={{whiteSpace:"normal"}}>{out}</div>;
+}
+
 // === MAIN COMPONENT ===
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
@@ -4947,7 +4987,7 @@ finally{setMinTypoLd(false)}
   </div>
 ):(
   <div>
-    <div style={{fontSize:minHistFontSize,color:C.g600,whiteSpace:"pre-wrap",maxHeight:minHistHeight,overflowY:"auto",marginBottom:4,padding:8,borderRadius:8,background:C.w,border:`1px solid ${C.g200}`,lineHeight:1.7}}>{m.output_text||""}</div>
+    <div style={{fontSize:minHistFontSize,color:C.g600,maxHeight:minHistHeight,overflowY:"auto",marginBottom:4,padding:"8px 10px",borderRadius:8,background:C.w,border:`1px solid ${C.g200}`,lineHeight:1.85}}><MinutesFormatted text={m.output_text||""}/></div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
       <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={(e)=>{e.stopPropagation();setEditMinId(m.id);setEditMinText(m.output_text||"");setEditMinTitle(m.title||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️ 編集</button>
