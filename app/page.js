@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
-import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -673,12 +672,6 @@ const[noiseScanLd,setNoiseScanLd]=useState(false);
 const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
 const[newNoiseInput,setNewNoiseInput]=useState("");
-// === 書き起こし自動保存・復元（充電切れ・誤クローズ対策） ===
-const[recoverySessions,setRecoverySessions]=useState([]);
-const[autosaveAt,setAutosaveAt]=useState({exam:null,minutes:null,seminar:null});
-const examSessionIdRef=useRef(null);
-const minSessionIdRef=useRef(null);
-const smnSessionIdRef=useRef(null);
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
@@ -1834,36 +1827,6 @@ setProg(50);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPromptFinal,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
 
 const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
-// === 書き起こし自動保存・復元: 起動時に未完了セッションを読み込み ===
-useEffect(()=>{getRecoverableSessions().then(list=>setRecoverySessions(list||[])).catch(()=>{})},[]);
-// 蓄積書き起こしが更新されるたび（軽いdebounce）にIndexedDBへ保存。録音・要約フローには一切割り込まない。
-useEffect(()=>{if(!inp||!inp.trim())return;const t=setTimeout(()=>{try{if(!examSessionIdRef.current)examSessionIdRef.current=genSessionId();saveTranscriptSession({sessionId:examSessionIdRef.current,mode:"exam",text:inp,engine:asrEngine}).then(()=>setAutosaveAt(p=>({...p,exam:Date.now()})))}catch{}},1500);return()=>clearTimeout(t)},[inp]);
-useEffect(()=>{if(!minInp||!minInp.trim())return;const t=setTimeout(()=>{try{if(!minSessionIdRef.current)minSessionIdRef.current=genSessionId();saveTranscriptSession({sessionId:minSessionIdRef.current,mode:"minutes",text:minInp,engine:asrEngine}).then(()=>setAutosaveAt(p=>({...p,minutes:Date.now()})))}catch{}},1500);return()=>clearTimeout(t)},[minInp]);
-useEffect(()=>{if(!smnTranscript||!smnTranscript.trim())return;const t=setTimeout(()=>{try{if(!smnSessionIdRef.current)smnSessionIdRef.current=genSessionId();saveTranscriptSession({sessionId:smnSessionIdRef.current,mode:"seminar",text:smnTranscript,engine:asrEngine}).then(()=>setAutosaveAt(p=>({...p,seminar:Date.now()})))}catch{}},1500);return()=>clearTimeout(t)},[smnTranscript]);
-// バックグラウンド化・タブ破棄時は即時フラッシュ保存（debounce待ちを飛ばす）。iOS Safariのタブ破棄対策。beforeunloadはiOSで信頼できないため使わない。
-useEffect(()=>{
-const flush=()=>{try{
-if(iR.current&&iR.current.trim()&&examSessionIdRef.current)saveTranscriptSession({sessionId:examSessionIdRef.current,mode:"exam",text:iR.current,engine:asrEngine});
-if(minIR.current&&minIR.current.trim()&&minSessionIdRef.current)saveTranscriptSession({sessionId:minSessionIdRef.current,mode:"minutes",text:minIR.current,engine:asrEngine});
-if(smnTextRef.current&&smnTextRef.current.trim()&&smnSessionIdRef.current)saveTranscriptSession({sessionId:smnSessionIdRef.current,mode:"seminar",text:smnTextRef.current,engine:asrEngine});
-}catch{}};
-const onVis=()=>{if(document.hidden)flush()};
-document.addEventListener("visibilitychange",onVis);
-window.addEventListener("pagehide",flush);
-return()=>{document.removeEventListener("visibilitychange",onVis);window.removeEventListener("pagehide",flush)}
-},[]);
-const restoreTranscriptSession=(session)=>{
-if(session.mode==="exam"){examSessionIdRef.current=session.sessionId;sInp(session.text)}
-else if(session.mode==="minutes"){minSessionIdRef.current=session.sessionId;setMinInp(session.text)}
-else if(session.mode==="seminar"){smnSessionIdRef.current=session.sessionId;setSmnTranscript(session.text)}
-setRecoverySessions(prev=>prev.filter(s=>s.sessionId!==session.sessionId));
-sSt("✓ 書き起こしを復元しました");
-};
-const discardTranscriptSession=(session)=>{
-if(!window.confirm("この書き起こしの復元データを破棄しますか？"))return;
-deleteTranscriptSession(session.sessionId);
-setRecoverySessions(prev=>prev.filter(s=>s.sessionId!==session.sessionId));
-};
 const minGo=async()=>{minAudioPathsRef.current=[];const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
 if(lvRef.current<1)return;if(await isSilentChunk(b))return;try{const f=new FormData();f.append("audio",b,"audio.webm");if(asrEngine==="both"){const f2=new FormData();f2.append("audio",b,"audio.webm");f2.append("compare","1");const callW=async()=>{const s=performance.now();try{const r=await fetch("/api/transcribe",{method:"POST",body:f});const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Whisper ${r.status}`,ms:Math.round(performance.now()-s)};const d=await r.json();return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Whisper 例外",ms:Math.round(performance.now()-s)}}};const callA=async()=>{const s=performance.now();try{const r=await fetch("/api/transcribe-avalon",{method:"POST",body:f2});const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Avalon ${r.status}（非JSON）`,ms:Math.round(performance.now()-s)};const d=await r.json();if(d.failed)return{failed:true,error:d.error||"Avalon 接続失敗",ms:Math.round(performance.now()-s)};return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Avalon 例外",ms:Math.round(performance.now()-s)}}};const[w,a]=await Promise.all([callW(),isIOSDevice?Promise.resolve({failed:true,error:"iOS（iPhone/iPad）は音声形式の制約でAvalon非対応のためWhisperのみ表示",ms:0,ios:true}):callA()]);if(!w.failed)fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes-ab",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(w.text||"").length}})}).catch(()=>{});if(w.failed){setAbWhisperMs(m=>m+w.ms)}else{const wn=filterTranscriptNoise((w.text||"").trim());if(wn)setAbWhisper(p=>foldAccum(p+(p?"\n":"")+wn));setAbWhisperMs(m=>m+w.ms)}if(a.failed){setAbAvalonError(a.error||"接続失敗");setAbAvalonIOS(!!a.ios);setAbAvalonMs(m=>m+a.ms)}else{setAbAvalonError("");setAbAvalonIOS(false);const an=filterTranscriptNoise((a.text||"").trim());if(an)setAbAvalon(p=>foldAccum(p+(p?"\n":"")+an));setAbAvalonMs(m=>m+a.ms)}return}const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";const r=await fetch(endpoint,{method:"POST",body:f}),d=await r.json();if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch{}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
@@ -2111,7 +2074,6 @@ const deleteSmnRecord=async(id)=>{
 };
 const clearSmnAll=()=>{
   if(!window.confirm("入力中のセミナー学習内容（書き起こし・要約・Genspark・気づき）をすべてクリアしますか？"))return;
-  if(smnSessionIdRef.current){deleteTranscriptSession(smnSessionIdRef.current);smnSessionIdRef.current=null;}
   smnStop();
   setSmnTitle("");setSmnTranscript("");setSmnSummary("");setSmnGensparkText("");setSmnInsights("");setSmnSummaryModelUsed("");
   setSmnSaved(false);
@@ -2475,7 +2437,6 @@ importance: 1=低 2=やや低 3=やや高 4=高
 `;try{console.log("[page] waiting 3s before auto task extraction to avoid rate limit");await new Promise(r=>setTimeout(r,3000));const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});if(tr2.status===429){console.warn("[page] auto extract-tasks rate-limited, skipping (user can retry via manual button)");sSt("⏳ 要約後のタスク自動抽出がレート制限に達しました。少し待ってから「📋 タスク生成」ボタンで手動実行してください。")}else{const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}let chunkMsg="";if(td.chunked)chunkMsg="（"+td.chunkCount+"チャンク分割）";sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました"+chunkMsg)}else{console.warn("extract-tasks: no tasks or empty",td)}}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
 // 議事録画面の状態をリセット（保存はしない・ドラフトがあれば破棄）
 const performMinReset=()=>{
-  if(minSessionIdRef.current){deleteTranscriptSession(minSessionIdRef.current);minSessionIdRef.current=null;}
   if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
   if(minDraftIdRef.current&&supabase){
     supabase.from("minutes").delete().eq("id",minDraftIdRef.current).then(()=>{}).catch(()=>{});
@@ -3436,7 +3397,7 @@ const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
 // PiPボタン更新の外側ラッパー：本体は openPip 内で定義され pipBtnUpdateRef に登録される
 const pipBtnUpdate=()=>{try{pipBtnUpdateRef.current&&pipBtnUpdateRef.current()}catch(e){console.warn("pipBtnUpdate error:",e)}};
-const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(examSessionIdRef.current){deleteTranscriptSession(examSessionIdRef.current);examSessionIdRef.current=null}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
+const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === D-1〜D-3 複数選択削除 共通ヘルパー & 削除関数 ===
 const toggleIdInSet=(setter,id)=>{setter(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n})};
@@ -4807,15 +4768,6 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📝 議事録まとめ</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3.5 Flash"}</span><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
-{recoverySessions.filter(s=>s.mode==="minutes").map(s=>(
-<div key={s.sessionId} style={{marginBottom:10,padding:"10px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-<span style={{fontSize:12,color:"#92400e",fontWeight:600}}>⚠️ 前回の書き起こしが途中で終了しています（{new Date(s.updatedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・約{s.text.length}文字）</span>
-<div style={{display:"flex",gap:6}}>
-<button onClick={()=>restoreTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元する</button>
-<button onClick={()=>discardTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>破棄</button>
-</div>
-</div>
-))}
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>会議やミーティングを録音・書き起こしし、AIが議事録を自動作成します。</p>
 <input value={minTitle} onChange={e=>setMinTitle(e.target.value)} placeholder="議事録タイトル（例：2月定例ミーティング）" style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",marginBottom:12,boxSizing:"border-box"}}/>
@@ -4841,7 +4793,6 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <textarea value={minPrompt} onChange={e=>setMinPrompt(e.target.value)} placeholder="AIへの追加指示（任意）：例「院内勉強会の形式で」「スタッフミーティング用に簡潔に」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:10,resize:"vertical",boxSizing:"border-box"}}/>
 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
 <span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(minEl/60)).padStart(2,"0")}:{String(minEl%60).padStart(2,"0")}</span>
-{autosaveAt.minutes&&<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.minutes).toLocaleTimeString("ja-JP")}</span>}
 {minRS==="inactive"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={minGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>🎙 録音開始</button>
 {minInp.trim()&&!minOut&&<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✨ 要約作成</button>}
@@ -5096,15 +5047,6 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
   <button onClick={openSmnHist} style={{padding:"6px 12px",borderRadius:10,border:`1px solid ${C.p}66`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button>
   <button onClick={()=>{smnStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div>
-{recoverySessions.filter(s=>s.mode==="seminar").map(s=>(
-<div key={s.sessionId} style={{marginBottom:10,padding:"10px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-<span style={{fontSize:12,color:"#92400e",fontWeight:600}}>⚠️ 前回の書き起こしが途中で終了しています（{new Date(s.updatedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・約{s.text.length}文字）</span>
-<div style={{display:"flex",gap:6}}>
-<button onClick={()=>restoreTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元する</button>
-<button onClick={()=>discardTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>破棄</button>
-</div>
-</div>
-))}
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("⚠️")||st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("⚠️")||st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>セミナー音声を書き起こし → 詳細な要約・まとめ → Genspark共有資料 → AI気づき・提案 を一気通貫で生成します。</p>
 
@@ -5133,7 +5075,6 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
   </div>
   <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
     <span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(smnEl/60)).padStart(2,"0")}:{String(smnEl%60).padStart(2,"0")}</span>
-    {autosaveAt.seminar&&<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.seminar).toLocaleTimeString("ja-JP")}</span>}
     {smnRS==="inactive"?
       <button onClick={smnGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap"}}>🎙 録音開始</button>
       :smnRS==="paused"?
@@ -5866,7 +5807,6 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 {savedMsg&&<span style={{fontSize:12,color:C.rG,fontWeight:600}}>{savedMsg}</span>}
 <button onClick={()=>{try{localStorage.setItem("mk_logo",logoUrl);localStorage.setItem("mk_logoSize",String(logoSize));localStorage.setItem("mk_dict",JSON.stringify(dict));localStorage.setItem("mk_snippets",JSON.stringify(snippets));localStorage.setItem("mk_pipSnippets",JSON.stringify(pipSnippets));localStorage.setItem("mk_audioSave",audioSave?"1":"0");localStorage.setItem("mk_dictEnabled",dictEnabled?"1":"0");localStorage.setItem("mk_shortcuts",JSON.stringify(shortcuts));if(tplOrder)localStorage.setItem("mk_tplOrder",JSON.stringify(tplOrder));if(tplVisible)localStorage.setItem("mk_tplVisible",JSON.stringify(tplVisible));setSavedMsg("✓ 保存しました");setTimeout(()=>setSavedMsg(""),3000)}catch(e){setSavedMsg("保存エラー")}}} style={{padding:"8px 20px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:`0 2px 8px rgba(0,0,0,.1)`}}>💾 保存</button>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div></div>
-<p style={{fontSize:11,color:C.g400,marginBottom:12}}>💾 録音中の書き起こしは約10秒ごとに端末内へ自動保存されます。電源断の場合、直前の最大10秒程度は失われることがあります。</p>
 {/* モデル稼働チェック */}
 <div style={{...card,marginBottom:16}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
@@ -6299,15 +6239,6 @@ return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid
 return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px 32px",minHeight:"100vh",fontFamily:"'Zen Maru Gothic', sans-serif",background:theme.bodyBg}}>
 {budgetJpy>0&&currentMonthJpy>budgetJpy&&<div style={{position:"sticky",top:0,zIndex:1000,background:"#fef2f2",border:"2px solid #dc2626",color:"#991b1b",padding:"8px 16px",fontSize:13,fontWeight:700,textAlign:"center",boxShadow:"0 2px 4px rgba(0,0,0,0.1)",borderRadius:8,marginBottom:8}}>⚠️ 今月のAPI使用料 ¥{currentMonthJpy.toLocaleString()} が予算 ¥{budgetJpy.toLocaleString()} を超えています</div>}
 {modelCheck&&modelCheck.ok&&Array.isArray(modelCheck.missing)&&modelCheck.missing.length>0&&<div onClick={()=>setPage("settings")} style={{position:"sticky",top:0,zIndex:1000,background:"#fef2f2",border:"2px solid #dc2626",color:"#991b1b",padding:"8px 16px",fontSize:13,fontWeight:700,textAlign:"center",boxShadow:"0 2px 4px rgba(0,0,0,0.1)",borderRadius:8,marginBottom:8,cursor:"pointer"}}>⚠️ 使用中のモデル {modelCheck.missing.join("・")} が利用できない可能性があります。要約等に影響する場合があります（クリックで設定→モデル稼働チェックへ）</div>}
-{recoverySessions.filter(s=>s.mode==="exam").map(s=>(
-<div key={s.sessionId} style={{marginBottom:8,padding:"10px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-<span style={{fontSize:12,color:"#92400e",fontWeight:600}}>⚠️ 前回の書き起こしが途中で終了しています（{new Date(s.updatedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・約{s.text.length}文字）</span>
-<div style={{display:"flex",gap:6}}>
-<button onClick={()=>restoreTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元する</button>
-<button onClick={()=>discardTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>破棄</button>
-</div>
-</div>
-))}
 {tooltip.visible&&<div style={{position:"fixed",left:tooltip.x,top:tooltip.y,transform:"translate(-50%, -100%)",background:"rgba(42,58,32,0.92)",color:"#e8f5d8",padding:"4px 10px",borderRadius:8,fontSize:12,fontWeight:600,fontFamily:"'Zen Maru Gothic', sans-serif",pointerEvents:"none",zIndex:99999,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>{tooltip.text}</div>}
 <header style={{background:theme.headerBg,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${theme.cardBorder}`,padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:0}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
@@ -6401,7 +6332,6 @@ const fn=actions[sc.id];if(fn)fn();
 </div>}
 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:16}}>
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
-{autosaveAt.exam&&<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.exam).toLocaleTimeString("ja-JP")}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:C.g200,overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${C.rG},${C.p})`,borderRadius:3,transition:"width 0.1s"}}/></div>}
 <div style={{display:"flex",gap:12,alignItems:"center",minHeight:mob?80:94}}>
 {rs==="inactive"?(<button onClick={go} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:mob?80:90,height:mob?80:90,background:theme.btnRecBg,color:theme.btnRecColor,boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?26:30}}>🎙</span><span style={{fontSize:mob?11:12}}>録音開始</span></button>):(<>
