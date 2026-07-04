@@ -895,6 +895,9 @@ const[todoLd,setTodoLd]=useState(false);
 const[minRS,setMinRS]=useState("inactive"),[minInp,setMinInp]=useState(""),[minOut,setMinOut]=useState(""),[minLd,setMinLd]=useState(false),[minEl,setMinEl]=useState(0),[minPrompt,setMinPrompt]=useState("");
 const[minOutFontSize,setMinOutFontSize]=useState(14);
 const[minOutHeight,setMinOutHeight]=useState(300);
+// 議事録の書き起こし欄の高さ(px)。小=120(従来)/中=240(既定)/大=480。localStorageで永続化
+const[minTaHeight,setMinTaHeight]=useState(240);
+useEffect(()=>{try{const v=parseInt(localStorage.getItem("mk_minTranscriptHeight"));if([120,240,480].includes(v))setMinTaHeight(v)}catch{}},[]);
 const[minutesGenModel,setMinutesGenModel]=useState("");
 const[minTruncated,setMinTruncated]=useState(false);
 const[minChunkSummaries,setMinChunkSummaries]=useState([]);
@@ -4939,7 +4942,9 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {minDraftId&&!minAutoSaving&&minRS!=="inactive"&&<span style={{fontSize:11,color:C.pD,fontWeight:600}}>✓ 保存済み（30分毎に自動更新）</span>}
 </div>
 <div style={{marginBottom:12}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}><span style={{fontSize:12,fontWeight:600,color:C.g500}}>書き起こし（10秒間隔）</span><div style={{display:"flex",alignItems:"center",gap:6}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600,color:C.g500}}>書き起こし（10秒間隔）</span><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+<span style={{fontSize:10,color:C.g400,fontWeight:600}}>高さ:</span>
+{[[120,"小"],[240,"中"],[480,"大"]].map(([h,label])=><button key={h} type="button" onClick={()=>{setMinTaHeight(h);try{localStorage.setItem("mk_minTranscriptHeight",String(h))}catch{}}} style={{padding:"2px 7px",borderRadius:6,border:minTaHeight===h?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minTaHeight===h?C.pLL:C.w,fontSize:10,fontWeight:minTaHeight===h?700:500,color:minTaHeight===h?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{label}</button>)}
 <button onClick={async()=>{
 const t=minInp;
 if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}
@@ -4965,7 +4970,7 @@ finally{setMinTypoLd(false)}
 {minInp.trim()&&<button type="button" disabled={cleaningTx} onClick={()=>manualClean(minInp,(c)=>{setMinInp(c);minIR.current=c},"min")} style={{fontSize:13,color:'#7c3aed',background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:6,padding:'4px 10px',cursor:cleaningTx?'wait':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{cleanBtnLabel('✨ 書き起こしを補正')}</button>}{undoCleanBtn("min")}
 {minInp&&<button type="button" onClick={()=>setMinInp('')} style={{fontSize:13,color:'#c0392b',background:'#fff0f0',border:'1px solid #f0c0c0',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>🗑 クリア</button>}
 </div></div>
-<textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:120,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
+<textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:minTaHeight,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
 {asrEngine==="avalon"&&avalonFellBack&&<div style={{marginTop:8,padding:"8px 12px",borderRadius:10,border:"1px solid #fde68a",background:"#fef9c3",fontSize:12,color:"#92400e",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
 <span>⚠️ Avalon に接続できず Whisper で書き起こしました{avalonFellBackReason?`（理由: ${avalonFellBackReason}）`:"（AQUA_API_KEY未設定/エンドポイント/Avalon障害のいずれか）"}。</span>
 <button type="button" onClick={()=>{setAvalonFellBack(false);setAvalonFellBackReason("")}} style={{fontSize:11,color:"#92400e",background:"#fff",border:"1px solid #fde68a",borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit",marginLeft:"auto"}}>閉じる</button>
