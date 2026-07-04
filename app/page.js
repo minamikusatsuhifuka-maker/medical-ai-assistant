@@ -4942,9 +4942,9 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {minDraftId&&!minAutoSaving&&minRS!=="inactive"&&<span style={{fontSize:11,color:C.pD,fontWeight:600}}>✓ 保存済み（30分毎に自動更新）</span>}
 </div>
 <div style={{marginBottom:12}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600,color:C.g500}}>書き起こし（10秒間隔）</span><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-<span style={{fontSize:10,color:C.g400,fontWeight:600}}>高さ:</span>
-{[[120,"小"],[240,"中"],[480,"大"]].map(([h,label])=><button key={h} type="button" onClick={()=>{setMinTaHeight(h);try{localStorage.setItem("mk_minTranscriptHeight",String(h))}catch{}}} style={{padding:"2px 7px",borderRadius:6,border:minTaHeight===h?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minTaHeight===h?C.pLL:C.w,fontSize:10,fontWeight:minTaHeight===h?700:500,color:minTaHeight===h?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{label}</button>)}
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:600,color:C.g500,whiteSpace:"nowrap",flexShrink:0}}>書き起こし（10秒間隔）</span><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+<span style={{fontSize:10,color:C.g400,fontWeight:600,whiteSpace:"nowrap"}}>高さ:</span>
+{[[120,"小"],[240,"中"],[480,"大"]].map(([h,label])=><button key={h} type="button" onClick={()=>{setMinTaHeight(h);try{localStorage.setItem("mk_minTranscriptHeight",String(h))}catch{}}} style={{padding:"2px 7px",borderRadius:6,border:minTaHeight===h?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:minTaHeight===h?C.pLL:C.w,fontSize:10,fontWeight:minTaHeight===h?700:500,color:minTaHeight===h?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>)}
 <button onClick={async()=>{
 const t=minInp;
 if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}
@@ -4966,7 +4966,7 @@ finally{setMinTypoLd(false)}
 }} disabled={minTypoLd} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:11,fontWeight:600,color:"#5a3e8a",fontFamily:"inherit",cursor:minTypoLd?"wait":"pointer",whiteSpace:"nowrap"}}>
 {minTypoLd?"🔍...":"🔬 用語スキャン"}
 </button>
-<span style={{fontSize:11,color:C.g400}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span>
+<span style={{fontSize:11,color:C.g400,whiteSpace:"nowrap"}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span>
 {minInp.trim()&&<button type="button" disabled={cleaningTx} onClick={()=>manualClean(minInp,(c)=>{setMinInp(c);minIR.current=c},"min")} style={{fontSize:13,color:'#7c3aed',background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:6,padding:'4px 10px',cursor:cleaningTx?'wait':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{cleanBtnLabel('✨ 書き起こしを補正')}</button>}{undoCleanBtn("min")}
 {minInp&&<button type="button" onClick={()=>setMinInp('')} style={{fontSize:13,color:'#c0392b',background:'#fff0f0',border:'1px solid #f0c0c0',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>🗑 クリア</button>}
 </div></div>

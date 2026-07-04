@@ -80,6 +80,23 @@ function assert(cond, msg) {
     const box = await ta().boundingBox();
     assert(box.width <= 390 && box.width > 300, `モバイルでtextareaがはみ出さない (幅:${Math.round(box.width)}px)`);
 
+    // ラベル「書き起こし（10秒間隔）」が縦折れしていない（横書き1行 = 高さがフォント1行分・幅が十分）
+    const lb = await page.locator('span:has-text("書き起こし（10秒間隔）")').first().boundingBox();
+    assert(lb.height < 30, `モバイルでラベルが1行表示（高さ:${Math.round(lb.height)}px < 30px）`);
+    assert(lb.width > 120, `モバイルでラベルが横書き（幅:${Math.round(lb.width)}px > 120px）`);
+    // ボタン群も縦折れせず要素単位で折返す（各ボタンが1行分の高さに収まる）
+    const rowBtns = page.locator('xpath=//span[text()="書き起こし（10秒間隔）"]/following-sibling::div//button');
+    const nb = await rowBtns.count();
+    for (let i = 0; i < nb; i++) {
+      const bb = await rowBtns.nth(i).boundingBox();
+      if (!bb) continue;
+      if (bb.height >= 40) throw new Error(`ASSERT FAILED: ラベル行のボタン${i}が縦折れ（高さ${Math.round(bb.height)}px）`);
+    }
+    console.log(`  ✓ ラベル行のボタン群(${nb}個)が縦折れなし（要素単位で折返し）`);
+    const shot = process.env.SHOT_PATH || "/tmp/minutes-label-mobile.png";
+    await page.screenshot({ path: shot });
+    console.log(`  📸 モバイルスクショ: ${shot}`);
+
     console.log("\n✅ 全シナリオ成功（例外ゼロ）");
   } finally {
     await browser.close();
