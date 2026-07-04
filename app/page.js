@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
-import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -1085,45 +1084,6 @@ return(
 );
 }catch{return null}
 };
-// === 書き起こし自動保存・復元（充電切れ・誤クローズ対策）===
-// 書き起こしフローには一切割り込まない独立レイヤ。保存/復元の失敗は console.warn のみで握り、録音・書き起こしに影響させない。
-const[recoverySessions,setRecoverySessions]=useState([]);
-const[autosaveAt,setAutosaveAt]=useState({exam:null,minutes:null,seminar:null});
-const examSessionIdRef=useRef(null);
-const minSessionIdRef=useRef(null);
-const smnSessionIdRef=useRef(null);
-const restoreTranscriptSession=(session)=>{try{
-if(!session)return;
-if(session.mode==="exam"){examSessionIdRef.current=session.sessionId;sInp(String(session.text||""))}
-else if(session.mode==="minutes"){minSessionIdRef.current=session.sessionId;setMinInp(String(session.text||""))}
-else if(session.mode==="seminar"){smnSessionIdRef.current=session.sessionId;setSmnTranscript(String(session.text||""))}
-setRecoverySessions(prev=>(prev||[]).filter(s=>s&&s.sessionId!==session.sessionId));
-sSt("✓ 書き起こしを復元しました");
-}catch(e){console.warn("[autosave] restore error:",e)}};
-const discardTranscriptSession=(session)=>{try{
-if(!session)return;
-if(!window.confirm("この書き起こしの復元データを破棄しますか？"))return;
-deleteTranscriptSession(session.sessionId);
-setRecoverySessions(prev=>(prev||[]).filter(s=>s&&s.sessionId!==session.sessionId));
-}catch(e){console.warn("[autosave] discard error:",e)}};
-// 復元バナー(防御的レンダリング: 例外時はnull=非表示に留め、ページを壊さない)
-const RecoveryBanner=({mode})=>{
-try{
-const list=(recoverySessions||[]).filter(s=>s&&s.mode===mode&&typeof s.text==="string");
-if(!list.length)return null;
-return(<>{list.map(s=>{
-let when="";try{when=new Date(s.updatedAt||0).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}catch{}
-return(
-<div key={String(s.sessionId)} style={{marginBottom:8,padding:"10px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-<span style={{fontSize:12,color:"#92400e",fontWeight:600}}>⚠️ 前回の書き起こしが途中で終了しています（{when}・約{(s.text||"").length}文字）</span>
-<div style={{display:"flex",gap:6}}>
-<button onClick={()=>restoreTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"none",background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>復元する</button>
-<button onClick={()=>discardTranscriptSession(s)} style={{padding:"5px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>破棄</button>
-</div>
-</div>
-);})}</>);
-}catch{return null}
-};
 // 分割補正の進捗（{cur,total}）と、補正取り消し用の退避（{apply,original,key}）。元テキストを失わないための保護。
 const[cleanProg,setCleanProg]=useState(null);
 const[undoClean,setUndoClean]=useState(null);
@@ -1890,24 +1850,6 @@ setProg(50);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sysPromptFinal,mode:"gemini",prompt:"以下の指示に従って患者向け説明資料を作成してください。"})});const d=await r.json();if(d.error){setDocOut("エラー: "+d.error)}else{setDocOut(d.summary);setGeminiModel(d.model||"")}}catch(e){setDocOut("エラー: "+e.message)}finally{setDocLd(false);setProg(0)}};
 
 const minMR=useRef(null),minSR=useRef(null),minIR=useRef(null),minTI=useRef(null);minIR.current=minInp;
-// === 書き起こし自動保存: 起動時に未完了セッションを読み込み（失敗しても空のまま＝バナー非表示に留める） ===
-useEffect(()=>{try{getRecoverableSessions().then(list=>setRecoverySessions(Array.isArray(list)?list:[])).catch(e=>console.warn("[autosave] load error:",e))}catch(e){console.warn("[autosave] load error:",e)}},[]);
-// 蓄積書き起こしが更新されるたび（debounce 1.5s）にIndexedDBへ保存。effect全体をtry/catchし、失敗しても録音・書き起こしに影響させない。
-useEffect(()=>{try{if(!inp||!inp.trim())return;const t=setTimeout(()=>{try{if(!examSessionIdRef.current)examSessionIdRef.current=genSessionId();saveTranscriptSession({sessionId:examSessionIdRef.current,mode:"exam",text:inp,engine:asrEngine}).then(()=>setAutosaveAt(p=>({...(p||{}),exam:Date.now()}))).catch(e=>console.warn("[autosave] save error:",e))}catch(e){console.warn("[autosave] save error:",e)}},1500);return()=>clearTimeout(t)}catch(e){console.warn("[autosave] effect error:",e)}},[inp]);
-useEffect(()=>{try{if(!minInp||!minInp.trim())return;const t=setTimeout(()=>{try{if(!minSessionIdRef.current)minSessionIdRef.current=genSessionId();saveTranscriptSession({sessionId:minSessionIdRef.current,mode:"minutes",text:minInp,engine:asrEngine}).then(()=>setAutosaveAt(p=>({...(p||{}),minutes:Date.now()}))).catch(e=>console.warn("[autosave] save error:",e))}catch(e){console.warn("[autosave] save error:",e)}},1500);return()=>clearTimeout(t)}catch(e){console.warn("[autosave] effect error:",e)}},[minInp]);
-useEffect(()=>{try{if(!smnTranscript||!smnTranscript.trim())return;const t=setTimeout(()=>{try{if(!smnSessionIdRef.current)smnSessionIdRef.current=genSessionId();saveTranscriptSession({sessionId:smnSessionIdRef.current,mode:"seminar",text:smnTranscript,engine:asrEngine}).then(()=>setAutosaveAt(p=>({...(p||{}),seminar:Date.now()}))).catch(e=>console.warn("[autosave] save error:",e))}catch(e){console.warn("[autosave] save error:",e)}},1500);return()=>clearTimeout(t)}catch(e){console.warn("[autosave] effect error:",e)}},[smnTranscript]);
-// バックグラウンド化・タブ破棄時は即時フラッシュ保存（debounce待ちを飛ばす）。iOS Safariのタブ破棄対策。beforeunloadはiOSで信頼できないため使わない。
-useEffect(()=>{
-const flush=()=>{try{
-if(iR.current&&iR.current.trim()&&examSessionIdRef.current)saveTranscriptSession({sessionId:examSessionIdRef.current,mode:"exam",text:iR.current,engine:asrEngine});
-if(minIR.current&&minIR.current.trim()&&minSessionIdRef.current)saveTranscriptSession({sessionId:minSessionIdRef.current,mode:"minutes",text:minIR.current,engine:asrEngine});
-if(smnTextRef.current&&smnTextRef.current.trim()&&smnSessionIdRef.current)saveTranscriptSession({sessionId:smnSessionIdRef.current,mode:"seminar",text:smnTextRef.current,engine:asrEngine});
-}catch(e){console.warn("[autosave] flush error:",e)}};
-const onVis=()=>{if(document.hidden)flush()};
-document.addEventListener("visibilitychange",onVis);
-window.addEventListener("pagehide",flush);
-return()=>{document.removeEventListener("visibilitychange",onVis);window.removeEventListener("pagehide",flush)}
-},[]);
 const minGo=async()=>{minAudioPathsRef.current=[];const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
 bumpDiag("rec");noteDiagMR(minMR.current,b.size);if(Date.now()-lvLastUpdateRef.current<5000&&lvRef.current<1)return;bumpDiag("lv");if(await isSilentChunk(b))return;bumpDiag("sil");try{const f=new FormData();f.append("audio",b,"audio.webm");if(asrEngine==="both"){const f2=new FormData();f2.append("audio",b,"audio.webm");f2.append("compare","1");const callW=async()=>{const s=performance.now();try{bumpDiag("sent");const r=await fetch("/api/transcribe",{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Whisper ${r.status}`,ms:Math.round(performance.now()-s)};const d=await r.json();setDiagLastLen((d.text||"").length);return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Whisper 例外",ms:Math.round(performance.now()-s)}}};const callA=async()=>{const s=performance.now();try{const r=await fetch("/api/transcribe-avalon",{method:"POST",body:f2});const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Avalon ${r.status}（非JSON）`,ms:Math.round(performance.now()-s)};const d=await r.json();if(d.failed)return{failed:true,error:d.error||"Avalon 接続失敗",ms:Math.round(performance.now()-s)};return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Avalon 例外",ms:Math.round(performance.now()-s)}}};const[w,a]=await Promise.all([callW(),isIOSDevice?Promise.resolve({failed:true,error:"iOS（iPhone/iPad）は音声形式の制約でAvalon非対応のためWhisperのみ表示",ms:0,ios:true}):callA()]);if(!w.failed)fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes-ab",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(w.text||"").length}})}).catch(()=>{});if(w.failed){setAbWhisperMs(m=>m+w.ms)}else{const wn=filterTranscriptNoise((w.text||"").trim());if(wn)setAbWhisper(p=>foldAccum(p+(p?"\n":"")+wn));setAbWhisperMs(m=>m+w.ms)}if(a.failed){setAbAvalonError(a.error||"接続失敗");setAbAvalonIOS(!!a.ios);setAbAvalonMs(m=>m+a.ms)}else{setAbAvalonError("");setAbAvalonIOS(false);const an=filterTranscriptNoise((a.text||"").trim());if(an)setAbAvalon(p=>foldAccum(p+(p?"\n":"")+an));setAbAvalonMs(m=>m+a.ms)}return}const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch(e){bumpDiag("err");setDiagErr(String((e&&e.message)||e))}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
@@ -2155,7 +2097,6 @@ const deleteSmnRecord=async(id)=>{
 };
 const clearSmnAll=()=>{
   if(!window.confirm("入力中のセミナー学習内容（書き起こし・要約・Genspark・気づき）をすべてクリアしますか？"))return;
-  try{if(smnSessionIdRef.current){deleteTranscriptSession(smnSessionIdRef.current);smnSessionIdRef.current=null}}catch{}
   smnStop();
   setSmnTitle("");setSmnTranscript("");setSmnSummary("");setSmnGensparkText("");setSmnInsights("");setSmnSummaryModelUsed("");
   setSmnSaved(false);
@@ -2519,7 +2460,6 @@ importance: 1=低 2=やや低 3=やや高 4=高
 `;try{console.log("[page] waiting 3s before auto task extraction to avoid rate limit");await new Promise(r=>setTimeout(r,3000));const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});if(tr2.status===429){console.warn("[page] auto extract-tasks rate-limited, skipping (user can retry via manual button)");sSt("⏳ 要約後のタスク自動抽出がレート制限に達しました。少し待ってから「📋 タスク生成」ボタンで手動実行してください。")}else{const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}let chunkMsg="";if(td.chunked)chunkMsg="（"+td.chunkCount+"チャンク分割）";sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました"+chunkMsg)}else{console.warn("extract-tasks: no tasks or empty",td)}}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
 // 議事録画面の状態をリセット（保存はしない・ドラフトがあれば破棄）
 const performMinReset=()=>{
-  try{if(minSessionIdRef.current){deleteTranscriptSession(minSessionIdRef.current);minSessionIdRef.current=null}}catch{}
   if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
   if(minDraftIdRef.current&&supabase){
     supabase.from("minutes").delete().eq("id",minDraftIdRef.current).then(()=>{}).catch(()=>{});
@@ -3485,7 +3425,7 @@ const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
 // PiPボタン更新の外側ラッパー：本体は openPip 内で定義され pipBtnUpdateRef に登録される
 const pipBtnUpdate=()=>{try{pipBtnUpdateRef.current&&pipBtnUpdateRef.current()}catch(e){console.warn("pipBtnUpdate error:",e)}};
-const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}try{if(examSessionIdRef.current){deleteTranscriptSession(examSessionIdRef.current);examSessionIdRef.current=null}}catch{}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
+const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === D-1〜D-3 複数選択削除 共通ヘルパー & 削除関数 ===
 const toggleIdInSet=(setter,id)=>{setter(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n})};
@@ -4879,11 +4819,9 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 </div>
 </div>
 <textarea value={minPrompt} onChange={e=>setMinPrompt(e.target.value)} placeholder="AIへの追加指示（任意）：例「院内勉強会の形式で」「スタッフミーティング用に簡潔に」" rows={2} style={{...ib,width:"100%",padding:"8px 12px",fontSize:13,marginBottom:10,resize:"vertical",boxSizing:"border-box"}}/>
-<RecoveryBanner mode="minutes"/>
 <DiagRow active={minRS!=="inactive"}/>
 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
 <span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(minEl/60)).padStart(2,"0")}:{String(minEl%60).padStart(2,"0")}</span>
-{(autosaveAt||{}).minutes?<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.minutes).toLocaleTimeString("ja-JP")}</span>:null}
 {minRS==="inactive"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={minGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>🎙 録音開始</button>
 {minInp.trim()&&!minOut&&<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✨ 要約作成</button>}
@@ -5164,11 +5102,9 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
     </label>
     {smnAudioSave&&<div style={{fontSize:11,color:C.g400,marginLeft:24,marginTop:2}}>※ 長時間録音時にメモリを使うため、必要なときのみONを推奨。録音停止時に Supabase Storage に保存されます。</div>}
   </div>
-  <RecoveryBanner mode="seminar"/>
   <DiagRow active={smnRS!=="inactive"}/>
   <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
     <span style={{fontSize:24,fontWeight:700,fontVariantNumeric:"tabular-nums",color:C.pD}}>{String(Math.floor(smnEl/60)).padStart(2,"0")}:{String(smnEl%60).padStart(2,"0")}</span>
-    {(autosaveAt||{}).seminar?<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.seminar).toLocaleTimeString("ja-JP")}</span>:null}
     {smnRS==="inactive"?
       <button onClick={smnGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap"}}>🎙 録音開始</button>
       :smnRS==="paused"?
@@ -5901,7 +5837,6 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 {savedMsg&&<span style={{fontSize:12,color:C.rG,fontWeight:600}}>{savedMsg}</span>}
 <button onClick={()=>{try{localStorage.setItem("mk_logo",logoUrl);localStorage.setItem("mk_logoSize",String(logoSize));localStorage.setItem("mk_dict",JSON.stringify(dict));localStorage.setItem("mk_snippets",JSON.stringify(snippets));localStorage.setItem("mk_pipSnippets",JSON.stringify(pipSnippets));localStorage.setItem("mk_audioSave",audioSave?"1":"0");localStorage.setItem("mk_dictEnabled",dictEnabled?"1":"0");localStorage.setItem("mk_shortcuts",JSON.stringify(shortcuts));if(tplOrder)localStorage.setItem("mk_tplOrder",JSON.stringify(tplOrder));if(tplVisible)localStorage.setItem("mk_tplVisible",JSON.stringify(tplVisible));setSavedMsg("✓ 保存しました");setTimeout(()=>setSavedMsg(""),3000)}catch(e){setSavedMsg("保存エラー")}}} style={{padding:"8px 20px",borderRadius:12,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:`0 2px 8px rgba(0,0,0,.1)`}}>💾 保存</button>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div></div>
-<p style={{fontSize:11,color:C.g400,marginBottom:12}}>💾 録音中の書き起こしは約10秒ごとに端末内へ自動保存されます。電源断の場合、直前の最大10秒程度は失われることがあります。</p>
 {/* モデル稼働チェック */}
 <div style={{...card,marginBottom:16}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
@@ -6426,9 +6361,7 @@ const fn=actions[sc.id];if(fn)fn();
 <button onClick={()=>{sInp(p=>p+(p?"\n\n":"")+"【前回参照】\n"+(prevRecord.output_text||"").substring(0,300));sSt("✓ 前回要約を追加しました")}} style={{padding:"2px 8px",borderRadius:5,border:"none",background:"#1e40af",color:"#fff",fontSize:10,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>追加</button>
 </div>}
 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:16}}>
-<RecoveryBanner mode="exam"/>
 <DiagRow active={rs!=="inactive"}/>
-{(autosaveAt||{}).exam?<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.exam).toLocaleTimeString("ja-JP")}</span>:null}
 {rs!=="inactive"&&<span style={{fontSize:28,fontWeight:700,color:rs==="recording"?C.rG:C.warn,fontVariantNumeric:"tabular-nums"}}>{fm(el)}</span>}
 {rs==="recording"&&<div style={{width:"60%",height:6,borderRadius:3,background:C.g200,overflow:"hidden"}}><div style={{width:`${lv}%`,height:"100%",background:`linear-gradient(90deg,${C.rG},${C.p})`,borderRadius:3,transition:"width 0.1s"}}/></div>}
 <div style={{display:"flex",gap:12,alignItems:"center",minHeight:mob?80:94}}>
