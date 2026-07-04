@@ -2586,6 +2586,30 @@ const minNextDiscardAndProceed=()=>{
   performMinReset();
   sSt("次の打合せへ ✓（保存せず）");
 };
+// 一時停止中の「保存して次へ」: 既存 minStopAndSaveOnly（録音停止＋書き起こし保存）→ performMinReset（リセット＋自動保存セッション削除）の組み合わせ
+const minPauseSaveAndNext=async()=>{
+  if(minSavingNext)return;
+  setMinSavingNext(true);
+  try{
+    await minStopAndSaveOnly();
+    // saveMinInputOnly は成功時のみ lastSavedMinInpRef を更新する。失敗時はリセットせず書き起こしを残す（データ消失防止）
+    if((minIR.current||"").trim()&&lastSavedMinInpRef.current!==minIR.current){
+      return;
+    }
+    performMinReset();
+    sSt("✅ 保存しました。次の録音を開始できます");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }finally{
+    setMinSavingNext(false);
+  }
+};
+// 一時停止中の「保存せずに次へ」: confirm の上で破棄してリセット（誤録音・不要録音の破棄用）
+const minPauseDiscardAndNext=()=>{
+  if(!window.confirm("書き起こしを保存せずに破棄します。よろしいですか？"))return;
+  performMinReset();
+  sSt("🗑 破棄しました。次の録音を開始できます");
+};
 useEffect(()=>{minSR.current=minRS},[minRS]);
 // セミナー保存済み状態の解除: 書き起こし・要約・Genspark・気づきが変わったら未保存に（復元時は除外）
 useEffect(()=>{if(smnRestoringRef.current){smnRestoringRef.current=false;return}setSmnSaved(false)},[smnTranscript,smnSummary,smnGensparkText,smnInsights]);
@@ -4898,7 +4922,9 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={minNext} style={{padding:"10px 24px",borderRadius:14,border:"2px solid "+C.p,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.12)"}}>次へ ▶</button></div>
 :minRS==="paused"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={resumeMin} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
-<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button></div>
+<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
+<button type="button" onClick={minPauseSaveAndNext} disabled={minSavingNext} style={{padding:"10px 18px",borderRadius:14,border:"2px solid #0f9d6e",background:"#ecfdf5",color:"#0f766e",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minSavingNext?"wait":"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>{minSavingNext?"💾 保存中...":"💾 保存して次へ"}</button>
+<button type="button" onClick={minPauseDiscardAndNext} disabled={minSavingNext} style={{padding:"10px 18px",borderRadius:14,border:`1px solid ${C.g300}`,background:"#fff",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minSavingNext?"not-allowed":"pointer",minWidth:140,whiteSpace:"nowrap"}}>🗑 保存せずに次へ</button></div>
 :<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={pauseMin} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
 <button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
