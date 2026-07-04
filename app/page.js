@@ -644,6 +644,9 @@ const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[modelCheck,setModelCheck]=useState(null); // Geminiモデル稼働チェック結果 {ok,missing,missingPreview,known_new,available,checkedAt}
 const[modelChecking,setModelChecking]=useState(false);
 const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[minutesModel,setMinutesModel]=useState("gemini-3-5-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
+// 診察モードの書き起こし/要約結果欄の高さ倍率。小=1(従来: mob150/PC200px)/中=2(既定)/大=4。両欄共通・localStorageで永続化
+const[consultTaSize,setConsultTaSize]=useState(2);
+useEffect(()=>{try{const v=parseInt(localStorage.getItem("mk_consultTextareaHeight"));if([1,2,4].includes(v))setConsultTaSize(v)}catch{}},[]);
 const[tplOrder,setTplOrder]=useState(null);
 const[tplVisible,setTplVisible]=useState(null);
 const[dragTpl,setDragTpl]=useState(null);
@@ -6523,11 +6526,11 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{display:"flex",gap:12,marginBottom:12,flexDirection:mob?"column":"row"}}>
 {/* 左カラム: 書き起こし */}
 <div style={{flex:1,minWidth:0}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pDD}}>📝 書き起こし</span>
-<div style={{display:"flex",gap:4,alignItems:"center"}}><button onClick={runTypoCheck} disabled={typoLd} title="AIが書き起こしの医療用語誤字を検出" onMouseEnter={e=>showTip(e,"AIが医療用語の誤字を検出")} onMouseLeave={hideTip} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬...":"🔬"}</button>{!mob&&<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>}{rs==="recording"&&<span style={{fontSize:10,color:C.g400,marginLeft:8}}>{inp.length}文字{el>0&&<span style={{marginLeft:6,color:C.g400}}>/ 録音{Math.floor(el/60)>0?Math.floor(el/60)+"分":""}{el%60}秒</span>}{el>10&&inp.length>0&&<span style={{marginLeft:6,color:lv>50?"#22c55e":lv>20?"#f59e0b":"#ef4444"}}>{lv>50?"🎤 明瞭":lv>20?"🎤 普通":"🎤 小さい"}</span>}</span>}</div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6,flexWrap:"wrap"}}>
+<span style={{fontSize:13,fontWeight:700,color:C.pDD,whiteSpace:"nowrap",flexShrink:0}}>📝 書き起こし</span>
+<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:C.g400,fontWeight:600,whiteSpace:"nowrap"}}>高さ:</span>{[[1,"小"],[2,"中"],[4,"大"]].map(([f,label])=><button key={f} type="button" onClick={()=>{setConsultTaSize(f);try{localStorage.setItem("mk_consultTextareaHeight",String(f))}catch{}}} style={{padding:"2px 7px",borderRadius:6,border:consultTaSize===f?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:consultTaSize===f?C.pLL:C.w,fontSize:10,fontWeight:consultTaSize===f?700:500,color:consultTaSize===f?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>)}<button onClick={runTypoCheck} disabled={typoLd} title="AIが書き起こしの医療用語誤字を検出" onMouseEnter={e=>showTip(e,"AIが医療用語の誤字を検出")} onMouseLeave={hideTip} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬...":"🔬"}</button>{!mob&&<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>}{rs==="recording"&&<span style={{fontSize:10,color:C.g400,marginLeft:8}}>{inp.length}文字{el>0&&<span style={{marginLeft:6,color:C.g400}}>/ 録音{Math.floor(el/60)>0?Math.floor(el/60)+"分":""}{el%60}秒</span>}{el>10&&inp.length>0&&<span style={{marginLeft:6,color:lv>50?"#22c55e":lv>20?"#f59e0b":"#ef4444"}}>{lv>50?"🎤 明瞭":lv>20?"🎤 普通":"🎤 小さい"}</span>}</span>}</div>
 </div>
-<textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
+<textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:(mob?150:200)*consultTaSize,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
 {/* 右カラム: 要約結果 */}
 <div style={{flex:1,minWidth:0}}>
@@ -6538,7 +6541,7 @@ const fn=actions[sc.id];if(fn)fn();
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}
 </div>}
 </div>
-<textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:mob?150:200,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box",display:hlMode?"none":undefined}}/>
+<textarea value={out} onChange={e=>sOut(e.target.value)} placeholder="要約結果がここに表示されます..." style={{width:"100%",height:(mob?150:200)*consultTaSize,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box",display:hlMode?"none":undefined}}/>
 {out&&hlMode&&<div style={{width:"100%",minHeight:120,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fafafa",fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"inherit",overflowY:"auto",maxHeight:400}} dangerouslySetInnerHTML={{__html:highlightSummary(out)}}/>}
 {out&&lastRecordId&&<div style={{marginTop:6,display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,background:C.g50,border:`1px solid ${C.g200}`}}>
 <span style={{fontSize:11,color:C.g500}}>この要約は：</span>
