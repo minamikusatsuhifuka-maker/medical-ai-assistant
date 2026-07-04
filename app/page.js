@@ -921,6 +921,10 @@ const[editMinId,setEditMinId]=useState(null);
 const[editMinText,setEditMinText]=useState("");
 const[editMinTitle,setEditMinTitle]=useState("");
 const[editMinSaving,setEditMinSaving]=useState(false);
+// 議事録履歴の「書き起こし全文」編集用（本文編集editMin*と同じ操作感、保存先はminutes.input_text）
+const[editMinTxId,setEditMinTxId]=useState(null);
+const[editMinTxText,setEditMinTxText]=useState("");
+const[editMinTxSaving,setEditMinTxSaving]=useState(false);
 const[manualMinText,setManualMinText]=useState("");
 const[manualMinTitle,setManualMinTitle]=useState("");
 const[manualMinMode,setManualMinMode]=useState("text");
@@ -2332,6 +2336,22 @@ const saveMinEdit=async()=>{
     sSt("保存エラー: "+e.message);
   }finally{
     setEditMinSaving(false);
+  }
+};
+// 書き起こし全文の上書き保存（既存カラム minutes.input_text をそのまま更新。saveMinEditと同パターン）
+const saveMinTxEdit=async()=>{
+  if(!supabase||!editMinTxId)return;
+  setEditMinTxSaving(true);
+  try{
+    await supabase.from("minutes").update({input_text:editMinTxText}).eq("id",editMinTxId);
+    await loadMinHist();
+    setEditMinTxId(null);
+    setEditMinTxText("");
+    sSt("✓ 書き起こしを保存しました");
+  }catch(e){
+    sSt("保存エラー: "+e.message);
+  }finally{
+    setEditMinTxSaving(false);
   }
 };
 const saveManualMinute=async()=>{
@@ -5169,13 +5189,25 @@ finally{setMinTypoLd(false)}
     </div>
   </div>
 )}
-{m.input_text&&m.input_text!=="（録音中・未要約）"&&<div style={{marginTop:8,display:"flex",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+{m.input_text&&m.input_text!=="（録音中・未要約）"&&(editMinTxId===m.id?(
+<div style={{marginTop:8}} onClick={e=>e.stopPropagation()}>
+<div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:4}}>📝 書き起こし全文を編集</div>
+<textarea value={editMinTxText} onChange={e=>setEditMinTxText(e.target.value)} style={{width:"100%",height:300,padding:8,borderRadius:8,border:`1.5px solid ${C.p}`,background:C.w,fontSize:11,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box",outline:"none"}}/>
+<div style={{display:"flex",gap:6,marginTop:6}}>
+<button onClick={saveMinTxEdit} disabled={editMinTxSaving} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:editMinTxSaving?"wait":"pointer"}}>{editMinTxSaving?"保存中...":"💾 保存"}</button>
+<button onClick={()=>{setEditMinTxId(null);setEditMinTxText("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</div>
+</div>
+):(
+<div style={{marginTop:8,display:"flex",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
 <details style={{flex:"1 1 60%",minWidth:0}}>
 <summary style={{fontSize:11,color:C.g400,cursor:"pointer",userSelect:"none"}}>📝 書き起こし全文を表示（{Math.ceil((m.input_text||"").length/40)}行）</summary>
 <pre style={{fontSize:11,color:C.g600,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:6,padding:8,borderRadius:8,background:C.g50,maxHeight:200,overflowY:"auto",lineHeight:1.6,fontFamily:"inherit"}}>{m.input_text}</pre>
 </details>
 <button onClick={(e)=>{e.stopPropagation();copyTextToClipboard(m.input_text,"書き起こし全文")}} title="書き起こし全文をクリップボードにコピー" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d4cce8",background:"#fff",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"inherit"}}>📋 コピー</button>
-</div>}
+<button onClick={(e)=>{e.stopPropagation();setEditMinTxId(m.id);setEditMinTxText(m.input_text||"")}} title="書き起こし全文を編集" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d4cce8",background:"#fff",color:"#7c3aed",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap",fontFamily:"inherit"}}>✏️ 編集</button>
+</div>
+))}
 </div>:<div style={{fontSize:12,color:C.g600,maxHeight:60,overflow:"hidden",marginBottom:4}}>{(m.output_text||"").substring(0,100)}...</div>}
 </div>)})}
 {taskAnalysis&&<div style={{marginTop:12,padding:12,borderRadius:12,border:`2px solid #a78bfa`,background:"#f5f3ff"}}>
