@@ -277,7 +277,7 @@ URL.revokeObjectURL(url);
 };
 
 // === TEMPLATES ===
-const DEFAULT_VISIBLE_TPLS=["soap-std","soap-min"];
+const DEFAULT_VISIBLE_TPLS=["soap-std","soap-min","counseling-std"];
 const T=[
 {id:"soap",name:"📋 詳細",prompt:`あなたは皮膚科専門の医療秘書です。以下の書き起こしテキストをカルテ形式で要約してください。
 
@@ -435,6 +435,32 @@ P）リンデロン-VG 1日2回`},
 ■ 次回予定
 
 サイズmm、量mL/g。コンパクトに。`},
+{id:"counseling-std",name:"💬 カウンセリング",prompt:`美容皮膚科専門の医療秘書として美容カウンセリング記録を要約。話者分離：説明・提案・所見はカウンセラー/医師、悩み・希望・質問・懸念は患者。文体はカルテ調で簡潔、箇条書き可。
+
+【出力フォーマット（厳守・8項目すべて■見出しで出力）】
+■相談内容・主訴
+■患者の希望・ゴール
+■所見・肌状態
+■提案した施術・治療プラン
+■説明した内容
+■患者の反応・懸念
+■決定事項
+■次回・フォロー
+
+【各項目に書く内容】
+- 相談内容・主訴: 患者が気にしている悩み・部位・きっかけ。可能な限り患者の言葉のニュアンスを保持
+- 患者の希望・ゴール: どうなりたいか、いつまでに、イベント予定の有無、仕上がりの希望
+- 所見・肌状態: 視診・触診の所見、肌質、既往・アレルギー・内服、過去の施術歴
+- 提案した施術・治療プラン: 提案した施術名と提案理由。複数提案時はそれぞれ記載。施術名は院内メニュー名で正確に（IPL/Potenza（ポテンツァ）/メソナJ/AGNES/ダーマペン4/リジュラン/ピーリング/医療脱毛（GentleMax Pro Plus）等）
+- 説明した内容: 効果・回数目安・ダウンタイム・リスク副作用・費用の説明、代替案
+- 患者の反応・懸念: 前向き/迷い、費用・痛み・ダウンタイムへの懸念、質問内容
+- 決定事項: 契約・施術決定の有無、選択したプラン・回数、当日施術かどうか
+- 次回・フォロー: 次回予約・再カウンセリング・検討持ち帰り、宿題（パッチテスト・同意書等）
+
+【ルール】
+- 8項目すべて出力し、該当情報が話されていない項目は内容を「（言及なし）」と明示して省略しない
+- 会話にない情報は推測しない
+- 金額・回数・期間は話された数値を正確に記載`},
 {id:"followup",name:"🔄 経過",prompt:`皮膚科専門の医療秘書として経過記録を要約。話者分離：丁寧語・指示語は医師、訴え・希望は患者。複数疾患があれば疾患ごとにまとめ、---で区切る。
 
 【出力フォーマット（厳守）】
@@ -674,7 +700,7 @@ const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv)setTplVisible(JSON.parse(tv));const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
 // Geminiモデル稼働チェック（ListModels照合）。手動ボタン＆起動時14日経過で自動実行。失敗しても本体機能に影響させない。
 const runModelCheck=async(manual=false)=>{try{setModelChecking(true);const res=await fetch("/api/gemini-model-check");const data=await res.json();if(data&&data.ok){setModelCheck(data);try{localStorage.setItem("mk_modelCheckAt",String(Date.now()));localStorage.setItem("mk_modelCheckResult",JSON.stringify(data))}catch{}}else if(manual){setModelCheck({ok:false,error:(data&&data.error)||"チェックに失敗しました",checkedAt:new Date().toISOString()})}}catch(e){if(manual)setModelCheck({ok:false,error:"チェックに失敗しました",checkedAt:new Date().toISOString()})}finally{setModelChecking(false)}};
@@ -1856,6 +1882,9 @@ useEffect(()=>{elRef.current=el},[el]);
 useEffect(()=>{lvRef.current=lv},[lv]);
 useEffect(()=>{rsRef.current=rs},[rs]);
 useEffect(()=>{tidRef.current=tid},[tid]);
+// 部屋ベースの既定テンプレ切替: カウンセリング室(r7)はcounseling-std、他室は既定テンプレに戻す。
+// 手動でテンプレを選択済み(autoTplRef=true)の場合はそちらを優先。内容ベースの自動判定(detectTemplate)は復活させない。
+useEffect(()=>{if(autoTplRef.current)return;if(rid==="r7"){sTid("counseling-std")}else if(tidRef.current==="counseling-std"){let dt="soap-std";try{const v=localStorage.getItem("mk_defaultTpl");if(v&&v!=="counseling-std")dt=v}catch{};sTid(dt)}},[rid]);
 useEffect(()=>{pNameRef.current=pName},[pName]);
 useEffect(()=>{pIdRef.current=pId},[pId]);
 useEffect(()=>{snippetsRef.current=snippets},[snippets]);
@@ -3518,7 +3547,7 @@ const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
 // PiPボタン更新の外側ラッパー：本体は openPip 内で定義され pipBtnUpdateRef に登録される
 const pipBtnUpdate=()=>{try{pipBtnUpdateRef.current&&pipBtnUpdateRef.current()}catch(e){console.warn("pipBtnUpdate error:",e)}};
-const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}try{if(examSessionIdRef.current){deleteTranscriptSession(examSessionIdRef.current);examSessionIdRef.current=null}}catch{}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt)}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
+const clr=()=>{const hasUnsavedAudio=audioSaveRef.current&&mR_save.current&&mR_save.current.state!=="inactive";if(hasUnsavedAudio){const ok=window.confirm("未保存の録音があります。\n音声を保存してから次の患者に進みますか？\n\nOK: 保存して次へ / キャンセル: 中止");if(!ok)return;mR_save.current.stop();mR_save.current=null}if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}try{if(examSessionIdRef.current){deleteTranscriptSession(examSessionIdRef.current);examSessionIdRef.current=null}}catch{}saveUndo();sInp("");sOut("");sSt("待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;audioPathsRef.current=[];try{if(rid==="r7"){sTid("counseling-std")}else{const dt=localStorage.getItem("mk_defaultTpl");if(dt&&dt!=="counseling-std")sTid(dt);else if(tidRef.current==="counseling-std")sTid("soap-std")}}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
 // === D-1〜D-3 複数選択削除 共通ヘルパー & 削除関数 ===
 const toggleIdInSet=(setter,id)=>{setter(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n})};
@@ -6247,7 +6276,7 @@ return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid
 {isVis?"✅":"☐"} {t.name}
 </button>)})}
 </div>
-<button onClick={()=>{setTplVisible(null);try{localStorage.removeItem("mk_tplVisible")}catch{};sSt("テンプレート表示をリセットしました")}} style={{marginTop:8,padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>🔄 デフォルトに戻す（標準・簡潔のみ）</button>
+<button onClick={()=>{setTplVisible(null);try{localStorage.removeItem("mk_tplVisible")}catch{};sSt("テンプレート表示をリセットしました")}} style={{marginTop:8,padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>🔄 デフォルトに戻す（標準・簡潔・カウンセリングのみ）</button>
 </div>
 <div style={{marginTop:16}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 デフォルトテンプレート</span>
