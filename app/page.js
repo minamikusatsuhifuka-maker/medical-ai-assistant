@@ -1063,6 +1063,7 @@ const[silenceThreshold,setSilenceThreshold]=useState(0.01);
 const silenceThrRef=useRef(0.01);
 useEffect(()=>{silenceThrRef.current=silenceThreshold},[silenceThreshold]);
 const silenceCtxRef=useRef(null);
+const[cleaningTx,setCleaningTx]=useState(false);
 // チャンク診断カウンタ: どの段階でチャンクが消えているかの見える化（計測のみ・フロー非干渉）。
 const[diagCnt,setDiagCnt]=useState({rec:0,lv:0,sil:0,sent:0,ok:0,err:0});
 const[diagErr,setDiagErr]=useState("");
