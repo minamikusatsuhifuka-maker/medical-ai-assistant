@@ -84,10 +84,17 @@ function assert(cond, msg) {
 
   const ta = () => page.locator('textarea[placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。"]');
   const visBtn = (label) => page.locator(`button:visible`, { hasText: label });
+  // ハイドレーション完了前のクリックは無効になるため、textareaが出るまでクリックをリトライする
+  const clickMinutesTab = async () => {
+    for (let i = 0; i < 6; i++) {
+      await page.locator('button:visible', { hasText: "議事録" }).first().click();
+      try { await ta().waitFor({ state: "visible", timeout: 3000 }); return; } catch {}
+    }
+    await ta().waitFor({ state: "visible" });
+  };
   const gotoMinutes = async () => {
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.locator('button:visible', { hasText: "議事録" }).first().click();
-    await ta().waitFor({ state: "visible" });
+    await clickMinutesTab();
   };
   const noBanner = async (label) => {
     const n = await page.getByText("前回の書き起こしが途中で終了しています").count();
@@ -147,8 +154,7 @@ function assert(cond, msg) {
 
     // ========== シナリオB: 保存せずに次へ ==========
     console.log("--- シナリオB: 保存せずに次へ ---");
-    await page.locator('button:visible', { hasText: "議事録" }).first().click();
-    await ta().waitFor({ state: "visible" });
+    await clickMinutesTab();
 
     await visBtn("🎙 録音開始").first().click();
     await page.getByText("● 録音中").waitFor();
