@@ -1004,6 +1004,7 @@ const smnRestoringRef=useRef(false);
 const smnTextRef=useRef("");
 useEffect(()=>{smnTextRef.current=smnTranscript},[smnTranscript]);
 const[audioSave,setAudioSave]=useState(false),[audioChunks,setAudioChunks]=useState([]),[savedMsg,setSavedMsg]=useState("");
+const[audioSaveNote,setAudioSaveNote]=useState(null);// 音声保存の成否表示（無言失敗の可視化）
 const[audioList,setAudioList]=useState([]),[audioListLoading,setAudioListLoading]=useState(false),[audioSignedUrls,setAudioSignedUrls]=useState({}),[audioListMsg,setAudioListMsg]=useState("");
 const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAudioDeleting]=useState(false);
 const[mp3Converting,setMp3Converting]=useState({}); // {[path]: "loading"|"converting"|"done"|null}
@@ -1748,7 +1749,7 @@ setInsightResult(data.result||"");
 };
 const audioSaveRef=useRef(false),audioPartCounter=useRef(1),audioChunkTimer=useRef(null),audioPathsRef=useRef([]),minAudioPathsRef=useRef([]),lastRecordIdRef=useRef(null),audioPartStartTime=useRef(0),mR_save=useRef(null);
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
-const saveAudio=async(blob,partN,durationSec)=>{if(!supabase||!blob||blob.size<1000)return null;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const secStr=durationSec&&durationSec>0?`-${Math.round(durationSec)}s`:"";const partSeg=`_part${partN||1}${secStr}`;const path=`audio/${rid}/${ts}${partSeg}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error){console.error("Audio save error:",error);return null}console.log("Audio saved:",path);audioPathsRef.current.push(path);if(lastRecordIdRef.current){try{await supabase.from("records").update({audio_path:audioPathsRef.current.join(",")}).eq("id",lastRecordIdRef.current)}catch(e){console.error("audio_path update error:",e)}}return path}catch(e){console.error("Audio save error:",e);return null}};
+const saveAudio=async(blob,partN,durationSec)=>{if(!supabase||!blob||blob.size<1000)return null;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const secStr=durationSec&&durationSec>0?`-${Math.round(durationSec)}s`:"";const partSeg=`_part${partN||1}${secStr}`;const path=`audio/${rid}/${ts}${partSeg}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error){console.error("Audio save error:",error);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(error.message||"不明なエラー")});return null}console.log("Audio saved:",path);setAudioSaveNote({t:"ok",m:`✓ 音声保存済み part${partN||1}`});audioPathsRef.current.push(path);if(lastRecordIdRef.current){try{await supabase.from("records").update({audio_path:audioPathsRef.current.join(",")}).eq("id",lastRecordIdRef.current)}catch(e){console.error("audio_path update error:",e)}}return path}catch(e){console.error("Audio save error:",e);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(e.message||"不明なエラー")});return null}};
 const saveMinAudio=async(blob,minuteTitle)=>{
 if(!supabase||!blob||blob.size<1000)return null;
 try{
@@ -1793,9 +1794,28 @@ supabase.from("minutes").select("id,title,audio_path,created_at").not("audio_pat
 ]);
 const recs=(recRes.data||[]).map(r=>({type:"record",id:r.id,created_at:r.created_at,room:r.room,patient_id:r.patient_id,patient_name:r.patient_name,title:null,audio_path:r.audio_path}));
 const mins=(minRes.data||[]).map(r=>({type:"minute",id:r.id,created_at:r.created_at,room:null,patient_id:null,patient_name:null,title:r.title,audio_path:r.audio_path}));
-const merged=[...recs,...mins].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,100);
+// Storage直接リスト: records/minutesに紐付いていない音声（要約せず停止した録音・紐付け前に画面遷移した録音）も一覧に出す
+let orphans=[];
+try{
+const linked=new Set();
+[...recs,...mins].forEach(it=>(it.audio_path||"").split(",").map(p=>p.trim()).filter(Boolean).forEach(p=>linked.add(p)));
+try{const{data:smn}=await supabase.from("counseling_analyses").select("audio_path").not("audio_path","is",null).limit(200);(smn||[]).forEach(r=>(r.audio_path||"").split(",").map(p=>p.trim()).filter(Boolean).forEach(p=>linked.add(p)))}catch{}
+const{data:roomDirs}=await supabase.storage.from("audio").list("audio",{limit:50});
+const prefixes=(roomDirs||[]).filter(d=>!d.id).map(d=>"audio/"+d.name).concat(["seminar-audio"]);
+const lists=await Promise.all(prefixes.map(async pfx=>{
+const{data}=await supabase.storage.from("audio").list(pfx,{limit:100,sortBy:{column:"created_at",order:"desc"}});
+return(data||[]).filter(f=>f.id).map(f=>({pfx,f}));
+}));
+orphans=lists.flat().filter(({pfx,f})=>!linked.has(pfx+"/"+f.name)).map(({pfx,f})=>{
+const path=pfx+"/"+f.name;
+const pm=f.name.match(/_part\d+(?:-\d+s)?_(.+)\.webm$/);
+const pid=pm&&pm[1]!=="unknown"?pm[1]:"";
+return{type:"storage",id:path,created_at:f.created_at,room:pfx.startsWith("audio/")?pfx.slice(6):"セミナー",patient_id:pid,patient_name:null,title:pfx==="seminar-audio"?f.name:null,audio_path:path};
+});
+}catch(e){console.error("storage list error:",e)}
+const merged=[...recs,...mins,...orphans].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,150);
 setAudioList(merged);
-setAudioListMsg(`✓ ${merged.length}件取得（診察${recs.length}件・議事録${mins.length}件）`);
+setAudioListMsg(`✓ ${merged.length}件取得（診察${recs.length}件・議事録${mins.length}件・未紐付け${orphans.length}件）`);
 }catch(e){console.error("fetchAudioList error:",e);setAudioListMsg("取得エラー: "+e.message)}
 finally{setAudioListLoading(false)}
 };
@@ -1830,10 +1850,13 @@ const deleteSelectedAudios=async()=>{
           const{error:storageErr}=await supabase.storage.from("audio").remove(paths);
           if(storageErr)console.error("Storage削除エラー:",storageErr);
         }
+        if(item.type==="storage"){success++}// 未紐付け音声はStorage削除のみ（DB行なし）
+        else{
         const table=item.type==="record"?"records":"minutes";
         const{error:dbErr}=await supabase.from(table).update({audio_path:null}).eq("id",item.id);
         if(dbErr){console.error("DB更新エラー:",dbErr);failed++}
         else{success++}
+        }
       }catch(e){console.error("削除エラー:",e);failed++}
     }
   }finally{setAudioDeleting(false)}
@@ -3516,7 +3539,7 @@ useEffect(()=>{voiceCmdRef.current=voiceCmd},[voiceCmd]);
 const startVoiceCommand=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){sSt("音声コマンドはChrome専用です");return}const sr=new SR();sr.lang="ja-JP";sr.continuous=true;sr.interimResults=false;sr.onresult=(e)=>{const txt=e.results[e.results.length-1][0].transcript.trim();setVcStatus("🎤 「"+txt+"」");if(/次へ|次の患者|クリア/.test(txt)){clr();setVcStatus("✓ 次の患者へ")}else if(/要約|まとめ|カルテ/.test(txt)){sum();setVcStatus("✓ 要約開始")}else if(/録音|開始|スタート/.test(txt)){if(rs==="inactive")go();setVcStatus("✓ 録音開始")}else if(/停止|ストップ|終了/.test(txt)){if(rs!=="inactive")stop();setVcStatus("✓ 録音停止")}else if(/一時停止|ポーズ/.test(txt)){if(rs==="recording")pause();setVcStatus("✓ 一時停止")}else if(/再開|レジューム/.test(txt)){if(rs==="paused")resume();setVcStatus("✓ 再開")}else if(/コピー/.test(txt)){if(out)navigator.clipboard.writeText(out);setVcStatus("✓ コピー完了")}setTimeout(()=>setVcStatus(""),2000)};sr.onerror=(e)=>{if(e.error!=="no-speech"){setVcStatus("エラー: "+e.error)}};sr.onend=()=>{if(voiceCmdRef.current){try{sr.start()}catch{}}};vcRef.current=sr;try{sr.start();setVcStatus("待機中...")}catch(e){sSt("音声コマンド開始エラー: "+e.message)}};
 const stopVoiceCommand=()=>{if(vcRef.current){try{vcRef.current.stop()}catch{}}vcRef.current=null;setVcStatus("")};
 useEffect(()=>{if(voiceCmd){startVoiceCommand()}else{stopVoiceCommand()}return()=>{stopVoiceCommand()}},[voiceCmd]);
-const go=async()=>{autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;audioPathsRef.current=[];lastRecordIdRef.current=null;const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");audioPartCounter.current=1;audioPartStartTime.current=Date.now();mR_save.current=startSaveMR(s);const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(s);m2.start();mR.current=m2}},100)}},10000);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}audioChunkTimer.current=setInterval(()=>{if(!audioSaveRef.current||!mR_save.current)return;const elapsed=Date.now()-audioPartStartTime.current;if(elapsed>=1200000){if(mR_save.current.state!=="inactive")mR_save.current.stop();audioPartCounter.current++;audioPartStartTime.current=Date.now();if(msR.current)mR_save.current=startSaveMR(msR.current)}},30000)};
+const go=async()=>{autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;audioPathsRef.current=[];lastRecordIdRef.current=null;setAudioSaveNote(null);const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");audioPartCounter.current=1;audioPartStartTime.current=Date.now();mR_save.current=startSaveMR(s);const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(s);m2.start();mR.current=m2}},100)}},10000);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}audioChunkTimer.current=setInterval(()=>{if(!audioSaveRef.current||!mR_save.current)return;const elapsed=Date.now()-audioPartStartTime.current;if(elapsed>=1200000){if(mR_save.current.state!=="inactive")mR_save.current.stop();audioPartCounter.current++;audioPartStartTime.current=Date.now();if(msR.current)mR_save.current=startSaveMR(msR.current)}},30000)};
 const stop=()=>{if(cR.current)clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive");sSt("待機中")};
 const pause=()=>{if(cR.current)clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();if(mR_save.current&&mR_save.current.state==="recording")mR_save.current.pause();sRS("paused");sSt("一時停止")};
 const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");if(mR_save.current&&mR_save.current.state==="paused")mR_save.current.resume();else if(!mR_save.current)mR_save.current=startSaveMR(msR.current);const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(msR.current);m2.start();mR.current=m2}},100)}},10000)};
@@ -6223,7 +6246,7 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <button onClick={fetchAudioList} disabled={audioListLoading} style={{padding:"6px 14px",borderRadius:10,border:"none",background:audioListLoading?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:audioListLoading?"wait":"pointer"}}>{audioListLoading?"⏳ 取得中...":"🔄 一覧を取得"}</button>
 </div>
 </div>
-<p style={{fontSize:11,color:C.g400,marginBottom:10}}>過去に保存した診察・議事録の音声を一覧から再生・ダウンロードできます。最新100件まで表示。</p>
+<p style={{fontSize:11,color:C.g400,marginBottom:10}}>過去に保存した診察・議事録の音声を一覧から再生・ダウンロードできます。要約を実行していない録音も「🎙 音声のみ」として表示されます。最新150件まで表示。</p>
 {audioList.length>0&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:10,padding:"6px 10px",borderRadius:10,background:"#fff7ed",border:"1px solid #fdba74"}}>
 <button onClick={selectAllAudios} disabled={audioDeleting} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+C.p+"66",background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:audioDeleting?"not-allowed":"pointer"}}>✓ 全選択</button>
 <button onClick={deselectAllAudios} disabled={audioDeleting} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+C.g200,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:audioDeleting?"not-allowed":"pointer"}}>⬜ 全解除</button>
@@ -6239,10 +6262,10 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 {audioList.map(item=>{
 const paths=(item.audio_path||"").split(",").map(p=>p.trim()).filter(Boolean);
 const dateLabel=new Date(item.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
-const typeLabel=item.type==="record"?"🩺 診察":"📝 議事録";
-const typeBg=item.type==="record"?"#dbeafe":"#fef3c7";
-const typeColor=item.type==="record"?"#1d4ed8":"#92400e";
-const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}${item.patient_name?" / "+item.patient_name:""}`:(item.title||"無題");
+const typeLabel=item.type==="record"?"🩺 診察":item.type==="minute"?"📝 議事録":"🎙 音声のみ";
+const typeBg=item.type==="record"?"#dbeafe":item.type==="minute"?"#fef3c7":"#f3e8ff";
+const typeColor=item.type==="record"?"#1d4ed8":item.type==="minute"?"#92400e":"#7c3aed";
+const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}${item.patient_name?" / "+item.patient_name:""}`:item.type==="minute"?(item.title||"無題"):`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}（要約未実行・音声のみ）`;
 const k=audioKey(item);
 const checked=selectedAudios.has(k);
 const hasAudio=paths.length>0;
@@ -6251,7 +6274,7 @@ return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid
 <input type="checkbox" checked={checked} disabled={!hasAudio||audioDeleting} onChange={()=>toggleAudioSelected(item)} style={{width:16,height:16,cursor:hasAudio&&!audioDeleting?"pointer":"not-allowed",accentColor:"#dc2626",flexShrink:0}}/>
 <span style={{padding:"2px 8px",borderRadius:6,background:typeBg,color:typeColor,fontSize:11,fontWeight:700}}>{typeLabel}</span>
 <span style={{fontSize:11,color:C.g500,fontWeight:600}}>{dateLabel}</span>
-<span style={{fontSize:11,color:C.g400}}>part{paths.length===1?"1のみ":`1〜${paths.length}`}</span>
+<span style={{fontSize:11,color:C.g400}}>{item.type==="storage"?((item.audio_path.match(/_part(\d+)/)||[])[1]?`part${item.audio_path.match(/_part(\d+)/)[1]}`:"単体"):`part${paths.length===1?"1のみ":`1〜${paths.length}`}`}</span>
 </div>
 <div style={{fontSize:12,color:C.g700,fontWeight:500}}>{subtitle}</div>
 {paths.map((p,idx)=>(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:8,background:C.g50,flexWrap:"wrap"}}>
@@ -6581,6 +6604,7 @@ const fn=actions[sc.id];if(fn)fn();
 <button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} title="録音音声をSupabaseに保存する" onMouseEnter={e=>showTip(e,"録音音声を保存する")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#2a4a18":C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
 </div>
 {rs==="recording"&&<div style={{fontSize:11,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
+{audioSaveNote&&<div style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:8,background:audioSaveNote.t==="err"?"#fef2f2":"#f0fdf4",border:`1px solid ${audioSaveNote.t==="err"?"#fecaca":"#bbf7d0"}`,color:audioSaveNote.t==="err"?"#b91c1c":"#15803d",whiteSpace:"nowrap"}}>{audioSaveNote.m}</div>}
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
 <button onClick={()=>sum()} disabled={ld||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
