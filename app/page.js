@@ -952,6 +952,8 @@ const[minFinalIntegrationError,setMinFinalIntegrationError]=useState("");
 const[minHistFontSize,setMinHistFontSize]=useState(13);
 const[minHistHeight,setMinHistHeight]=useState(500);
 const[minTypoLd,setMinTypoLd]=useState(false);
+// 議事録書き起こし欄の📋コピー成功表示（約2秒「✓ コピーしました」に変えて戻す）
+const[minTxCopied,setMinTxCopied]=useState(false);
 const[minDraftId,setMinDraftId]=useState(null);
 const minDraftIdRef=useRef(null);
 const updateMinDraftId=(id)=>{setMinDraftId(id);minDraftIdRef.current=id;};
@@ -3727,10 +3729,11 @@ const deleteRecSelected=async()=>{
 };
 // 長文（書き起こし全文等）をワンクリックコピー。HTTPS環境はnavigator.clipboard、ローカルHTTPはtextareaフォールバック
 const copyTextToClipboard=async(text,label="テキスト")=>{
-  if(!text||text.length===0){sSt(`⚠️ コピーする${label}がありません`);return}
+  if(!text||text.length===0){sSt(`⚠️ コピーする${label}がありません`);return false}
   try{
     await navigator.clipboard.writeText(text);
     sSt(`✓ ${label}をコピーしました（${text.length.toLocaleString()}文字）`);
+    return true;
   }catch(e){
     console.error("[copyText] error:",e);
     try{
@@ -3740,7 +3743,8 @@ const copyTextToClipboard=async(text,label="テキスト")=>{
       document.execCommand("copy");
       document.body.removeChild(ta);
       sSt(`✓ ${label}をコピーしました（${text.length.toLocaleString()}文字）`);
-    }catch(e2){console.error("[copyText] fallback error:",e2);sSt("⚠️ コピーに失敗しました")}
+      return true;
+    }catch(e2){console.error("[copyText] fallback error:",e2);sSt("⚠️ コピーに失敗しました");return false}
   }
 };
 
@@ -5056,6 +5060,7 @@ finally{setMinTypoLd(false)}
 </button>
 <span style={{fontSize:11,color:C.g400,whiteSpace:"nowrap"}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span>
 {minInp.trim()&&<button type="button" disabled={cleaningTx} onClick={()=>manualClean(minInp,(c)=>{setMinInp(c);minIR.current=c},"min")} style={{fontSize:13,color:'#7c3aed',background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:6,padding:'4px 10px',cursor:cleaningTx?'wait':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{cleanBtnLabel('✨ 書き起こしを補正')}</button>}{undoCleanBtn("min")}
+{minInp.trim()&&<button type="button" onClick={async()=>{const ok=await copyTextToClipboard(minInp,"書き起こし");if(ok){setMinTxCopied(true);setTimeout(()=>setMinTxCopied(false),2000)}}} title="書き起こし全文をクリップボードにコピー" style={{fontSize:13,color:minTxCopied?'#15803d':'#7c3aed',background:minTxCopied?'#f0fdf4':'#fff',border:`1px solid ${minTxCopied?'#bbf7d0':'#d4cce8'}`,borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{minTxCopied?"✓ コピーしました":"📋 コピー"}</button>}
 {minInp&&<button type="button" onClick={()=>setMinInp('')} style={{fontSize:13,color:'#c0392b',background:'#fff0f0',border:'1px solid #f0c0c0',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>🗑 クリア</button>}
 </div></div>
 <textarea value={minInp} onChange={e=>setMinInp(e.target.value)} placeholder="録音開始すると自動で書き起こされます。手動入力も可能です。" style={{width:"100%",height:minTaHeight,padding:10,borderRadius:12,border:`1px solid ${C.g200}`,background:C.g50,fontSize:13,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/></div>
