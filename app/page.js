@@ -1997,6 +1997,16 @@ const saveExamInputOnly=async()=>{
     return true;
   }catch(e){console.error("saveExamInputOnly error:",e);return false}
 };
+// 診察の「停止して書き起こしを保存」: 議事録 minStopAndSaveOnly の診察版。録音停止→書き起こしのみ保存（要約なし）。
+// 議事録と同様、保存後もテキストは画面に残す（再開は録音開始で続きから追記、次の患者へは「次へ」）。保存経路は saveExamInputOnly を再利用
+const stopAndSaveExamInputOnly=async()=>{
+  if(!(iR.current||"").trim()){sSt("書き起こしがありません");return}
+  stop(); // 録音停止（音声保存ONなら既存の onstop 経由でアップロード→自動mp3変換）
+  sSt("💾 書き起こしを保存中...");
+  const ok=await saveExamInputOnly();
+  if(ok){sSt("✅ 書き起こしを保存しました（要約なし）")}
+  else{sSt("⚠️ 保存に失敗しました。書き起こしは画面に残っています")}
+};
 const saveFeedback=async(rating,note="")=>{if(!supabase||!lastRecordId)return;setFeedbackSaving(true);try{await supabase.from("summary_feedback").insert({record_id:lastRecordId,rating,note:note||"",summary_text:out.substring(0,1000),ai_model:geminiModel});setFeedback(rating);sSt(rating==="good"?"✓ フィードバックを保存しました":"✓ 改善点を記録しました")}catch(e){console.error("Feedback error:",e)}finally{setFeedbackSaving(false)}};
 const generateDoc=async()=>{if(!docDisease.trim())return;setDocLd(true);setProg(10);setDocOut("");try{let histData=[];if(supabase){const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(data)histData=data.map(r=>r.output_text).filter(Boolean)}
 const related=histData.filter(s=>s.includes(docDisease)).slice(0,20);
@@ -6678,7 +6688,8 @@ const fn=actions[sc.id];if(fn)fn();
 {rs==="inactive"?(<button onClick={go} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:mob?64:68,height:mob?64:68,background:theme.btnRecBg,color:theme.btnRecColor,boxShadow:"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)"}}><span style={{fontSize:mob?20:22}}>🎙</span><span style={{fontSize:10}}>録音開始</span></button>):(<>
 {rs==="recording"?(<button onClick={pause} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.warn,color:"#78350f"}}><span style={{fontSize:22}}>⏸</span></button>):(<button onClick={resume} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.rG,color:C.w}}><span style={{fontSize:22}}>▶</span></button>)}
 <button onClick={stopSum} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:"#1a3a10",boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14,fontWeight:700}}>✓</span><span style={{fontSize:9,fontWeight:700,color:"#1a3a10"}}>要約</span></button>
-<button onClick={stop} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button></>)}
+<button onClick={stop} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button>
+<button type="button" onClick={stopAndSaveExamInputOnly} title="録音を停止し、書き起こしを要約せずそのまま履歴に保存" onMouseEnter={e=>showTip(e,"停止して書き起こしを保存（要約なし）")} onMouseLeave={hideTip} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:mob?12:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>💾 停止して書き起こしを保存</button></>)}
 <button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} title="録音音声をSupabaseに保存する" onMouseEnter={e=>showTip(e,"録音音声を保存する")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#2a4a18":C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
 </div>
 {rs==="recording"&&<div style={{fontSize:11,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
