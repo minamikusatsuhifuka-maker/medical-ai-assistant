@@ -1188,6 +1188,16 @@ return(
 // 分割補正の進捗（{cur,total}）と、補正取り消し用の退避（{apply,original,key}）。元テキストを失わないための保護。
 const[cleanProg,setCleanProg]=useState(null);
 const[undoClean,setUndoClean]=useState(null);
+// === ボタン操作フィードバック共通機構 ===
+// 各ボタンの右横に「処理中⏳/完了✓/失敗⚠」を表示する。完了は約2秒で自動消去、失敗は次の操作まで残す。
+// 既存の処理ロジックは変更せず、各ハンドラの冒頭/成功/catchで btnFbSet を呼ぶだけの薄い共通化。
+const[btnFb,setBtnFb]=useState({});
+const btnFbTimer=useRef({});
+const btnFbSet=(k,s,msg)=>{if(btnFbTimer.current[k]){clearTimeout(btnFbTimer.current[k]);delete btnFbTimer.current[k]}setBtnFb(p=>({...p,[k]:{s,msg}}));if(s==="ok"){btnFbTimer.current[k]=setTimeout(()=>{delete btnFbTimer.current[k];setBtnFb(p=>{if(!p[k]||p[k].s!=="ok")return p;const n={...p};delete n[k];return n})},2000)}};
+const btnFbClear=(k)=>{if(btnFbTimer.current[k]){clearTimeout(btnFbTimer.current[k]);delete btnFbTimer.current[k]}setBtnFb(p=>{if(!p[k])return p;const n={...p};delete n[k];return n})};
+const btnFbBusy=(k)=>btnFb[k]?.s==="run";
+// ボタン右横の状態バッジ。run=琥珀＋スピナー / ok=緑 / err=赤。nowrapで要素単位折返し（モバイルで途中折れしない）
+const BtnFb=({k})=>{const f=btnFb[k];if(!f)return null;return<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:8,fontSize:11,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,background:f.s==="run"?"#fef3c7":f.s==="ok"?"#dcfce7":"#fee2e2",border:`1px solid ${f.s==="run"?"#fcd34d":f.s==="ok"?"#bbf7d0":"#fecaca"}`,color:f.s==="run"?"#92400e":f.s==="ok"?"#15803d":"#b91c1c"}}>{f.s==="run"&&<span style={{width:10,height:10,border:"2px solid #f59e0b",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",animation:"spin 0.8s linear infinite",flexShrink:0}}/>}{f.msg}</span>};
 // チャンクがほぼ無音か判定（WebAudioでRMS算出）。判定失敗時は「送る」側に倒す（書き起こしを止めない）。
 const isSilentChunk=async(blob)=>{if(disableSilenceSkipRef.current)return false;try{if(!blob||blob.size<300)return true;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return false;if(!silenceCtxRef.current||silenceCtxRef.current.state==="closed"){silenceCtxRef.current=new AC()}const ctx=silenceCtxRef.current;const buf=await blob.arrayBuffer();const audio=await ctx.decodeAudioData(buf);const data=audio.getChannelData(0);let sum=0;for(let i=0;i<data.length;i++){sum+=data[i]*data[i]}const rms=Math.sqrt(sum/data.length);return rms<silenceThrRef.current}catch{return false}};
 // 1ブロックをGeminiで補正（捏造除去＋皮膚科用語の文脈補正）。要約ではない。失敗時は元テキストを返す。
@@ -1197,7 +1207,7 @@ const splitForClean=(text,maxChars=2500)=>{const lines=String(text).split("\n");
 // 分割補正：各ブロックを順に補正して結合。全文を保持（要約・省略しない）。途中欠落を防ぐ本命対処。進捗はonProgressで通知。
 const cleanTranscript=async(text,onProgress)=>{if(!text||!text.trim())return text;const blocks=splitForClean(text);const out=[];for(let i=0;i<blocks.length;i++){if(onProgress)onProgress(i+1,blocks.length);out.push(await cleanOneBlock(blocks[i]))}return out.join("\n");};
 // 手動補正（書き起こし欄横の「✨補正」ボタンから）。apply で各画面のstateに反映。補正前テキストはundoCleanに退避し「↩元に戻す」で復元可能。
-const manualClean=async(text,apply,key)=>{if(!text||!text.trim()||cleaningTx)return;setCleaningTx(true);setUndoClean(null);setCleanProg({cur:0,total:0});try{const c=await cleanTranscript(text,(cur,total)=>setCleanProg({cur,total}));if(c&&typeof c==="string"){apply(c);setUndoClean({apply,original:text,key})}}finally{setCleaningTx(false);setCleanProg(null)}};
+const manualClean=async(text,apply,key)=>{if(!text||!text.trim()||cleaningTx)return;setCleaningTx(true);setUndoClean(null);setCleanProg({cur:0,total:0});try{const c=await cleanTranscript(text,(cur,total)=>setCleanProg({cur,total}));if(c&&typeof c==="string"){apply(c);setUndoClean({apply,original:text,key});btnFbSet("clean:"+key,"ok","✓ 補正完了")}}finally{setCleaningTx(false);setCleanProg(null)}};
 // 補正ボタンのラベル（分割時は「補正中… 3/8」と進捗表示）。idleは非補正時の文言。
 const cleanBtnLabel=(idle)=>cleaningTx?(cleanProg&&cleanProg.total>1?`⏳ 補正中… ${cleanProg.cur}/${cleanProg.total}`:"⏳ 補正中..."):idle;
 // 「↩元に戻す」ボタン（直前の補正のkeyが一致するときのみ表示）。補正前の全文を即復元する。
@@ -2000,12 +2010,14 @@ const saveExamInputOnly=async()=>{
 // 診察の「停止して書き起こしを保存」: 議事録 minStopAndSaveOnly の診察版。録音停止→書き起こしのみ保存（要約なし）。
 // 議事録と同様、保存後もテキストは画面に残す（再開は録音開始で続きから追記、次の患者へは「次へ」）。保存経路は saveExamInputOnly を再利用
 const stopAndSaveExamInputOnly=async()=>{
-  if(!(iR.current||"").trim()){sSt("書き起こしがありません");return}
+  if(btnFbBusy("examSave"))return;
+  if(!(iR.current||"").trim()){sSt("書き起こしがありません");btnFbSet("examSave","err","⚠ 失敗: 書き起こしがありません");return}
   stop(); // 録音停止（音声保存ONなら既存の onstop 経由でアップロード→自動mp3変換）
   sSt("💾 書き起こしを保存中...");
+  btnFbSet("examSave","run","保存中…");
   const ok=await saveExamInputOnly();
-  if(ok){sSt("✅ 書き起こしを保存しました（要約なし）")}
-  else{sSt("⚠️ 保存に失敗しました。書き起こしは画面に残っています")}
+  if(ok){sSt("✅ 書き起こしを保存しました（要約なし）");btnFbSet("examSave","ok","✓ 保存しました")}
+  else{sSt("⚠️ 保存に失敗しました。書き起こしは画面に残っています");btnFbSet("examSave","err","⚠ 失敗: 保存できませんでした")}
 };
 const saveFeedback=async(rating,note="")=>{if(!supabase||!lastRecordId)return;setFeedbackSaving(true);try{await supabase.from("summary_feedback").insert({record_id:lastRecordId,rating,note:note||"",summary_text:out.substring(0,1000),ai_model:geminiModel});setFeedback(rating);sSt(rating==="good"?"✓ フィードバックを保存しました":"✓ 改善点を記録しました")}catch(e){console.error("Feedback error:",e)}finally{setFeedbackSaving(false)}};
 const generateDoc=async()=>{if(!docDisease.trim())return;setDocLd(true);setProg(10);setDocOut("");try{let histData=[];if(supabase){const{data}=await supabase.from("records").select("output_text").order("created_at",{ascending:false}).limit(500);if(data)histData=data.map(r=>r.output_text).filter(Boolean)}
@@ -2313,8 +2325,9 @@ const loadMinHist=async()=>{if(!supabase)return;try{const[{data},{count}]=await 
 useEffect(()=>{if(page==="minutes"&&supabase){loadMinHist()}},[page]);
 const saveMinInputOnly=async()=>{
   if(!supabase||!minIR.current?.trim()){
-    sSt("書き起こしがありません");return;
+    sSt("書き起こしがありません");btnFbSet("minSaveOnly","err","⚠ 失敗: 書き起こしがありません");return;
   }
+  btnFbSet("minSaveOnly","run","保存中…");
   try{
     const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（書き起こしのみ）";
     if(minDraftId){
@@ -2334,8 +2347,10 @@ const saveMinInputOnly=async()=>{
     lastSavedMinInpRef.current=minIR.current||"";
     await loadMinHist();
     sSt("✅ 書き起こしを保存しました");
+    btnFbSet("minSaveOnly","ok","✓ 保存しました");
   }catch(e){
     sSt("保存エラー: "+e.message);
+    btnFbSet("minSaveOnly","err","⚠ 失敗: "+String(e.message||e).slice(0,40));
   }
 };
 // 停止して内容を保存（要約なし）: 録音停止のみ行い書き起こしを保存。再開は「録音開始」で続きから追記（minInpは消さない）。
@@ -2496,7 +2511,9 @@ const toggleTask=async(id,done)=>{if(!supabase)return;await supabase.from("tasks
 const updateTask=async(id,field,value)=>{if(!supabase)return;await supabase.from("tasks").update({[field]:value}).eq("id",id);loadTasks()};
 const generateTasksFromMinute=async(minute)=>{
 if(!supabase||!minute.output_text)return;
-sSt("タスク生成中...");setProg(5);
+const fbk="genTasks:"+minute.id;
+if(btnFbBusy(fbk))return;
+sSt("タスク生成中...");setProg(5);btnFbSet(fbk,"run","生成中…");
 const maxClientRetries=2;
 let attempt=0;
 let td=null;
@@ -2514,15 +2531,16 @@ attempt++;
 continue;
 }
 sSt("⏳ APIレート制限に達しました。議事録要約直後はAPIが混雑しています。1〜2分待ってから再度「タスク生成」を押してください。要約モデルをFlash↔Pro↔Claudeで切り替えると回避できることがあります。");
+btnFbSet(fbk,"err","⚠ 失敗: APIレート制限");
 setProg(0);return;
 }
-if(!tr.ok){sSt("タスク生成エラー: HTTP "+tr.status);setProg(0);return}
+if(!tr.ok){sSt("タスク生成エラー: HTTP "+tr.status);btnFbSet(fbk,"err","⚠ 失敗: HTTP "+tr.status);setProg(0);return}
 td=await tr.json();
 break;
 }
-if(!td){setProg(0);return}
+if(!td){setProg(0);btnFbSet(fbk,"err","⚠ 失敗: 応答がありません");return}
 setProg(55);
-if(td.error&&(!td.tasks||td.tasks.length===0)){sSt("タスク生成エラー: "+td.error);setProg(0);return}
+if(td.error&&(!td.tasks||td.tasks.length===0)){sSt("タスク生成エラー: "+td.error);btnFbSet(fbk,"err","⚠ 失敗: "+String(td.error).slice(0,40));setProg(0);return}
 if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){
 const parsed=td.tasks;
 setProg(70);
@@ -2546,15 +2564,17 @@ await loadTasks();
 setProg(95);
 let chunkMsg="";
 if(td.chunked){chunkMsg="（"+td.chunkCount+"チャンク分割処理";if(td.failedChunkCount>0)chunkMsg+="、"+td.failedChunkCount+"チャンク失敗";chunkMsg+="）"}
+btnFbSet(fbk,"ok","✓ タスク"+count+"件生成");
 sSt("");setTimeout(()=>{const ok=window.confirm(count+"件のタスクを生成しました！"+chunkMsg+"\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300);
 }else{
 sSt("タスクが抽出できませんでした");
+btnFbSet(fbk,"err","⚠ 失敗: タスクを抽出できませんでした");
 }
 }catch(e){
 console.error("Task gen error:",e);
 const msg=e?.message||String(e);
-if(msg.includes("429")||msg.includes("レート制限")){sSt("⏳ APIレート制限に達しました。1〜2分待ってから再度「タスク生成」を押してください。")}
-else{sSt("タスク生成エラー: "+msg)}
+if(msg.includes("429")||msg.includes("レート制限")){sSt("⏳ APIレート制限に達しました。1〜2分待ってから再度「タスク生成」を押してください。");btnFbSet(fbk,"err","⚠ 失敗: APIレート制限")}
+else{sSt("タスク生成エラー: "+msg);btnFbSet(fbk,"err","⚠ 失敗: "+msg.slice(0,40))}
 }finally{setProg(0)}
 };
 const generateTasksFromSelected=async()=>{if(selMinutes.length===0)return;for(const id of selMinutes){const m=minHist.find(x=>x.id===id);if(m)await generateTasksFromMinute(m)}setSelMinutes([]);sSt("");setTimeout(()=>{const ok=window.confirm("選択した議事録からタスクを生成しました！\n\n四象限マトリクスを表示しますか？");if(ok){loadTasks();setPage("tasks");setTaskView("matrix")}},300)};
@@ -2634,11 +2654,11 @@ if(!isAuto)sSt("保存エラー: "+e.message);
 setMinAutoSaving(false);
 }
 };
-const minSum=async()=>{minStop();if(!minIR.current?.trim()){return}setMinLd(true);setProg(10);/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */
+const minSum=async()=>{if(minLd)return;minStop();if(!minIR.current?.trim()){btnFbSet("minSum","err","⚠ 失敗: 書き起こしがありません");return}setMinLd(true);setProg(10);btnFbSet("minSum","run","議事録作成中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */
 const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。";
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
 setProg(50);
-try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||"",model:minutesModel})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("")}else{setMinOut(d.summary);setMinTruncated(!!d.truncated);setMinChunkSummaries(Array.isArray(d.chunkSummaries)?d.chunkSummaries:[]);setMinFinalIntegrationFailed(!!d.finalIntegrationFailed);setMinFinalIntegrationError(d.finalIntegrationError||"");const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理${d.midIntegrated?"・中間統合あり":""}）`:"";sSt((d.finalIntegrationFailed?"⚠️ 最終統合失敗（部分結果表示）":"議事録作成完了 ✓")+chunkMsg+(d.finalIntegrationFailed?"":" → 次へで新規打合せ"));setGeminiModel(d.model||"");setMinutesGenModel(d.model||minutesModel);if(supabase&&d.summary){try{let minData=null;
+try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||"",model:minutesModel})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");btnFbSet("minSum","err","⚠ 失敗: HTTP "+r.status);return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");btnFbSet("minSum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{btnFbSet("minSum",d.finalIntegrationFailed?"err":"ok",d.finalIntegrationFailed?"⚠ 失敗: 最終統合失敗（部分結果）":"✓ 議事録作成完了");setMinOut(d.summary);setMinTruncated(!!d.truncated);setMinChunkSummaries(Array.isArray(d.chunkSummaries)?d.chunkSummaries:[]);setMinFinalIntegrationFailed(!!d.finalIntegrationFailed);setMinFinalIntegrationError(d.finalIntegrationError||"");const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理${d.midIntegrated?"・中間統合あり":""}）`:"";sSt((d.finalIntegrationFailed?"⚠️ 最終統合失敗（部分結果表示）":"議事録作成完了 ✓")+chunkMsg+(d.finalIntegrationFailed?"":" → 次へで新規打合せ"));setGeminiModel(d.model||"");setMinutesGenModel(d.model||minutesModel);if(supabase&&d.summary){try{let minData=null;
 const minAudioPath=minAudioPathsRef.current.length>0?minAudioPathsRef.current.join(","):null;
 if(minDraftId){
 const updateData={title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",input_text:minIR.current||"",output_text:d.summary};
@@ -2678,7 +2698,7 @@ urgency: 1=低 2=やや低 3=やや高 4=高
 importance: 1=低 2=やや低 3=やや高 4=高
 
 議事録（先頭3000字）:
-`;try{console.log("[page] waiting 3s before auto task extraction to avoid rate limit");await new Promise(r=>setTimeout(r,3000));const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});if(tr2.status===429){console.warn("[page] auto extract-tasks rate-limited, skipping (user can retry via manual button)");sSt("⏳ 要約後のタスク自動抽出がレート制限に達しました。少し待ってから「📋 タスク生成」ボタンで手動実行してください。")}else{const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}let chunkMsg="";if(td.chunked)chunkMsg="（"+td.chunkCount+"チャンク分割）";sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました"+chunkMsg)}else{console.warn("extract-tasks: no tasks or empty",td)}}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message)}finally{setMinLd(false);setProg(0);loadMinHist()}};
+`;try{console.log("[page] waiting 3s before auto task extraction to avoid rate limit");await new Promise(r=>setTimeout(r,3000));const tr2=await fetch("/api/extract-tasks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:d.summary})});if(tr2.status===429){console.warn("[page] auto extract-tasks rate-limited, skipping (user can retry via manual button)");sSt("⏳ 要約後のタスク自動抽出がレート制限に達しました。少し待ってから「📋 タスク生成」ボタンで手動実行してください。")}else{const td=await tr2.json();console.log("extract-tasks result:",td.tasks?.length,"tasks",td.error||"");if(td.tasks&&Array.isArray(td.tasks)&&td.tasks.length>0){for(const t of td.tasks){await supabase.from("tasks").insert({title:t.title||"未定",assignee:t.assignee||"",due_date:t.due_date||null,urgency:Math.min(4,Math.max(1,parseInt(t.urgency)||2)),importance:Math.min(4,Math.max(1,parseInt(t.importance)||2)),category:["operations","medical","hr","finance"].includes(t.category)?t.category:"operations",role_level:["director","manager","leader","staff"].includes(t.role_level)?t.role_level:"staff",minute_id:minData.id,done:false})}let chunkMsg="";if(td.chunked)chunkMsg="（"+td.chunkCount+"チャンク分割）";sSt("✓ タスク"+td.tasks.length+"件を自動抽出しました"+chunkMsg)}else{console.warn("extract-tasks: no tasks or empty",td)}}}catch(e2){console.error("extract-tasks fetch error:",e2)}}}catch(e){console.error("minutes insert error:",e)}}}}catch(e){setMinOut("エラー: "+e.message);btnFbSet("minSum","err","⚠ 失敗: "+String(e.message||e).slice(0,40))}finally{setMinLd(false);setProg(0);loadMinHist()}};
 // 議事録画面の状態をリセット（保存はしない・ドラフトがあれば破棄）
 const performMinReset=()=>{
   try{if(minSessionIdRef.current){deleteTranscriptSession(minSessionIdRef.current);minSessionIdRef.current=null}}catch{}
@@ -2720,6 +2740,7 @@ const minNext=()=>{
 const minNextSaveAndProceed=async()=>{
   if(minSavingNext)return;
   setMinSavingNext(true);
+  btnFbSet("minSaveNext","run","保存中…");
   try{
     const u=hasUnsavedMin();
     if(u.outUnsaved){
@@ -2730,8 +2751,10 @@ const minNextSaveAndProceed=async()=>{
     setUnsavedMinModal(false);
     performMinReset();
     sSt("✅ 保存して次へ進みました");
+    btnFbSet("minSaveNext","ok","✓ 保存しました");
   }catch(e){
     sSt("保存エラー: "+e.message);
+    btnFbSet("minSaveNext","err","⚠ 失敗: "+String(e.message||e).slice(0,40));
   }finally{
     setMinSavingNext(false);
   }
@@ -2746,16 +2769,20 @@ const minNextDiscardAndProceed=()=>{
 const minPauseSaveAndNext=async()=>{
   if(minSavingNext)return;
   setMinSavingNext(true);
+  btnFbSet("minSaveNext","run","保存中…");
   try{
     await minStopAndSaveOnly();
     // saveMinInputOnly は成功時のみ lastSavedMinInpRef を更新する。失敗時はリセットせず書き起こしを残す（データ消失防止）
     if((minIR.current||"").trim()&&lastSavedMinInpRef.current!==minIR.current){
+      btnFbSet("minSaveNext","err","⚠ 失敗: 保存できませんでした");
       return;
     }
     performMinReset();
     sSt("✅ 保存しました。次の録音を開始できます");
+    btnFbSet("minSaveNext","ok","✓ 保存しました");
   }catch(e){
     sSt("保存エラー: "+e.message);
+    btnFbSet("minSaveNext","err","⚠ 失敗: "+String(e.message||e).slice(0,40));
   }finally{
     setMinSavingNext(false);
   }
@@ -3457,7 +3484,7 @@ const[feedback,setFeedback]=useState(null);
 const[feedbackNote,setFeedbackNote]=useState("");
 const[feedbackSaving,setFeedbackSaving]=useState(false);
 const[lastRecordId,setLastRecordId]=useState(null);
-const runTypoCheck=async()=>{const t=iR.current;if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}setTypoTarget("inp");setTypoLd(true);sSt("🔍 AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});if(!r.ok){const errText=await r.text();console.error("AI校正 fetch error:",r.status,errText);sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){console.error("AI校正 API error:",d.error);sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");return}const registeredFroms=new Set(dict.map(([f])=>f));const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length>0&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(newCorrections);sSt("校正候補が見つかりました")}catch(e){console.error("AI校正 error:",e);sSt("校正エラー: "+e.message)}finally{setTypoLd(false)}};
+const runTypoCheck=async()=>{const t=iR.current;if(!t||!t.trim()){sSt("書き起こしテキストがありません");btnFbSet("examScan","err","⚠ 失敗: 書き起こしがありません");return}setTypoTarget("inp");setTypoLd(true);sSt("🔍 AI校正中...");btnFbSet("examScan","run","スキャン中…");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});if(!r.ok){const errText=await r.text();console.error("AI校正 fetch error:",r.status,errText);sSt("校正エラー: サーバーエラー("+r.status+")");btnFbSet("examScan","err","⚠ 失敗: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){console.error("AI校正 API error:",d.error);sSt("校正エラー: "+d.error);btnFbSet("examScan","err","⚠ 失敗: "+String(d.error).slice(0,40));return}if(!d.corrections||d.corrections.length===0){sSt("✓ 医療用語の誤りは見つかりませんでした");btnFbSet("examScan","ok","✓ 誤りなし");return}const registeredFroms=new Set(dict.map(([f])=>f));const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");btnFbSet("examScan","ok","✓ 新規候補なし");return}const sel={};newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length>0&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(newCorrections);sSt("校正候補が見つかりました");btnFbSet("examScan","ok","✓ "+newCorrections.length+"件検出")}catch(e){console.error("AI校正 error:",e);sSt("校正エラー: "+e.message);btnFbSet("examScan","err","⚠ 失敗: "+String(e.message||e).slice(0,40))}finally{setTypoLd(false)}};
 const runTypoCheckOut=async()=>{const t=out;if(!t||!t.trim()){sSt("要約テキストがありません");return}setTypoTarget("out");setTypoLdOut(true);sSt("🔍 要約AI校正中...");try{const r=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});if(!r.ok){const errText=await r.text();console.error("AI校正 fetch error:",r.status,errText);sSt("校正エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){console.error("AI校正 API error:",d.error);sSt("校正エラー: "+d.error);return}if(!d.corrections||d.corrections.length===0){sSt("✓ 要約の医療用語の誤りは見つかりませんでした");return}const registeredFroms=new Set(dict.map(([f])=>f));const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length>0&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(newCorrections);sSt("校正候補が見つかりました")}catch(e){console.error("AI校正 error:",e);sSt("校正エラー: "+e.message)}finally{setTypoLdOut(false)}};
 const applyTypoCorrection=(idx,candidateIdx)=>{try{if(!typoModal||!typoModal[idx])return;const c=typoModal[idx];const candidate=c.candidates?.[candidateIdx];if(!candidate){console.error("applyTypoCorrection: invalid candidate",{idx,candidateIdx,c});return}if(typoTarget==="out"){sOut(prev=>prev.split(c.from).join(candidate.to))}else if(typoTarget==="minOut"){setMinOut(prev=>prev.split(c.from).join(candidate.to))}else if(typoTarget==="minInp"){setMinInp(prev=>prev.split(c.from).join(candidate.to))}else{sInp(prev=>prev.split(c.from).join(candidate.to))}dictAddEntry(c.from,candidate.to)}catch(e){console.error("applyTypoCorrection error:",e)}};
 const applyAllTypos=()=>{try{if(!typoModal)return;let t=typoTarget==="out"?out:typoTarget==="minOut"?minOut:typoTarget==="minInp"?minInp:iR.current;const applied=[];typoModal.forEach((c,i)=>{if(typoCustomInputs[i]?.trim()){const customTo=typoCustomInputs[i].trim();t=t.split(c.from).join(customTo);applied.push([c.from,customTo])}else if(typoSelections[i]!==undefined){const candidate=c.candidates?.[typoSelections[i]];if(candidate){t=t.split(c.from).join(candidate.to);applied.push([c.from,candidate.to])}}});if(typoTarget==="out"){sOut(t)}else if(typoTarget==="minOut"){setMinOut(t)}else if(typoTarget==="minInp"){setMinInp(t)}else{sInp(t)}if(applied.length>0){const newDict=[...applied,...dict];setDict(newDict);saveDictLocal(newDict);applied.forEach(([f,to])=>dictAddSupabase(f,to))}setTypoModal(null);setTypoCustomInputs({});sSt(`✓ ${applied.length}件の修正を登録しました`)}catch(e){console.error("applyAllTypos error:",e);sSt("登録エラー: "+e.message)}};
@@ -3651,21 +3678,21 @@ setUsageGuide(d.summary||"");
 }catch(e){setUsageGuide("エラー: "+e.message)}
 finally{setUsageGuideLd(false)}
 };
-const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");return}sumDoneRef.current=false;sLd(true);setProg(10);/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.5 Flash で要約中...");try{
+const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.5 Flash で要約中...");try{
 const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント";
 const enhancedPrompt=ct.prompt+FORBIDDEN_RULES;
 setProg(40);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
 if(summaryModel==="claude"){
-const d=await r.json();if(d.error){sOut("エラー: "+d.error)}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;await saveRecord(iR.current,d.summary);extractRx(d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"claude"}]`)}catch{sSt(`要約完了 [${d.model||"claude"}]`)}}
+const d=await r.json();if(d.error){sOut("エラー: "+d.error);btnFbSet("sum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,d.summary);extractRx(d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"claude"}]`)}catch{sSt(`要約完了 [${d.model||"claude"}]`)}}
 }else{
 const reader=r.body.getReader();const decoder=new TextDecoder();let buffer="";let finalSummary="";let usedModel="";
 while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop()||"";
 for(const line of lines){if(!line.startsWith("data: "))continue;try{const json=JSON.parse(line.slice(6));
-if(json.error){sOut("エラー: "+json.error);return}
-if(json.chunk){finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
-if(json.done){setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;await saveRecord(iR.current,finalSummary);extractRx(finalSummary);try{await navigator.clipboard.writeText(finalSummary);sSt(`要約完了 ✓ [${usedModel}]`)}catch{sSt(`要約完了 [${usedModel}]`)}}}catch{}}}}
-}catch{sSt("エラーが発生しました")}finally{sLd(false);setProg(0)}};
+if(json.error){sOut("エラー: "+json.error);btnFbSet("sum","err","⚠ 失敗: "+String(json.error).slice(0,40));return}
+if(json.chunk){if(!finalSummary)btnFbClear("sum");/* ストリーミング: 結果欄に文字が流れ始めたら⏳表示を消す */finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
+if(json.done){setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,finalSummary);extractRx(finalSummary);try{await navigator.clipboard.writeText(finalSummary);sSt(`要約完了 ✓ [${usedModel}]`)}catch{sSt(`要約完了 [${usedModel}]`)}}}catch{}}}}
+}catch{sSt("エラーが発生しました");btnFbSet("sum","err","⚠ 失敗: 通信エラー")}finally{sLd(false);setProg(0)}};
 const stopSum=()=>{clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-final",duration_seconds:Math.min(10,Math.max(1,Math.round(e.data.size/16000))),request_meta:{blob_size:e.data.size,text_length:(d.text||"").length,room:rid,final:true}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());const ft=foldAccum(iR.current+(iR.current?"\n":"")+(noise?applyDict(noise):""));sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive")};
 const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:pId}};
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
@@ -3677,9 +3704,11 @@ let autoSavedInputOnly=false;
 const curInp=(iR.current||"").trim();
 if(supabase&&curInp.length>=20&&curInp!==(lastSavedExamInpRef.current||"").trim()){
   sSt("💾 書き起こしを保存中...");
+  btnFbSet("examNext","run","保存中…");
   const saved=await saveExamInputOnly();
-  if(!saved){sSt("⚠️ 書き起こしの自動保存に失敗しました。リセットを中止しました（破棄する場合は🗑を押してください）");return}
+  if(!saved){sSt("⚠️ 書き起こしの自動保存に失敗しました。リセットを中止しました（破棄する場合は🗑を押してください）");btnFbSet("examNext","err","⚠ 失敗: 自動保存できませんでした");return}
   autoSavedInputOnly=true;
+  btnFbSet("examNext","ok","✓ 保存しました");
 }
 try{if(examSessionIdRef.current){deleteTranscriptSession(examSessionIdRef.current);examSessionIdRef.current=null}}catch{}saveUndo();sInp("");sOut("");sSt(autoSavedInputOnly?"✅ 書き起こしのみで履歴に保存しました":"待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;lastSavedExamInpRef.current="";audioPathsRef.current=[];try{if(rid==="r7"){sTid("counseling-std")}else{const dt=localStorage.getItem("mk_defaultTpl");if(dt&&dt!=="counseling-std")sTid(dt);else if(tidRef.current==="counseling-std")sTid("soap-std")}}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}};
 const cp=async(t)=>{try{await navigator.clipboard.writeText(t);sSt("コピー済み ✓")}catch{}};
@@ -5084,19 +5113,21 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 {(autosaveAt||{}).minutes?<span style={{fontSize:10,color:C.g400}}>💾 自動保存: {new Date(autosaveAt.minutes).toLocaleTimeString("ja-JP")}</span>:null}
 {minRS==="inactive"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={minGo} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap"}}>🎙 録音開始</button>
-{minInp.trim()&&!minOut&&<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:120,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✨ 要約作成</button>}
-{minInp.trim()&&!minLd&&<button onClick={saveMinInputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:"#fff",fontSize:12,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📝 書き起こしを保存</button>}
+{minInp.trim()&&!minOut&&<button onClick={minSum} disabled={minLd} style={{padding:"10px 20px",borderRadius:14,border:"none",background:minLd?"#9ca3af":`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minLd?"wait":"pointer",minWidth:120,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>{minLd?"⏳ 作成中...":"✨ 要約作成"}</button>}
+{minInp.trim()&&!minLd&&<button onClick={saveMinInputOnly} disabled={btnFbBusy("minSaveOnly")} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.g200}`,background:btnFbBusy("minSaveOnly")?C.g100:"#fff",fontSize:12,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:btnFbBusy("minSaveOnly")?"wait":"pointer",whiteSpace:"nowrap"}}>📝 書き起こしを保存</button>}
 {minOut.trim()&&!minOut.startsWith("エラー")&&!minLd&&<button onClick={saveMinOutputOnly} style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${C.p}`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📋 要約を保存</button>}
 <button onClick={minNext} style={{padding:"10px 24px",borderRadius:14,border:"2px solid "+C.p,background:C.w,color:C.pD,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,.12)"}}>次へ ▶</button></div>
 :minRS==="paused"?<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={resumeMin} style={{padding:"10px 20px",borderRadius:14,border:"none",background:C.rG,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>▶ 再開</button>
-<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
+<button onClick={minSum} disabled={minLd} style={{padding:"10px 20px",borderRadius:14,border:"none",background:minLd?"#9ca3af":`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minLd?"wait":"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>{minLd?"⏳ 作成中...":"✓ 停止して要約"}</button><button type="button" onClick={minStopAndSaveOnly} disabled={btnFbBusy("minSaveOnly")} style={{padding:"10px 18px",borderRadius:14,border:"none",background:btnFbBusy("minSaveOnly")?"#9ca3af":"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:btnFbBusy("minSaveOnly")?"wait":"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
 <button type="button" onClick={minPauseSaveAndNext} disabled={minSavingNext} style={{padding:"10px 18px",borderRadius:14,border:"2px solid #0f9d6e",background:"#ecfdf5",color:"#0f766e",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minSavingNext?"wait":"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>{minSavingNext?"💾 保存中...":"💾 保存して次へ"}</button>
 <button type="button" onClick={minPauseDiscardAndNext} disabled={minSavingNext} style={{padding:"10px 18px",borderRadius:14,border:`1px solid ${C.g300}`,background:"#fff",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minSavingNext?"not-allowed":"pointer",minWidth:140,whiteSpace:"nowrap"}}>🗑 保存せずに次へ</button></div>
 :<div style={{display:"flex",gap:8,alignItems:"center",minHeight:50,flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={pauseMin} style={{padding:"10px 16px",borderRadius:14,border:"none",background:"#fbbf24",color:"#78350f",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:100,whiteSpace:"nowrap"}}>⏸ 一時停止</button>
-<button onClick={minSum} style={{padding:"10px 20px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>✓ 停止して要約</button><button type="button" onClick={minStopAndSaveOnly} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
+<button onClick={minSum} disabled={minLd} style={{padding:"10px 20px",borderRadius:14,border:"none",background:minLd?"#9ca3af":`linear-gradient(135deg,${C.pDD},${C.pD})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:minLd?"wait":"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>{minLd?"⏳ 作成中...":"✓ 停止して要約"}</button><button type="button" onClick={minStopAndSaveOnly} disabled={btnFbBusy("minSaveOnly")} style={{padding:"10px 18px",borderRadius:14,border:"none",background:btnFbBusy("minSaveOnly")?"#9ca3af":"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:btnFbBusy("minSaveOnly")?"wait":"pointer",minWidth:140,whiteSpace:"nowrap",boxShadow:`0 2px 8px rgba(0,0,0,.15)`}}>💾 停止して内容を保存</button>
 </div>}
+{/* 議事録ボタン群の状態表示（要約/保存はボタンが録音状態で切り替わって消えるため、同じ行に常設表示） */}
+<BtnFb k="minSum"/><BtnFb k="minSaveOnly"/><BtnFb k="minSaveNext"/>
 <span style={{fontSize:12,color:minRS==="recording"?C.rG:minRS==="paused"?C.warn:C.g400,fontWeight:600}}>{minRS==="recording"?"● 録音中":minRS==="paused"?"⏸ 一時停止中":"停止"}</span>
 {(minRS==="recording"||minRS==="paused")&&<div style={{flex:"1 1 200px",minWidth:120,maxWidth:300,height:10,background:C.g100||"#f0f0f0",borderRadius:5,overflow:"hidden",border:`1px solid ${C.g200}`}}><div style={{width:`${Math.min(100,lv)}%`,height:"100%",background:lv>40?"#10b981":lv>10?"#f59e0b":"#94a3b8",transition:"width 120ms linear, background 200ms"}}/></div>}
 {(minRS==="recording"||minRS==="paused")&&minInp.trim()&&
@@ -5113,26 +5144,26 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={async()=>{
 const t=minInp;
 if(!t||!t.trim()){sSt("書き起こしテキストがありません");return}
-setMinTypoLd(true);sSt("🔍 書き起こしAI校正中...");
+setMinTypoLd(true);sSt("🔍 書き起こしAI校正中...");btnFbSet("minScan","run","スキャン中…");
 try{
 const r=await fetch("/api/minutes-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});
 const d=await r.json();
-if(d.error){sSt("校正エラー: "+d.error);return}
-if(!d.corrections||d.corrections.length===0){sSt("✓ 専門用語の誤りは見つかりませんでした");return}
+if(d.error){sSt("校正エラー: "+d.error);btnFbSet("minScan","err","⚠ 失敗: "+String(d.error).slice(0,40));return}
+if(!d.corrections||d.corrections.length===0){sSt("✓ 専門用語の誤りは見つかりませんでした");btnFbSet("minScan","ok","✓ 誤りなし");return}
 const registeredFroms=new Set(dict.map(([f])=>f));
 const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));
-if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}
+if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");btnFbSet("minScan","ok","✓ 新規候補なし");return}
 const sel={};
 newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});
 setTypoSelections(sel);setTypoCustomInputs({});setTypoTarget("minInp");setTypoModal(newCorrections);
-sSt("校正候補が見つかりました");
-}catch(e){sSt("校正エラー: "+e.message)}
+sSt("校正候補が見つかりました");btnFbSet("minScan","ok","✓ "+newCorrections.length+"件検出");
+}catch(e){sSt("校正エラー: "+e.message);btnFbSet("minScan","err","⚠ 失敗: "+String(e.message||e).slice(0,40))}
 finally{setMinTypoLd(false)}
 }} disabled={minTypoLd} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:11,fontWeight:600,color:"#5a3e8a",fontFamily:"inherit",cursor:minTypoLd?"wait":"pointer",whiteSpace:"nowrap"}}>
 {minTypoLd?"🔍...":"🔬 用語スキャン"}
-</button>
+</button><BtnFb k="minScan"/>
 <span style={{fontSize:11,color:C.g400,whiteSpace:"nowrap"}}>{minInp.length>0?Math.ceil(minInp.length/40)+"行":"未入力"}</span>
-{minInp.trim()&&<button type="button" disabled={cleaningTx} onClick={()=>manualClean(minInp,(c)=>{setMinInp(c);minIR.current=c},"min")} style={{fontSize:13,color:'#7c3aed',background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:6,padding:'4px 10px',cursor:cleaningTx?'wait':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{cleanBtnLabel('✨ 書き起こしを補正')}</button>}{undoCleanBtn("min")}
+{minInp.trim()&&<button type="button" disabled={cleaningTx} onClick={()=>manualClean(minInp,(c)=>{setMinInp(c);minIR.current=c},"min")} style={{fontSize:13,color:'#7c3aed',background:'#f5f3ff',border:'1px solid #ddd6fe',borderRadius:6,padding:'4px 10px',cursor:cleaningTx?'wait':'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{cleanBtnLabel('✨ 書き起こしを補正')}</button>}{undoCleanBtn("min")}<BtnFb k="clean:min"/>
 {minInp.trim()&&<button type="button" onClick={async()=>{const ok=await copyTextToClipboard(minInp,"書き起こし");if(ok){setMinTxCopied(true);setTimeout(()=>setMinTxCopied(false),2000)}}} title="書き起こし全文をクリップボードにコピー" style={{fontSize:13,color:minTxCopied?'#15803d':'#7c3aed',background:minTxCopied?'#f0fdf4':'#fff',border:`1px solid ${minTxCopied?'#bbf7d0':'#d4cce8'}`,borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{minTxCopied?"✓ コピーしました":"📋 コピー"}</button>}
 {minInp&&<button type="button" onClick={()=>setMinInp('')} style={{fontSize:13,color:'#c0392b',background:'#fff0f0',border:'1px solid #f0c0c0',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>🗑 クリア</button>}
 </div></div>
@@ -5188,24 +5219,24 @@ finally{setMinTypoLd(false)}
 <button onClick={async()=>{
 const t=minOut;
 if(!t||!t.trim()){sSt("議事録テキストがありません");return}
-setMinTypoLd(true);sSt("🔍 議事録AI校正中...");
+setMinTypoLd(true);sSt("🔍 議事録AI校正中...");btnFbSet("minScanOut","run","スキャン中…");
 try{
 const r=await fetch("/api/minutes-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,dictionary:dict.map(([from,to])=>({from,to}))})});
 const d=await r.json();
-if(d.error){sSt("校正エラー: "+d.error);return}
-if(!d.corrections||d.corrections.length===0){sSt("✓ 専門用語の誤りは見つかりませんでした");return}
+if(d.error){sSt("校正エラー: "+d.error);btnFbSet("minScanOut","err","⚠ 失敗: "+String(d.error).slice(0,40));return}
+if(!d.corrections||d.corrections.length===0){sSt("✓ 専門用語の誤りは見つかりませんでした");btnFbSet("minScanOut","ok","✓ 誤りなし");return}
 const registeredFroms=new Set(dict.map(([f])=>f));
 const newCorrections=d.corrections.filter(c=>!registeredFroms.has(c.from));
-if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}
+if(newCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");btnFbSet("minScanOut","ok","✓ 新規候補なし");return}
 const sel={};
 newCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});
 setTypoSelections(sel);setTypoCustomInputs({});setTypoTarget("minOut");setTypoModal(newCorrections);
-sSt("校正候補が見つかりました");
-}catch(e){sSt("校正エラー: "+e.message)}
+sSt("校正候補が見つかりました");btnFbSet("minScanOut","ok","✓ "+newCorrections.length+"件検出");
+}catch(e){sSt("校正エラー: "+e.message);btnFbSet("minScanOut","err","⚠ 失敗: "+String(e.message||e).slice(0,40))}
 finally{setMinTypoLd(false)}
 }} disabled={minTypoLd} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#5a3e8a",fontFamily:"inherit",cursor:minTypoLd?"wait":"pointer"}}>
 {minTypoLd?"🔍 校正中...":"🔬 専門用語スキャン"}
-</button></div>
+</button><BtnFb k="minScanOut"/></div>
 <textarea value={minOut} onChange={e=>setMinOut(e.target.value)} style={{width:"100%",height:minOutHeight,padding:14,borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:minOutFontSize,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.8,boxSizing:"border-box"}}/>
 </div>}
 <div style={{...card,marginTop:16}}>
@@ -5285,7 +5316,7 @@ finally{setMinTypoLd(false)}
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
       <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(m.output_text||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={(e)=>{e.stopPropagation();setEditMinId(m.id);setEditMinText(m.output_text||"");setEditMinTitle(m.title||"")}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:10,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>✏️ 編集</button>
-      {m.output_text&&m.output_text!=="（録音中・未要約）"&&<button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 タスク生成</button>}
+      {m.output_text&&m.output_text!=="（録音中・未要約）"&&<><button onClick={(e)=>{e.stopPropagation();generateTasksFromMinute(m)}} disabled={btnFbBusy("genTasks:"+m.id)} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${C.p}44`,background:btnFbBusy("genTasks:"+m.id)?C.g100:C.w,fontSize:10,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:btnFbBusy("genTasks:"+m.id)?"wait":"pointer"}}>📋 タスク生成</button><BtnFb k={"genTasks:"+m.id}/></>}
       <button onClick={(e)=>{e.stopPropagation();setMinDeleteConfirm({ids:[m.id],count:1,hasAudio:!!m.audio_path,anchor:calcPopAnchor(e)})}} title={m.audio_path?"議事録と音声を削除":"議事録を削除"} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #dc2626",background:C.w,fontSize:10,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 削除</button>
     </div>
   </div>
@@ -5419,7 +5450,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {/* 要約生成ボタン */}
 <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
   <button onClick={runSmnSummary} disabled={!smnTranscript||smnSummaryLoading} style={{flex:"1 1 200px",padding:"12px 24px",borderRadius:14,border:"none",background:smnSummaryLoading||!smnTranscript?C.g200:`linear-gradient(135deg,${C.pDD},${C.pD})`,color:smnSummaryLoading||!smnTranscript?C.g500:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:smnSummaryLoading||!smnTranscript?"not-allowed":"pointer",boxShadow:smnSummaryLoading||!smnTranscript?"none":`0 2px 8px rgba(0,0,0,.15)`}}>{smnSummaryLoading?"⏳ 詳細要約を生成中...":"📚 詳細要約を生成"}</button>
-  {smnTranscript.trim()&&<button disabled={cleaningTx} onClick={()=>manualClean(smnTranscript,(c)=>{setSmnTranscript(c);smnTextRef.current=c},"smn")} style={{padding:"10px 16px",borderRadius:12,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer"}}>{cleanBtnLabel("✨ 書き起こしを補正")}</button>}{undoCleanBtn("smn")}
+  {smnTranscript.trim()&&<button disabled={cleaningTx} onClick={()=>manualClean(smnTranscript,(c)=>{setSmnTranscript(c);smnTextRef.current=c},"smn")} style={{padding:"10px 16px",borderRadius:12,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer"}}>{cleanBtnLabel("✨ 書き起こしを補正")}</button>}{undoCleanBtn("smn")}<BtnFb k="clean:smn"/>
   {(smnTranscript||smnSummary)&&<button onClick={clearSmnAll} style={{padding:"10px 16px",borderRadius:12,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>🗑 クリア</button>}
 </div>
 
@@ -5655,7 +5686,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={openCsPickModal} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.p}44`,background:C.pLL,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 書き起こしを選択</button></div>
 {renderSourceInfo()}
 <textarea value={csTx} onChange={e=>{const v=e.target.value;setCsTx(v);if(!v.trim()){setCsSourcePatientId("");setCsSourceDate("")}}} placeholder="📋ボタンでカウンセリング履歴から選択、または会話のテキストを直接貼り付けてください" style={{width:"100%",height:100,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,fontSize:13,color:C.g700,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
-{csTx.trim()&&<div style={{marginTop:6}}><button type="button" disabled={cleaningTx} onClick={()=>manualClean(csTx,(c)=>setCsTx(c),"cs")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer"}}>{cleanBtnLabel("✨ 書き起こしを補正")}</button>{undoCleanBtn("cs")}</div>}</div>
+{csTx.trim()&&<div style={{marginTop:6}}><button type="button" disabled={cleaningTx} onClick={()=>manualClean(csTx,(c)=>setCsTx(c),"cs")} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer"}}>{cleanBtnLabel("✨ 書き起こしを補正")}</button>{undoCleanBtn("cs")}<BtnFb k="clean:cs"/></div>}</div>
 {csLd?(<button onClick={stopCsAnalyze} title="クリックで分析を停止" style={{padding:"10px 24px",borderRadius:14,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>⏹ AI分析中... (クリックで停止)</button>):(<button onClick={csModels.length>1?runCsAnalyzeAll:analyzeCounseling} style={{padding:"10px 24px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:12,width:"100%"}}>{csModels.length>1?`🧠 ${csModels.length}個のAIで一斉分析`:"🧠 分析開始"}</button>)}
 {csLd&&csResults.length===0&&<div style={{textAlign:"center",padding:20}}><div style={{width:32,height:32,border:`3px solid ${C.g200}`,borderTop:`3px solid ${C.p}`,borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 10px"}}/><span style={{color:C.g500}}>{csModelLabel(csModel)} で分析中...</span></div>}
 
@@ -6689,25 +6720,27 @@ const fn=actions[sc.id];if(fn)fn();
 {rs==="recording"?(<button onClick={pause} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.warn,color:"#78350f"}}><span style={{fontSize:22}}>⏸</span></button>):(<button onClick={resume} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.rG,color:C.w}}><span style={{fontSize:22}}>▶</span></button>)}
 <button onClick={stopSum} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{...rb,width:50,height:50,background:"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(160,220,100,0.75))",color:"#1a3a10",boxShadow:"0 4px 14px rgba(101,163,13,.25)"}}><span style={{fontSize:14,fontWeight:700}}>✓</span><span style={{fontSize:9,fontWeight:700,color:"#1a3a10"}}>要約</span></button>
 <button onClick={stop} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button>
-<button type="button" onClick={stopAndSaveExamInputOnly} title="録音を停止し、書き起こしを要約せずそのまま履歴に保存" onMouseEnter={e=>showTip(e,"停止して書き起こしを保存（要約なし）")} onMouseLeave={hideTip} style={{padding:"10px 18px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:mob?12:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>💾 停止して書き起こしを保存</button></>)}
+<button type="button" onClick={stopAndSaveExamInputOnly} disabled={btnFbBusy("examSave")} title="録音を停止し、書き起こしを要約せずそのまま履歴に保存" onMouseEnter={e=>showTip(e,"停止して書き起こしを保存（要約なし）")} onMouseLeave={hideTip} style={{padding:"10px 18px",borderRadius:14,border:"none",background:btnFbBusy("examSave")?"#9ca3af":"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:mob?12:14,fontWeight:700,fontFamily:"inherit",cursor:btnFbBusy("examSave")?"wait":"pointer",whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>💾 停止して書き起こしを保存</button></>)}
 <button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} title="録音音声をSupabaseに保存する" onMouseEnter={e=>showTip(e,"録音音声を保存する")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#2a4a18":C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
 </div>
 {rs==="recording"&&<div style={{fontSize:11,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
+{/* 💾停止して保存の状態表示（保存ボタンは停止で消えるため、録音エリアに常設表示） */}
+<BtnFb k="examSave"/>
 {audioSaveNote&&<div style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:8,background:audioSaveNote.t==="err"?"#fef2f2":"#f0fdf4",border:`1px solid ${audioSaveNote.t==="err"?"#fecaca":"#bbf7d0"}`,color:audioSaveNote.t==="err"?"#b91c1c":"#15803d",whiteSpace:"nowrap"}}>{audioSaveNote.m}</div>}
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
-<button onClick={()=>sum()} disabled={ld||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button>
-{inp.trim()&&<button onClick={()=>manualClean(inp,(c)=>{sInp(c);iR.current=c},"inp")} disabled={cleaningTx} title="書き起こしを補正（捏造除去・用語補正）" onMouseEnter={e=>showTip(e,"書き起こしを補正（捏造除去・用語補正）")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:14,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer",whiteSpace:"nowrap",height:mob?44:undefined}}>{cleaningTx?(cleanProg&&cleanProg.total>1?`⏳${cleanProg.cur}/${cleanProg.total}`:"⏳"):"✨補正"}</button>}{undoCleanBtn("inp")}
+<button onClick={()=>sum()} disabled={ld||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button><BtnFb k="sum"/>
+{inp.trim()&&<button onClick={()=>manualClean(inp,(c)=>{sInp(c);iR.current=c},"inp")} disabled={cleaningTx} title="書き起こしを補正（捏造除去・用語補正）" onMouseEnter={e=>showTip(e,"書き起こしを補正（捏造除去・用語補正）")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:14,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer",whiteSpace:"nowrap",height:mob?44:undefined}}>{cleaningTx?(cleanProg&&cleanProg.total>1?`⏳${cleanProg.cur}/${cleanProg.total}`:"⏳"):"✨補正"}</button>}{undoCleanBtn("inp")}<BtnFb k="clean:inp"/>
 <button onClick={()=>{if((inp.trim()||out.trim())&&!window.confirm("書き起こし・要約を保存せずに破棄します。よろしいですか？"))return;saveUndo();sInp("");sOut("");sSt("クリアしました")}} title="書き起こし・要約を破棄してクリア" onMouseEnter={e=>showTip(e,"書き起こし・要約を破棄してクリア")} onMouseLeave={hideTip} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>🗑</button>
 <button onClick={undo} title="要約を元に戻す" onMouseEnter={e=>showTip(e,"要約を元に戻す")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35,minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>↩</button>
-<button onClick={()=>{clr();setTimeout(pipBtnUpdate,300)}} title="次の患者へ" onMouseEnter={e=>showTip(e,"次の患者へ")} onMouseLeave={hideTip} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:"pointer",minWidth:80,whiteSpace:"nowrap",boxShadow:"0 3px 10px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.1)",height:mob?44:undefined}}>次へ ▶</button></div>
+<button onClick={()=>{clr();setTimeout(pipBtnUpdate,300)}} disabled={btnFbBusy("examNext")} title="次の患者へ" onMouseEnter={e=>showTip(e,"次の患者へ")} onMouseLeave={hideTip} style={{padding:"10px 20px",borderRadius:14,border:`2px solid ${C.p}`,background:btnFbBusy("examNext")?C.g100:C.w,fontSize:14,fontWeight:700,color:C.pD,fontFamily:"inherit",cursor:btnFbBusy("examNext")?"wait":"pointer",minWidth:80,whiteSpace:"nowrap",boxShadow:"0 3px 10px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.1)",height:mob?44:undefined,opacity:btnFbBusy("examNext")?0.6:1}}>次へ ▶</button><BtnFb k="examNext"/></div>
 {ld&&<div style={{width:"100%",height:6,borderRadius:3,background:"rgba(160,220,100,0.2)",marginTop:8,marginBottom:8,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#8ac060)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={{display:"flex",gap:12,marginBottom:12,flexDirection:mob?"column":"row"}}>
 {/* 左カラム: 書き起こし */}
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6,flexWrap:"wrap"}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pDD,whiteSpace:"nowrap",flexShrink:0}}>📝 書き起こし</span>
-<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:C.g400,fontWeight:600,whiteSpace:"nowrap"}}>高さ:</span>{[[1,"小"],[2,"中"],[4,"大"]].map(([f,label])=><button key={f} type="button" onClick={()=>{setConsultTaSize(f);try{localStorage.setItem("mk_consultTextareaHeight",String(f))}catch{}}} style={{padding:"2px 7px",borderRadius:6,border:consultTaSize===f?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:consultTaSize===f?C.pLL:C.w,fontSize:10,fontWeight:consultTaSize===f?700:500,color:consultTaSize===f?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>)}<button onClick={runTypoCheck} disabled={typoLd} title="AIが書き起こしの医療用語誤字を検出" onMouseEnter={e=>showTip(e,"AIが医療用語の誤字を検出")} onMouseLeave={hideTip} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬...":"🔬"}</button>{!mob&&<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>}{rs==="recording"&&<span style={{fontSize:10,color:C.g400,marginLeft:8}}>{inp.length}文字{el>0&&<span style={{marginLeft:6,color:C.g400}}>/ 録音{Math.floor(el/60)>0?Math.floor(el/60)+"分":""}{el%60}秒</span>}{el>10&&inp.length>0&&<span style={{marginLeft:6,color:lv>50?"#22c55e":lv>20?"#f59e0b":"#ef4444"}}>{lv>50?"🎤 明瞭":lv>20?"🎤 普通":"🎤 小さい"}</span>}</span>}</div>
+<div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:C.g400,fontWeight:600,whiteSpace:"nowrap"}}>高さ:</span>{[[1,"小"],[2,"中"],[4,"大"]].map(([f,label])=><button key={f} type="button" onClick={()=>{setConsultTaSize(f);try{localStorage.setItem("mk_consultTextareaHeight",String(f))}catch{}}} style={{padding:"2px 7px",borderRadius:6,border:consultTaSize===f?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:consultTaSize===f?C.pLL:C.w,fontSize:10,fontWeight:consultTaSize===f?700:500,color:consultTaSize===f?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{label}</button>)}<button onClick={runTypoCheck} disabled={typoLd} title="AIが書き起こしの医療用語誤字を検出" onMouseEnter={e=>showTip(e,"AIが医療用語の誤字を検出")} onMouseLeave={hideTip} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLd?"wait":"pointer"}}>{typoLd?"🔬...":"🔬"}</button><BtnFb k="examScan"/>{!mob&&<span style={{fontSize:11,color:C.g400}}>{(iR.current||"").length}文字</span>}{rs==="recording"&&<span style={{fontSize:10,color:C.g400,marginLeft:8}}>{inp.length}文字{el>0&&<span style={{marginLeft:6,color:C.g400}}>/ 録音{Math.floor(el/60)>0?Math.floor(el/60)+"分":""}{el%60}秒</span>}{el>10&&inp.length>0&&<span style={{marginLeft:6,color:lv>50?"#22c55e":lv>20?"#f59e0b":"#ef4444"}}>{lv>50?"🎤 明瞭":lv>20?"🎤 普通":"🎤 小さい"}</span>}</span>}</div>
 </div>
 <textarea value={inp} onChange={e=>{sInp(e.target.value)}} placeholder="録音ボタンで音声を書き起こし、または直接入力..." style={{width:"100%",height:(mob?150:200)*consultTaSize,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box"}}/>
 </div>
