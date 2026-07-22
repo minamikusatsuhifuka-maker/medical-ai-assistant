@@ -653,7 +653,7 @@ const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer"
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[modelCheck,setModelCheck]=useState(null); // Geminiモデル稼働チェック結果 {ok,missing,missingPreview,known_new,available,checkedAt}
 const[modelChecking,setModelChecking]=useState(false);
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[minutesModel,setMinutesModel]=useState("gemini-3-5-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[examSummaryModel,setExamSummaryModel]=useState("standard"),[minutesModel,setMinutesModel]=useState("gemini-3-6-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
 // トップメニューのカスタマイズ表示: 表示onのボタンのみトップに常時表示し、残りは「⋯その他」で展開。設定はlocalStorage(mk_topMenuVisible)
 const[topMenuVisible,setTopMenuVisible]=useState(null);
 const[menuMore,setMenuMore]=useState(false);
@@ -716,7 +716,7 @@ const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const esm=localStorage.getItem("mk_examSummaryModel");if(esm==="lite"||esm==="standard")setExamSummaryModel(esm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
 // Geminiモデル稼働チェック（ListModels照合）。手動ボタン＆起動時14日経過で自動実行。失敗しても本体機能に影響させない。
 const runModelCheck=async(manual=false)=>{try{setModelChecking(true);const res=await fetch("/api/gemini-model-check");const data=await res.json();if(data&&data.ok){setModelCheck(data);try{localStorage.setItem("mk_modelCheckAt",String(Date.now()));localStorage.setItem("mk_modelCheckResult",JSON.stringify(data))}catch{}}else if(manual){setModelCheck({ok:false,error:(data&&data.error)||"チェックに失敗しました",checkedAt:new Date().toISOString()})}}catch(e){if(manual)setModelCheck({ok:false,error:"チェックに失敗しました",checkedAt:new Date().toISOString()})}finally{setModelChecking(false)}};
@@ -822,11 +822,15 @@ const csModelLabel=(m)=>{
   if(s==="gemini-3-pro")return"Gemini 3.1 Pro";
   if(s==="claude")return"Claude Sonnet 4.6";
   if(s==="gemini-pro")return"Gemini 2.5 Pro";
+  if(s==="gemini-3-6-flash")return"Gemini 3.6 Flash";
+  if(s==="gemini-3-5-flash-lite")return"Gemini 3.5 Flash-Lite";
   if(s==="gemini-3-5-flash")return"Gemini 3.5 Flash";
-  if(s==="gemini")return"Gemini 3.5 Flash";
+  if(s==="gemini")return"Gemini 3.6 Flash";
   // API応答の実モデル名（最新版優先）
   if(s.includes("claude"))return"Claude Sonnet 4.6";
   if(s.includes("3.1-pro")||s.includes("3-pro-preview")||s.includes("gemini-3-pro"))return"Gemini 3.1 Pro";
+  if(s.includes("3.6-flash")||s.includes("3-6-flash"))return"Gemini 3.6 Flash";
+  if(s.includes("3.5-flash-lite")||s.includes("flash-lite-latest"))return"Gemini 3.5 Flash-Lite";
   if(s.includes("3.5-flash")||s.includes("3-5-flash")||s.includes("3.5flash"))return"Gemini 3.5 Flash";
   if(s.includes("2.5-pro")||s.includes("2.0-pro"))return"Gemini 2.5 Pro";
   if(s.includes("2.5-flash")||s.includes("2-5-flash")||s.includes("2.0-flash"))return"Gemini 2.5 Flash";
@@ -840,11 +844,13 @@ const csModelSubLabel=(m)=>{
   if(s==="gemini-3-pro"||s.includes("3.1-pro"))return"最新・最高精度 ⭐";
   if(s==="claude"||s.includes("claude"))return"日本語精度";
   if(s==="gemini-pro"||s.includes("2.5-pro"))return"バランス型";
-  if(s==="gemini-3-5-flash"||s==="gemini"||s.includes("3.5-flash")||s.includes("3-5-flash"))return"最新・超高速 ✨";
+  if(s==="gemini-3-6-flash"||s.includes("3.6-flash"))return"最新・超高速 ✨";
+  if(s==="gemini-3-5-flash-lite"||s.includes("3.5-flash-lite"))return"最速・簡易";
+  if(s==="gemini-3-5-flash"||s==="gemini"||s.includes("3.5-flash")||s.includes("3-5-flash"))return"高速・安定";
   if(s.includes("2.5-flash")||s.includes("2-5-flash"))return"高速";
   return"";
 };
-const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 3.5 Flash")return"#10b981";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
+const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 3.6 Flash")return"#059669";if(lbl==="Gemini 3.5 Flash-Lite")return"#0ea5e9";if(lbl==="Gemini 3.5 Flash")return"#10b981";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
 // 生成モデル名バッジ（csModelLabel で表示名に変換、内部キーは露出させない）
 const modelBadge=(model)=>{if(!model)return null;const col=csModelColorByLabel(model);return(<span style={{display:"inline-block",fontSize:11,fontWeight:600,color:col,background:col+"18",border:`1px solid ${col}55`,borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle",whiteSpace:"nowrap"}}>{csModelLabel(model)}</span>)};
 const csModelDesc=(m)=>m==="gemini-3-pro"?"最新・最高精度 ⭐":m==="claude"?"日本語精度":"バランス型";
@@ -3678,11 +3684,11 @@ setUsageGuide(d.summary||"");
 }catch(e){setUsageGuide("エラー: "+e.message)}
 finally{setUsageGuideLd(false)}
 };
-const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.5 Flash で要約中...");try{
+const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */const examLite=summaryModel!=="claude"&&examSummaryModel==="lite";const examPref=examLite?"gemini-3-5-flash-lite":summaryModel;sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":examLite?"Gemini 3.5 Flash-Lite（最速）で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.6 Flash で要約中...");try{
 const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント";
 const enhancedPrompt=ct.prompt+FORBIDDEN_RULES;
 setProg(40);
-const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:examPref,stream:summaryModel!=="claude"})});
 if(summaryModel==="claude"){
 const d=await r.json();if(d.error){sOut("エラー: "+d.error);btnFbSet("sum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,d.summary);extractRx(d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"claude"}]`)}catch{sSt(`要約完了 [${d.model||"claude"}]`)}}
 }else{
@@ -3964,7 +3970,7 @@ if(page==="help")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"1
 <div style={{padding:16,borderRadius:14,background:`linear-gradient(135deg,${C.pLL},#f0fdf4)`,border:`2px solid ${C.pL}`,marginBottom:16}}>
 <p style={{fontSize:14,color:C.pDD,margin:0,lineHeight:1.7}}>
 <strong>南草津皮フ科 AIアシスタント</strong>は、診察録音・カルテ要約をはじめ、議事録・タスク管理・ロールプレイ研修・カウンセリング分析など、クリニック運営を幅広くサポートするAIアプリです。<br/>
-<span style={{fontSize:12,color:C.g500}}>Gemini 3.5 Flash / Pro + OpenAI Whisper で動作しています。</span>
+<span style={{fontSize:12,color:C.g500}}>Gemini 3.6 Flash / Pro + OpenAI Whisper で動作しています。</span>
 </p>
 </div>
 
@@ -4124,7 +4130,7 @@ if(page==="help")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"1
 </div>
 
 <div style={{textAlign:"center",padding:"10px 0",fontSize:11,color:C.g400}}>
-南草津皮フ科 AIアシスタント — Gemini 3.5 Flash / Pro + OpenAI Whisper
+南草津皮フ科 AIアシスタント — Gemini 3.6 Flash / Pro + OpenAI Whisper
 </div>
 </div>);
 
@@ -4133,7 +4139,7 @@ if(page==="about")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",pa
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>ℹ️ 機能紹介</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <div style={{fontSize:14,color:C.g700,lineHeight:2}}>
 <h3 style={{color:C.pD}}>🎙 リアルタイム音声書き起こし</h3><p>OpenAI Whisper APIによる高精度な日本語音声認識。5秒間隔で自動書き起こし。</p>
-<h3 style={{color:C.pD}}>🤖 AI要約</h3><p>Gemini 3.5 Flashでカルテ形式に自動要約。複数疾患の自動分離にも対応。</p>
+<h3 style={{color:C.pD}}>🤖 AI要約</h3><p>Gemini 3.6 Flashでカルテ形式に自動要約。複数疾患の自動分離にも対応。</p>
 <h3 style={{color:C.pD}}>📋 6種類のテンプレート</h3><p>ASOP・疾患名・美容・処置・経過・フリー。複数疾患の自動分離にも対応。</p>
 <h3 style={{color:C.pD}}>🗣 話者分離</h3><p>会話内容から医師と患者の発言を自動判別し、適切な項目に振り分けます。</p>
 <h3 style={{color:C.pD}}>📖 誤字脱字修正辞書</h3><p>皮膚科の薬剤名・施術名・疾患名を事前登録。書き起こし時に自動修正。</p>
@@ -5053,7 +5059,7 @@ if(page==="satisfaction")return(<div style={{maxWidth:800,margin:"0 auto",paddin
 if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📄 説明資料の作成</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3.5 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📄 説明資料の作成</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3.6 Flash"}</span><button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>疾患名や施術名を入力すると、当院の診療履歴をAIが参照して患者向け説明資料を自動生成します。</p>
 <div style={{display:"flex",gap:8,marginBottom:12,flexDirection:mob?"column":"row"}}>
 <input value={docDisease} onChange={e=>setDocDisease(e.target.value)} placeholder="疾患名・施術名を入力（例：アトピー性皮膚炎、ポテンツァ）" style={{...ib,flex:1,padding:"10px 14px",fontSize:14}}/>
@@ -5082,7 +5088,7 @@ if(page==="doc")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padd
 if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 {prog>0&&<div style={{width:"100%",height:5,background:"rgba(160,220,100,0.2)",borderRadius:3,marginBottom:10,overflow:"hidden"}}><div style={{width:`${prog}%`,height:"100%",background:"linear-gradient(90deg,#5a9040,#3a6820)",borderRadius:3,transition:"width 0.4s ease"}}/></div>}
 <div style={card}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📝 議事録まとめ</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3.5 Flash"}</span><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📝 議事録まとめ</h2><span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8}}>{geminiModel||"Gemini 3.6 Flash"}</span><button onClick={()=>{minStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
 <p style={{fontSize:13,color:C.g500,marginBottom:12}}>会議やミーティングを録音・書き起こしし、AIが議事録を自動作成します。</p>
 <input value={minTitle} onChange={e=>setMinTitle(e.target.value)} placeholder="議事録タイトル（例：2月定例ミーティング）" style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",marginBottom:12,boxSizing:"border-box"}}/>
@@ -5098,7 +5104,7 @@ if(page==="minutes")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{marginBottom:10}}>
 <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6}}>要約モデル</div>
 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-{[{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最新・最高精度 ⭐"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash ✨",desc:"最新・超高速"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const sel=minutesModel===m.v;return(
+{[{v:"gemini-3-6-flash",label:"Gemini 3.6 Flash ✨",desc:"最新・超高速"},{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"最高精度 ⭐"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash",desc:"高速・安定"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const sel=minutesModel===m.v;return(
 <button key={m.v} onClick={()=>{setMinutesModel(m.v);try{localStorage.setItem("mk_minutesModel",m.v)}catch{}}} disabled={minLd} style={{flex:"1 1 140px",padding:"8px 10px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:minLd?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>
 <div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div>
 </button>
@@ -6025,7 +6031,7 @@ if(page==="tasks")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?
 <button onClick={()=>{const matchSel=t=>selMatrixDate==="手動作成"?(!t.minute_id||!minHist.find(h=>h.id===t.minute_id)):t.minute_id===selMatrixDate;const et=selMatrixDate?tasks.filter(matchSel):tasks;const m=selMatrixDate&&selMatrixDate!=="手動作成"?minHist.find(h=>h.id===selMatrixDate):null;const labelForFile=selMatrixDate?(selMatrixDate==="手動作成"?"手動作成":(m?toJSTDate(m.created_at).replace(/\//g,"-")+"_"+new Date(m.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}).replace(":",""):"議事録")):"";exportToPDF(et,todos,minHist,selMatrixDate?"Tasks_"+labelForFile:"Task_Matrix");sSt("✓ PDFを出力しました")}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:10,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>📕 PDF</button>
 <button onClick={()=>{const matchSel=t=>selMatrixDate==="手動作成"?(!t.minute_id||!minHist.find(h=>h.id===t.minute_id)):t.minute_id===selMatrixDate;const et=selMatrixDate?tasks.filter(matchSel):tasks;const m=selMatrixDate&&selMatrixDate!=="手動作成"?minHist.find(h=>h.id===selMatrixDate):null;const labelForFile=selMatrixDate?(selMatrixDate==="手動作成"?"手動作成":(m?toJSTDate(m.created_at).replace(/\//g,"-")+"_"+new Date(m.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}).replace(":",""):"議事録")):"";exportToWord(et,todos,minHist,selMatrixDate?"タスク_"+labelForFile:"四象限マトリクス");sSt("✓ Wordを出力しました")}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:10,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>📝 Word</button>
 </div>
-<span style={{fontSize:10,color:C.g400}}>{geminiModel||"Gemini 3.5 Flash"}</span>
+<span style={{fontSize:10,color:C.g400}}>{geminiModel||"Gemini 3.6 Flash"}</span>
 <button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 {st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")?"#fef2f2":"#fffbeb"}}>{st}</div>}
 <div style={{marginBottom:12,display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -6412,7 +6418,7 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🤖 要約AIモデル</h3>
 <p style={{fontSize:12,color:C.g400,marginBottom:10}}>要約に使用するAIモデルを選択できます。設定は自動保存されます。</p>
 <div style={{display:"flex",gap:12}}>
-{[{v:"gemini",label:"Gemini 3.5 Flash ✨",desc:"最新・超高速（4倍速）"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"高精度・推論強化"},{v:"claude",label:"Claude Sonnet 4.6",desc:"高精度・日本語に強い"}].map(m=>(
+{[{v:"gemini",label:"Gemini 3.6 Flash ✨",desc:"最新・超高速・低価格"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"高精度・推論強化"},{v:"claude",label:"Claude Sonnet 4.6",desc:"高精度・日本語に強い"}].map(m=>(
 <label key={m.v} onClick={()=>{setSummaryModel(m.v);try{localStorage.setItem("mk_summaryModel",m.v)}catch{}}} style={{flex:1,padding:"10px 14px",borderRadius:12,border:`2px solid ${summaryModel===m.v?C.p:C.g200}`,background:summaryModel===m.v?C.pLL:C.w,cursor:"pointer",transition:"all 0.15s"}}>
 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
 <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${summaryModel===m.v?C.pD:C.g300}`,display:"flex",alignItems:"center",justifyContent:"center"}}>{summaryModel===m.v&&<div style={{width:8,height:8,borderRadius:"50%",background:C.pD}}/>}</div>
@@ -6611,7 +6617,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 {tooltip.visible&&<div style={{position:"fixed",left:tooltip.x,top:tooltip.y,transform:"translate(-50%, -100%)",background:"rgba(42,58,32,0.92)",color:"#e8f5d8",padding:"4px 10px",borderRadius:8,fontSize:12,fontWeight:600,fontFamily:"'Zen Maru Gothic', sans-serif",pointerEvents:"none",zIndex:99999,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>{tooltip.text}</div>}
 <header style={{background:theme.headerBg,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${theme.cardBorder}`,padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:0}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
-<div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 3.5 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
+<div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 3.6 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {(()=>{
 // よく使うものだけ常時表示、残りは「⋯その他」で展開（既定は折りたたみ）。設定(settings)は常時表示固定
@@ -6748,6 +6754,7 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果{out&&modelBadge(geminiModel)}</span>
+{summaryModel!=="claude"&&<div style={{display:"flex",gap:3,alignItems:"center",whiteSpace:"nowrap"}}>{[["standard","3.6 Flash"],["lite","3.5 Lite"]].map(([v,label])=><button key={v} type="button" disabled={ld} onClick={()=>{setExamSummaryModel(v);try{localStorage.setItem("mk_examSummaryModel",v)}catch{}}} onMouseEnter={e=>showTip(e,v==="lite"?"Gemini 3.5 Flash-Lite（最速・簡易）でカルテ要約":"Gemini 3.6 Flash（標準・既定）でカルテ要約")} onMouseLeave={hideTip} style={{padding:"2px 7px",borderRadius:6,border:examSummaryModel===v?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:examSummaryModel===v?C.pLL:C.w,fontSize:10,fontWeight:examSummaryModel===v?700:500,color:examSummaryModel===v?C.pD:C.g500,fontFamily:"inherit",cursor:ld?"not-allowed":"pointer",whiteSpace:"nowrap"}}>{v==="lite"?"⚡ ":""}{label}</button>)}</div>}
 {out&&<div style={{display:"flex",gap:3,whiteSpace:"nowrap",flexWrap:"wrap"}}><button onClick={runTypoCheckOut} disabled={typoLdOut} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLdOut?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLdOut?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLdOut?"wait":"pointer"}}>{typoLdOut?"🔬...":"🔬"}</button><button onClick={()=>cp(out)} title="要約をコピー" onMouseEnter={e=>showTip(e,"要約をコピー")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}

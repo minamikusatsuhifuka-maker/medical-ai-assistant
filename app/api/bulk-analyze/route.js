@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -31,28 +32,17 @@ export async function POST(request) {
       `--- 記録${i + 1} ---\n${r.input_text ? "【書き起こし】\n" + r.input_text + "\n" : ""}${r.output_text ? "【要約】\n" + r.output_text : ""}`
     ).join("\n\n");
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: `以下の${records.length}件の診療記録を分析してください。\n\n${combined}` }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: `以下の${records.length}件の診療記録を分析してください。\n\n${combined}` }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+    }), "bulk-analyze");
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("bulk-analyze API error:", err);
-      return NextResponse.json({ error: "AI分析APIエラー" }, { status: 500 });
-    }
+    try { await logUsage({ route: "/api/bulk-analyze", model: usedModel, context: "bulk-analyze", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] bulk-analyze:", e); }
+    const content = extractGeminiText(data) || "";
 
-    const data = await res.json();
-    try { await logUsage({ route: "/api/bulk-analyze", model: "gemini-2.5-pro", context: "bulk-analyze", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] bulk-analyze:", e); }
-    const content = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-
-    return NextResponse.json({ result: content, model: "gemini-2.5-pro" });
+    return NextResponse.json({ result: content, model: usedModel });
   } catch (e) {
     console.error("bulk-analyze error:", e);
     return NextResponse.json({ error: e.message }, { status: 500 });

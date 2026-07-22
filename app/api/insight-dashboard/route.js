@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -159,25 +160,14 @@ export async function POST(request) {
 
     const systemPrompt = prompts[mode] || prompts.full;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: content.substring(0, 12000) }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4000 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: content.substring(0, 12000) }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 4000 },
+    }), "insight-dashboard");
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "患者インサイトAPIエラー" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    const result = extractGeminiText(data) || "";
     if (result.trim()) {
       return NextResponse.json({ result });
     }

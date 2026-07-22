@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -14,25 +15,14 @@ export async function POST(request) {
       return NextResponse.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: "あなたはクリニックの接遇コンサルタントです。診察の書き起こしをもとに、スタッフの対応品質を評価してください。良かった点・改善点・具体的なアドバイスを含めてください。" }] },
-        contents: [{ parts: [{ text: content }] }],
-        generationConfig: { temperature: 0.5, maxOutputTokens: 4096 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      system_instruction: { parts: [{ text: "あなたはクリニックの接遇コンサルタントです。診察の書き起こしをもとに、スタッフの対応品質を評価してください。良かった点・改善点・具体的なアドバイスを含めてください。" }] },
+      contents: [{ parts: [{ text: content }] }],
+      generationConfig: { temperature: 0.5, maxOutputTokens: 4096 },
+    }), "quality-check");
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "品質チェックAPIエラー" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    const result = extractGeminiText(data) || "";
     if (result.trim()) {
       return NextResponse.json({ result });
     }

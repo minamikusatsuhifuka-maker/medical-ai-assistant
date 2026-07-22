@@ -1,4 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -10,7 +11,6 @@ export async function POST(request) {
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const combined = records.map(r => r.output_text || "").filter(Boolean).join("\n---\n");
 
@@ -43,23 +43,14 @@ export async function POST(request) {
 診察データ（${records.length}件）:
 ${combined.substring(0, 10000)}`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 3000 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 3000 },
+    }), "monthly-report");
 
-    if (!res.ok) {
-      return Response.json({ error: "AI APIエラー: " + res.status }, { status: 500 });
-    }
-
-    const data = await res.json();
-    try { await logUsage({ route: "/api/monthly-report", model: "gemini-2.5-flash", context: "monthly-report", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0, month: month || null } }); } catch(e) { console.error("[logUsage] monthly-report:", e); }
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    const report = parts.filter(p => !p.thought).map(p => p.text || "").join("").trim();
+    try { await logUsage({ route: "/api/monthly-report", model: usedModel, context: "monthly-report", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0, month: month || null } }); } catch(e) { console.error("[logUsage] monthly-report:", e); }
+    const report = extractGeminiText(data).trim();
 
     return Response.json({ report });
   } catch (e) {

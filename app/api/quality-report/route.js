@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -19,25 +20,14 @@ export async function POST(request) {
       return `【記録${i + 1}】${date}\n${r.output_text || r.input_text || ""}`;
     }).join("\n---\n");
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: "あなたは皮膚科クリニックの教育担当者です。診療記録を分析して月次スタッフ対応品質レポートを作成してください。以下を含めてください：①よくある疾患TOP5 ②対応の良かった点 ③改善が必要な点 ④来月の重点改善テーマ ⑤スタッフへの具体的アドバイス" }] },
-        contents: [{ parts: [{ text: content }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      system_instruction: { parts: [{ text: "あなたは皮膚科クリニックの教育担当者です。診療記録を分析して月次スタッフ対応品質レポートを作成してください。以下を含めてください：①よくある疾患TOP5 ②対応の良かった点 ③改善が必要な点 ④来月の重点改善テーマ ⑤スタッフへの具体的アドバイス" }] },
+      contents: [{ parts: [{ text: content }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+    }), "quality-report");
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "品質レポートAPIエラー" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    const result = extractGeminiText(data) || "";
     if (result.trim()) {
       return NextResponse.json({ result });
     }

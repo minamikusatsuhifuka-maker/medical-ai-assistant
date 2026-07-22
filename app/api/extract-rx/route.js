@@ -1,4 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -8,7 +9,6 @@ export async function POST(request) {
     if (!text) return Response.json({ items: [] });
 
     const apiKey = process.env.GEMINI_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const prompt = `以下のカルテ要約から処方薬・外用薬・内服薬のチェックリストを抽出してください。
 
@@ -23,18 +23,14 @@ export async function POST(request) {
 カルテ要約:
 ${text.substring(0, 2000)}`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで items:[] を返す従来挙動）
+    const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
+    }), "extract-rx");
 
-    const data = await res.json();
-    try { await logUsage({ route: "/api/extract-rx", model: "gemini-2.5-flash", context: "rx-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] extract-rx:", e); }
-    const raw = data.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || "").join("") || "";
+    try { await logUsage({ route: "/api/extract-rx", model: usedModel, context: "rx-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] extract-rx:", e); }
+    const raw = extractGeminiText(data) || "";
     const clean = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
     const start = clean.indexOf("{");
     const end = clean.lastIndexOf("}");

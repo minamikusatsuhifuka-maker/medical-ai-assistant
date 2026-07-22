@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -22,26 +23,15 @@ export async function POST(request) {
       return NextResponse.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: "あなたは皮膚科クリニックの医療事務スタッフです。与えられた診療記録をもとに、指定された用途の文書を作成してください。" }] },
-        contents: [{ parts: [{ text: `【用途】${purpose}\n【元データ】${content}\n\n上記をもとに適切な文書を作成してください。${langInstruction?"\n\n"+langInstruction:""}` }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      system_instruction: { parts: [{ text: "あなたは皮膚科クリニックの医療事務スタッフです。与えられた診療記録をもとに、指定された用途の文書を作成してください。" }] },
+      contents: [{ parts: [{ text: `【用途】${purpose}\n【元データ】${content}\n\n上記をもとに適切な文書を作成してください。${langInstruction?"\n\n"+langInstruction:""}` }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+    }), "generate-material");
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "資料生成APIエラー" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    try { await logUsage({ route: "/api/generate-material", model: "gemini-2.5-flash", context: "patient-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] generate-material:", e); }
-    const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    try { await logUsage({ route: "/api/generate-material", model: usedModel, context: "patient-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] generate-material:", e); }
+    const result = extractGeminiText(data) || "";
     if (result.trim()) {
       return NextResponse.json({ result });
     }

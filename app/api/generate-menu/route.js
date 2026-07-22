@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -14,25 +15,14 @@ export async function POST(request) {
       return NextResponse.json({ error: "GEMINI_API_KEY が設定されていません" }, { status: 500 });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: "あなたは美容皮膚科クリニックのマーケティング担当者です。施術記録をもとにホームページ・院内POP用の施術メニュー説明文を作成してください。患者が安心・魅力を感じる表現にしてください。" }] },
-        contents: [{ parts: [{ text: content }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-      }),
-    });
+    // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
+    const { data } = await callGeminiWithFallback(apiKey, JSON.stringify({
+      system_instruction: { parts: [{ text: "あなたは美容皮膚科クリニックのマーケティング担当者です。施術記録をもとにホームページ・院内POP用の施術メニュー説明文を作成してください。患者が安心・魅力を感じる表現にしてください。" }] },
+      contents: [{ parts: [{ text: content }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+    }), "generate-menu");
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Gemini API error:", err);
-      return NextResponse.json({ error: "メニュー説明文生成APIエラー" }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const result = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+    const result = extractGeminiText(data) || "";
     if (result.trim()) {
       return NextResponse.json({ result });
     }

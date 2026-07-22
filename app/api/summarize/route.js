@@ -82,20 +82,24 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
 
 // Gemini 非ストリーミング（従来のJSON応答）
 function buildGeminiModelList(model_preference) {
-  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→3.5 Flash→2.5 Pro→2.5 Flash）
+  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→3.6/3.5 Flash→2.5 Pro→2.5 Flash）
   if (model_preference === "gemini-3-pro") {
-    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"];
+    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"];
   }
   // gemini-pro: 既存の2.5 Pro優先（診察要約等）
   if (model_preference === "gemini-pro") {
-    return ["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"];
+    return ["gemini-2.5-pro", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
   }
-  // gemini-3-5-flash: 明示的に Gemini 3.5 Flash を指定（要約テストラボ用）
+  // gemini-3-5-flash: 明示的に Gemini 3.5 Flash を指定（要約テストラボ用・明示指定は不変）
   if (model_preference === "gemini-3-5-flash") {
     return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
   }
-  // デフォルト（gemini）: 3.5 Flash 優先（2026-05-19 GA・上位互換）
-  return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+  // gemini-3-5-flash-lite: カルテ要約のスピード重視オプション（診察画面のトグルで選択）
+  if (model_preference === "gemini-3-5-flash-lite") {
+    return ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"];
+  }
+  // デフォルト（gemini）: 3.6 Flash 優先（2026-07-21 GA・3.5比で高性能・低トークン・低価格）
+  return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 }
 
 async function callGemini(text, prompt, model_preference) {

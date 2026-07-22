@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // 当アプリが把握済みのモデルと、チャット要約に無関係なモデル種別を新版候補から外す。
 const KNOWN_OR_IGNORE = [
   // 当アプリ使用中（ACTIVE/PREVIEW で別途照合するため新顔扱いしない）
-  "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro",
+  "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro",
   "gemini-3.1-pro-preview", "gemini-3-pro-preview",
   // ASR/Lite 等・把握済み
   "flash-lite",
@@ -21,6 +21,25 @@ const KNOWN_OR_IGNORE = [
 
 function idFromName(n) {
   return (n || "").replace(/^models\//, "");
+}
+
+// ListModels は新モデルの掲載が実提供より遅れることがある（2026-07の3.6-flash/3.5-flash-liteで実測）。
+// 一覧に無いモデルは generateContent の実呼び出しで最終確認し、成功すれば廃番扱いしない。
+async function probeModel(apiKey, model) {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: "ping" }] }],
+        generationConfig: { maxOutputTokens: 1 },
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ListModels で「このAPIキーで現在 generateContent に使えるモデル」一覧を取得し、
@@ -55,7 +74,14 @@ export async function GET() {
     const availSet = new Set(available);
 
     // 廃番疑い: 登録しているのに一覧に無い安定版モデル。
-    const missing = ACTIVE_MODELS.filter(m => !availSet.has(m));
+    // ただし一覧未掲載でも実呼び出しが成功するモデルは廃番扱いしない（掲載遅延の誤検知防止）。
+    const missingListed = ACTIVE_MODELS.filter(m => !availSet.has(m));
+    const missing = [];
+    const unlistedButCallable = [];
+    for (const m of missingListed) {
+      if (await probeModel(apiKey, m)) unlistedButCallable.push(m);
+      else missing.push(m);
+    }
     // プレビュー版の不在（提供流動的なので控えめ扱い）。
     const missingPreview = PREVIEW_MODELS.filter(m => !availSet.has(m));
 
@@ -72,6 +98,7 @@ export async function GET() {
       checkedAt: new Date().toISOString(),
       available,
       missing,
+      unlistedButCallable,
       missingPreview,
       known_new,
     });

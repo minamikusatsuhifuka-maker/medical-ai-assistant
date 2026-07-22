@@ -49,9 +49,10 @@ const SYSTEM_PROMPT = `あなたは医療マーケティング・患者体験設
 推測の場合は「推測:」と明記してください。`;
 
 function buildGeminiModelList(model_preference) {
-  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview","gemini-3-pro-preview","gemini-3.5-flash","gemini-2.5-pro","gemini-2.5-flash"];
-  if (model_preference === "gemini-pro") return ["gemini-2.5-pro","gemini-3.5-flash","gemini-2.5-flash"];
-  return ["gemini-3.5-flash","gemini-2.5-flash","gemini-2.5-pro"];
+  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview","gemini-3-pro-preview","gemini-3.6-flash","gemini-3.5-flash","gemini-2.5-pro","gemini-2.5-flash"];
+  if (model_preference === "gemini-pro") return ["gemini-2.5-pro","gemini-3.6-flash","gemini-3.5-flash","gemini-2.5-flash"];
+  // デフォルト: 3.6 Flash 優先（2026-07-21 GA）
+  return ["gemini-3.6-flash","gemini-3.5-flash","gemini-2.5-flash","gemini-2.5-pro"];
 }
 
 async function callGemini(content, model_preference) {
