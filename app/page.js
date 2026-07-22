@@ -6427,6 +6427,21 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 <span style={{fontSize:11,color:C.g400,marginLeft:24}}>{m.desc}</span>
 </label>))}
 </div>
+{/* 診察要約の既定モデル（診察画面のトグルと同じ mk_examSummaryModel を共用） */}
+<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.g200}`}}>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:4}}>診察要約の既定モデル</div>
+<p style={{fontSize:12,color:C.g400,marginBottom:8}}>Lite は最速（3.6比で約2倍速）。要約はやや簡潔になります。診察画面の録音ボタン横のトグルでもその場で切替できます（同じ設定を共用）。</p>
+<div style={{display:"flex",gap:12}}>
+{[{v:"standard",label:"Gemini 3.6 Flash",desc:"標準・既定"},{v:"lite",label:"⚡ Gemini 3.5 Flash-Lite",desc:"最速・簡易"}].map(m=>(
+<label key={m.v} onClick={()=>{setExamSummaryModel(m.v);try{localStorage.setItem("mk_examSummaryModel",m.v)}catch{}}} style={{flex:1,padding:"10px 14px",borderRadius:12,border:`2px solid ${examSummaryModel===m.v?C.p:C.g200}`,background:examSummaryModel===m.v?C.pLL:C.w,cursor:"pointer",transition:"all 0.15s"}}>
+<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+<div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${examSummaryModel===m.v?C.pD:C.g300}`,display:"flex",alignItems:"center",justifyContent:"center"}}>{examSummaryModel===m.v&&<div style={{width:8,height:8,borderRadius:"50%",background:C.pD}}/>}</div>
+<span style={{fontSize:13,fontWeight:examSummaryModel===m.v?700:500,color:examSummaryModel===m.v?C.pD:C.g600}}>{m.label}</span>
+</div>
+<span style={{fontSize:11,color:C.g400,marginLeft:24}}>{m.desc}</span>
+</label>))}
+</div>
+</div>
 </div>
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🎨 カラーテーマ</h3>
@@ -6728,6 +6743,8 @@ const fn=actions[sc.id];if(fn)fn();
 <button onClick={stop} title="録音開始 / 停止" onMouseEnter={e=>showTip(e,"録音開始 / 停止")} onMouseLeave={hideTip} style={{...rb,width:60,height:60,background:C.err,color:C.w}}><span style={{fontSize:22}}>⏹</span></button>
 <button type="button" onClick={stopAndSaveExamInputOnly} disabled={btnFbBusy("examSave")} title="録音を停止し、書き起こしを要約せずそのまま履歴に保存" onMouseEnter={e=>showTip(e,"停止して書き起こしを保存（要約なし）")} onMouseLeave={hideTip} style={{padding:"10px 18px",borderRadius:14,border:"none",background:btnFbBusy("examSave")?"#9ca3af":"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:mob?12:14,fontWeight:700,fontFamily:"inherit",cursor:btnFbBusy("examSave")?"wait":"pointer",whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>💾 停止して書き起こしを保存</button></>)}
 <button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} title="録音音声をSupabaseに保存する" onMouseEnter={e=>showTip(e,"録音音声を保存する")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#2a4a18":C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
+{/* 要約モデルトグル: 録音開始前に選択できる位置（常時表示・録音中も変更可、要約実行時点の選択が使われる）。Claude選択中は非表示 */}
+{summaryModel!=="claude"&&<div style={{display:"flex",gap:3,alignItems:"center",whiteSpace:"nowrap"}}>{[["standard","3.6 Flash"],["lite","3.5 Lite"]].map(([v,label])=><button key={v} type="button" onClick={()=>{setExamSummaryModel(v);try{localStorage.setItem("mk_examSummaryModel",v)}catch{}}} onMouseEnter={e=>showTip(e,v==="lite"?"Gemini 3.5 Flash-Lite（最速・簡易）でカルテ要約":"Gemini 3.6 Flash（標準・既定）でカルテ要約")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:8,border:examSummaryModel===v?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:examSummaryModel===v?C.pLL:C.g50,fontSize:11,fontWeight:examSummaryModel===v?700:600,color:examSummaryModel===v?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{v==="lite"?"⚡ ":""}{label}</button>)}</div>}
 </div>
 {rs==="recording"&&<div style={{fontSize:11,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
 {/* 💾停止して保存の状態表示（保存ボタンは停止で消えるため、録音エリアに常設表示） */}
@@ -6754,7 +6771,6 @@ const fn=actions[sc.id];if(fn)fn();
 <div style={{flex:1,minWidth:0}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}>
 <span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果{out&&modelBadge(geminiModel)}</span>
-{summaryModel!=="claude"&&<div style={{display:"flex",gap:3,alignItems:"center",whiteSpace:"nowrap"}}>{[["standard","3.6 Flash"],["lite","3.5 Lite"]].map(([v,label])=><button key={v} type="button" disabled={ld} onClick={()=>{setExamSummaryModel(v);try{localStorage.setItem("mk_examSummaryModel",v)}catch{}}} onMouseEnter={e=>showTip(e,v==="lite"?"Gemini 3.5 Flash-Lite（最速・簡易）でカルテ要約":"Gemini 3.6 Flash（標準・既定）でカルテ要約")} onMouseLeave={hideTip} style={{padding:"2px 7px",borderRadius:6,border:examSummaryModel===v?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:examSummaryModel===v?C.pLL:C.w,fontSize:10,fontWeight:examSummaryModel===v?700:500,color:examSummaryModel===v?C.pD:C.g500,fontFamily:"inherit",cursor:ld?"not-allowed":"pointer",whiteSpace:"nowrap"}}>{v==="lite"?"⚡ ":""}{label}</button>)}</div>}
 {out&&<div style={{display:"flex",gap:3,whiteSpace:"nowrap",flexWrap:"wrap"}}><button onClick={runTypoCheckOut} disabled={typoLdOut} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLdOut?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLdOut?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLdOut?"wait":"pointer"}}>{typoLdOut?"🔬...":"🔬"}</button><button onClick={()=>cp(out)} title="要約をコピー" onMouseEnter={e=>showTip(e,"要約をコピー")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}
