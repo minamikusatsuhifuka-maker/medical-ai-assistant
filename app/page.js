@@ -608,6 +608,12 @@ const DEFAULT_DICT=[
 ["あずのーる","アズノール"],["げんたしん","ゲンタシン"],["ふしじんさん","フシジン酸"],
 ];
 
+// 過去に誤置換バグを起こしDEFAULT_DICTから削除済みのfrom（27949b6「ただ」→ただれ（びらん）/ 545a6be「たこ」「べんち」）。
+// 端末のlocalStorage(mk_dict)には削除前の辞書コピーが残存し得るため、読み込み・マージ時に常時除去する
+// （「いただれ（びらん）きました」等の誤置換が削除後も再発する根本原因）。
+const DICT_BANNED_FROM=new Set(["ただ","たこ","べんち"]);
+const sanitizeDict=(entries)=>Array.isArray(entries)?entries.filter(e=>Array.isArray(e)&&e[0]&&e[1]&&!DICT_BANNED_FROM.has(String(e[0]).trim())):entries;
+
 // 議事録の「表示専用」整形レンダラ。保存テキストは一切変えず、CSSの余白だけで可読化する。
 // ・見出し(■/【】) ・箇条書き(・/･/-) ・番号(1.) ・空行 を判定し、項目間の余白とぶら下げインデントを付ける。
 // 長い項目は句点「。」で“表示上だけ”文分割し、2文ごとに小さな空きを入れて壁を崩す（元テキストは不変）。
@@ -725,12 +731,12 @@ const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
 // Geminiモデル稼働チェック（ListModels照合）。手動ボタン＆起動時14日経過で自動実行。失敗しても本体機能に影響させない。
 const runModelCheck=async(manual=false)=>{try{setModelChecking(true);const res=await fetch("/api/gemini-model-check");const data=await res.json();if(data&&data.ok){setModelCheck(data);try{localStorage.setItem("mk_modelCheckAt",String(Date.now()));localStorage.setItem("mk_modelCheckResult",JSON.stringify(data))}catch{}}else if(manual){setModelCheck({ok:false,error:(data&&data.error)||"チェックに失敗しました",checkedAt:new Date().toISOString()})}}catch(e){if(manual)setModelCheck({ok:false,error:"チェックに失敗しました",checkedAt:new Date().toISOString()})}finally{setModelChecking(false)}};
 useEffect(()=>{try{const raw=localStorage.getItem("mk_modelCheckResult");if(raw)setModelCheck(JSON.parse(raw));const at=Number(localStorage.getItem("mk_modelCheckAt")||0);const FOURTEEN=14*24*60*60*1000;if(!at||Date.now()-at>FOURTEEN){runModelCheck(false)}}catch{}},[]);
-useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=[...sbEntries,...localOnly];try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}
+useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=sanitizeDict([...sbEntries,...localOnly]);try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}
 // ノイズパターンをSupabaseから読み込む
 try{const{data:npData}=await supabase.from("noise_patterns").select("pattern").order("created_at",{ascending:false});if(npData&&npData.length>0){const patterns=npData.map(r=>r.pattern);setNoisePatterns(patterns);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(patterns))}catch{}}}catch(e){console.error("noise_patterns load error:",e)}
 loadTodayStats();
@@ -3339,7 +3345,33 @@ const collapseRepeats=(text)=>{
     // 短い方が丸ごと長い方の接頭辞（＝崩れ・残骸）のときのみ同系統とみなす
     return shrt.length>=MIN_PREFIX&&lng.startsWith(shrt);
   };
-  const lines=text.split("\n");
+  // 行内のスペース区切り同語反復（「…真っ赤月分 真っ赤月 真っ赤月」型のWhisper幻聴）も同じ系統規則で畳む。
+  // 行単位と違い2回連続から畳む（スペース区切りで同語が並ぶのはほぼ幻聴。（×N）表記で回数は保存され情報は失わない）。
+  const collapseLineTokens=(line)=>{
+    if(!/[ 　]/.test(line))return line;
+    const tokens=line.split(/[ 　]+/);
+    if(tokens.length<2)return line;
+    const out2=[];
+    let a=0;
+    while(a<tokens.length){
+      const pa=parse(tokens[a]);
+      if(!pa.base||pa.base.length>SHORT_MAX){out2.push(tokens[a]);a++;continue;}
+      let b=a+1,canon=pa.base,total=pa.count,allSame=true;
+      while(b<tokens.length){
+        const pb=parse(tokens[b]);
+        if(!pb.base||pb.base.length>SHORT_MAX||!sameFamily(canon,pb.base))break;
+        if(pb.base!==pa.base)allSame=false;
+        if(pb.base.length>canon.length)canon=pb.base;
+        total+=pb.count;
+        b++;
+      }
+      // 完全同一の連続は2回から、前方一致の崩れ系統は行単位と同じ3回から畳む（「水虫 水虫薬…」等の正当な並びを守る）
+      if(b-a>=2&&canon.length>0&&(total>=MIN_REPEAT||(total>=2&&allSame))){out2.push(`${canon}（×${total}）`)}else{for(let k=a;k<b;k++)out2.push(tokens[k])}
+      a=b;
+    }
+    return out2.join(" ");
+  };
+  const lines=text.split("\n").map(collapseLineTokens);
   const out=[];
   let i=0;
   while(i<lines.length){
@@ -3480,7 +3512,14 @@ const renderSmnMarkdown=(text)=>{
   closeList();
   return html;
 };
-const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else{r=r.split(from).join(to)}}return r};
+const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else if(/^[\u30A1-\u30F6\u30FC]+$/.test(from)){
+// \u30AB\u30BF\u30AB\u30CA1\u301C2\u6587\u5B57\u30A8\u30F3\u30C8\u30EA\uFF08\u4F8B:\u300C\u30A4\u30D6\u300D\u2192\u30A4\u30DC\uFF09\u306F\u524D\u5F8C\u304C\u540C\u3058\u30AB\u30BF\u30AB\u30CA\u8A9E\u306E\u5185\u90E8\uFF08\u30C9\u30E9\u30A4\u30D6/\u30E9\u30A4\u30D6\u7B49\uFF09\u3067\u306F\u767A\u706B\u3055\u305B\u306A\u3044
+try{const esc=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");r=r.replace(new RegExp(`(?<![\u30A1-\u30F6\u30FC])${esc}(?![\u30A1-\u30F6\u30FC])`,"g"),to)}catch{r=r.split(from).join(to)}
+}else{r=r.split(from).join(to)}}
+// \u72EC\u7ACB\u3057\u305F\u300C\u305F\u3060\u308C\u300D\u306E\u307F\u300C\u305F\u3060\u308C\uFF08\u3073\u3089\u3093\uFF09\u300D\u6CE8\u8A18\u3092\u4ED8\u3051\u308B\u5B89\u5168\u30EB\u30FC\u30EB\uFF0827949b6\u306E\u8AA4\u7F6E\u63DB\u30D0\u30B0\u306E\u6559\u8A13\uFF09\u3002
+// \u300C\u3044\u305F\u3060\u2026\u300D\u300C\u307E\u3076\u305F\u2026\u300D\u7B49\u306E\u65E5\u5E38\u8A9E\u5185\u90E8\uFF08\u524D\u304C\u300C\u3044\u300D\u300C\u3076\u300D\uFF09\u3067\u306F\u767A\u706B\u305B\u305A\u3001\u52A9\u8A5E\u30FB\u6D3B\u7528\u304C\u7D9A\u304F\u72EC\u7ACB\u4F7F\u7528\u306E\u307F\u5BFE\u8C61\u3002
+try{r=r.replace(/(?<![\u3044\u3076])\u305F\u3060\u308C(?!\uFF08\u3073\u3089\u3093\uFF09)(?=[\u3066\u305F\u304C\u308B\u306F\u3082\u306B\u306E\u3067\u3084\u3092\u3078\u3001\u3002\uFF01\uFF1F\s]|$)/g,"\u305F\u3060\u308C\uFF08\u3073\u3089\u3093\uFF09")}catch{}
+return r};
 const saveDictLocal=(d)=>{try{localStorage.setItem("mk_dict",JSON.stringify(d))}catch{}};
 const saveNoisePatternsLocal=(patterns)=>{
   try{localStorage.setItem("mk_noisePatterns",JSON.stringify(patterns))}catch{}
@@ -3703,7 +3742,7 @@ setUsageGuide(d.summary||"");
 finally{setUsageGuideLd(false)}
 };
 const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.6 Flash で要約中...");try{
-const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント";
+const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント\n\n【入力の扱い】書き起こしには音声認識の誤変換や、診療と無関係な文（広告文・キャッチコピー・製品コード/型番の羅列・意味不明な繰り返し）が混入することがある。診療会話として文脈が通らないそれらの断片はカルテに反映せず無視する";
 const enhancedPrompt=ct.prompt+FORBIDDEN_RULES;
 setProg(40);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
