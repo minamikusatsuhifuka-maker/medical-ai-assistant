@@ -293,9 +293,10 @@ const T=[
 - 「塗っています」「飲んでいます」は患者の報告
 - 診断名・処方の決定は医師、症状の訴えは患者として分離
 
-【複数疾患への対応】
-- 会話中に複数の疾患・症状が話題になった場合、疾患ごとに「# 疾患名 A）/S）/O）/P）/患者情報）」をまとめる
-- 各疾患ブロックを --- で区切る
+【複数疾患の扱い（必須）】
+- 診察で扱った疾患・相談が複数ある場合は、必ず疾患ごとに別ブロックに分ける
+- 各ブロックは「# 疾患名」から始め、S→O→A→P を疾患ごとに記載し、ブロック間は --- で区切る
+- 主疾患以外の相談（別部位の症状・スキンケア相談・ついでの相談）も、診療内容があれば独立ブロックにする。1つの疾患にまとめて省略しない
 
 【A）評価のルール】
 - A）は医師の評価・治療方針判断・重症度・経過判断を記載
@@ -348,7 +349,6 @@ P）ルリコン液 1日1回
 - 修飾語は最小限にする
 - 薬剤は名称と用法のみ（「〜軟膏を塗布するよう指示」→「〜軟膏 1日2回」）
 - 所見は箇条書き的に短く
-- 複数疾患は --- で区切る
 - 会話にない情報は推測しない
 - 会話に含まれない項目は出力しない（「言及なし」「詳細不明」「記載なし」等は絶対に書かない）
 - 用法が不明な薬剤は薬剤名のみ記載（「用法不明」とは書かない）
@@ -356,6 +356,11 @@ P）ルリコン液 1日1回
 - # の後は「平易な表現（医学用語）」形式で記載（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）、イボ（尋常性疣贅）、かぶれ（接触性皮膚炎）、じんましん（蕁麻疹）、ヘルペス（単純疱疹）、とびひ（伝染性膿痂疹）、あせも（汗疹）、シミ（肝斑）、ホクロ（色素性母斑）、アトピー（アトピー性皮膚炎）、手荒れ（手湿疹）、乾燥肌の湿疹（皮脂欠乏性湿疹）、粉瘤（表皮嚢腫）、赤ら顔（酒さ））
 - 医師が病名を言った場合はそれを優先、なければ所見から推定
 - 患者情報）には直近のイベント・希望・ライフイベント・趣味嗜好など生活背景を記載。情報がない場合は患者情報）行ごと省略する
+
+【複数疾患の扱い（必須）】
+- 診察で扱った疾患・相談が複数ある場合は、必ず疾患ごとに別ブロックに分ける
+- 各ブロックは「# 疾患名」から始め、S→O→A→P を疾患ごとに記載し、ブロック間は --- で区切る
+- 主疾患以外の相談（別部位の症状・スキンケア相談・ついでの相談）も、診療内容があれば独立ブロックにする。1つの疾患にまとめて省略しない
 
 【出力フォーマット（厳守）】
 # 疾患名
@@ -386,9 +391,13 @@ P）冷凍凝固療法`},
 - 修飾語・詳細な説明は全て省く
 - A）は重症度や治療方針判断を1〜2語で簡潔に（例: 軽症 / 慢性化 / 経過良好 / 増悪）
 - 薬剤名と用法のみ
-- 複数疾患は --- で区切る
 - 推測しない
 - # の後は「平易な表現（医学用語）」形式（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）等）
+
+【複数疾患の扱い（必須）】
+- 診察で扱った疾患・相談が複数ある場合は、必ず疾患ごとに別ブロックに分ける
+- 各ブロックは「# 疾患名」から始め、S→O→A→P を疾患ごとに記載し、ブロック間は --- で区切る
+- 主疾患以外の相談（別部位の症状・スキンケア相談・ついでの相談）も、診療内容があれば独立ブロックにする。1つの疾患にまとめて省略しない
 
 【出力フォーマット（厳守）】
 # 疾患名
@@ -653,7 +662,7 @@ const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer"
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[modelCheck,setModelCheck]=useState(null); // Geminiモデル稼働チェック結果 {ok,missing,missingPreview,known_new,available,checkedAt}
 const[modelChecking,setModelChecking]=useState(false);
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[examSummaryModel,setExamSummaryModel]=useState("standard"),[minutesModel,setMinutesModel]=useState("gemini-3-6-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[minutesModel,setMinutesModel]=useState("gemini-3-6-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1");
 // トップメニューのカスタマイズ表示: 表示onのボタンのみトップに常時表示し、残りは「⋯その他」で展開。設定はlocalStorage(mk_topMenuVisible)
 const[topMenuVisible,setTopMenuVisible]=useState(null);
 const[menuMore,setMenuMore]=useState(false);
@@ -716,7 +725,7 @@ const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const esm=localStorage.getItem("mk_examSummaryModel");if(esm==="lite"||esm==="standard")setExamSummaryModel(esm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(JSON.parse(d));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
 // Geminiモデル稼働チェック（ListModels照合）。手動ボタン＆起動時14日経過で自動実行。失敗しても本体機能に影響させない。
 const runModelCheck=async(manual=false)=>{try{setModelChecking(true);const res=await fetch("/api/gemini-model-check");const data=await res.json();if(data&&data.ok){setModelCheck(data);try{localStorage.setItem("mk_modelCheckAt",String(Date.now()));localStorage.setItem("mk_modelCheckResult",JSON.stringify(data))}catch{}}else if(manual){setModelCheck({ok:false,error:(data&&data.error)||"チェックに失敗しました",checkedAt:new Date().toISOString()})}}catch(e){if(manual)setModelCheck({ok:false,error:"チェックに失敗しました",checkedAt:new Date().toISOString()})}finally{setModelChecking(false)}};
@@ -1393,9 +1402,13 @@ const LAB_EXAM_TEMPLATES=[
 - 修飾語・詳細な説明は全て省く
 - A）は重症度や治療方針判断を1〜2語で簡潔に（例: 軽症 / 慢性化 / 経過良好 / 増悪）
 - 薬剤名と用法のみ
-- 複数疾患は --- で区切る
 - 推測しない
 - # の後は「平易な表現（医学用語）」形式（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）等）
+
+【複数疾患の扱い（必須）】
+- 診察で扱った疾患・相談が複数ある場合は、必ず疾患ごとに別ブロックに分ける
+- 各ブロックは「# 疾患名」から始め、S→O→A→P を疾患ごとに記載し、ブロック間は --- で区切る
+- 主疾患以外の相談（別部位の症状・スキンケア相談・ついでの相談）も、診療内容があれば独立ブロックにする。1つの疾患にまとめて省略しない
 
 【出力フォーマット（厳守）】
 # 疾患名　A）評価
@@ -1416,13 +1429,17 @@ P）リンデロン-VG 1日2回`},
 - A）は評価・治療方針判断を簡潔に（例: 軽症で経過観察 / 増悪傾向 / コントロール良好 など）
 - 薬剤は名称と用法のみ（「〜軟膏を塗布するよう指示」→「〜軟膏 1日2回」）
 - 所見は箇条書き的に短く
-- 複数疾患は --- で区切る
 - 会話にない情報は推測しない
 - 会話に含まれない項目は出力しない（「言及なし」「詳細不明」「記載なし」等は絶対に書かない）
 - 用法が不明な薬剤は薬剤名のみ記載（「用法不明」とは書かない）
 - # の後は「平易な表現（医学用語）」形式で記載（例: 水虫（足白癬）、ニキビ（尋常性ざ瘡）、イボ（尋常性疣贅）、かぶれ（接触性皮膚炎）、じんましん（蕁麻疹）、ヘルペス（単純疱疹）、とびひ（伝染性膿痂疹）、あせも（汗疹）、シミ（肝斑）、ホクロ（色素性母斑）、アトピー（アトピー性皮膚炎）、手荒れ（手湿疹）、乾燥肌の湿疹（皮脂欠乏性湿疹）、粉瘤（表皮嚢腫）、赤ら顔（酒さ））
 - 医師が病名を言った場合はそれを優先、なければ所見から推定
 - 患者情報）には直近のイベント・希望・ライフイベント・趣味嗜好など生活背景を記載。情報がない場合は患者情報）行ごと省略する
+
+【複数疾患の扱い（必須）】
+- 診察で扱った疾患・相談が複数ある場合は、必ず疾患ごとに別ブロックに分ける
+- 各ブロックは「# 疾患名」から始め、S→O→A→P を疾患ごとに記載し、ブロック間は --- で区切る
+- 主疾患以外の相談（別部位の症状・スキンケア相談・ついでの相談）も、診療内容があれば独立ブロックにする。1つの疾患にまとめて省略しない
 
 【出力フォーマット（厳守）】
 # 疾患名　A）評価・治療方針
@@ -1451,9 +1468,10 @@ P）冷凍凝固療法`},
 - 「塗っています」「飲んでいます」は患者の報告
 - 診断名・処方の決定は医師、症状の訴えは患者として分離
 
-【複数疾患への対応】
-- 会話中に複数の疾患・症状が話題になった場合、疾患ごとに「# 疾患名 A）/S）/O）/P）/患者情報）」をまとめる
-- 各疾患ブロックを --- で区切る
+【複数疾患の扱い（必須）】
+- 診察で扱った疾患・相談が複数ある場合は、必ず疾患ごとに別ブロックに分ける
+- 各ブロックは「# 疾患名」から始め、S→O→A→P を疾患ごとに記載し、ブロック間は --- で区切る
+- 主疾患以外の相談（別部位の症状・スキンケア相談・ついでの相談）も、診療内容があれば独立ブロックにする。1つの疾患にまとめて省略しない
 
 【A）評価のルール】
 - A）は医師の評価・治療方針判断・重症度・経過判断を記載
@@ -3684,11 +3702,11 @@ setUsageGuide(d.summary||"");
 }catch(e){setUsageGuide("エラー: "+e.message)}
 finally{setUsageGuideLd(false)}
 };
-const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */const examLite=summaryModel!=="claude"&&examSummaryModel==="lite";const examPref=examLite?"gemini-3-5-flash-lite":summaryModel;sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":examLite?"Gemini 3.5 Flash-Lite（最速）で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.6 Flash で要約中...");try{
+const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.6 Flash で要約中...");try{
 const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント";
 const enhancedPrompt=ct.prompt+FORBIDDEN_RULES;
 setProg(40);
-const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:examPref,stream:summaryModel!=="claude"})});
+const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
 if(summaryModel==="claude"){
 const d=await r.json();if(d.error){sOut("エラー: "+d.error);btnFbSet("sum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,d.summary);extractRx(d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"claude"}]`)}catch{sSt(`要約完了 [${d.model||"claude"}]`)}}
 }else{
@@ -6427,21 +6445,6 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 <span style={{fontSize:11,color:C.g400,marginLeft:24}}>{m.desc}</span>
 </label>))}
 </div>
-{/* 診察要約の既定モデル（診察画面のトグルと同じ mk_examSummaryModel を共用） */}
-<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.g200}`}}>
-<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:4}}>診察要約の既定モデル</div>
-<p style={{fontSize:12,color:C.g400,marginBottom:8}}>Lite は最速（3.6比で約2倍速）。要約はやや簡潔になります。診察画面の録音ボタン横のトグルでもその場で切替できます（同じ設定を共用）。</p>
-<div style={{display:"flex",gap:12}}>
-{[{v:"standard",label:"Gemini 3.6 Flash",desc:"標準・既定"},{v:"lite",label:"⚡ Gemini 3.5 Flash-Lite",desc:"最速・簡易"}].map(m=>(
-<label key={m.v} onClick={()=>{setExamSummaryModel(m.v);try{localStorage.setItem("mk_examSummaryModel",m.v)}catch{}}} style={{flex:1,padding:"10px 14px",borderRadius:12,border:`2px solid ${examSummaryModel===m.v?C.p:C.g200}`,background:examSummaryModel===m.v?C.pLL:C.w,cursor:"pointer",transition:"all 0.15s"}}>
-<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-<div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${examSummaryModel===m.v?C.pD:C.g300}`,display:"flex",alignItems:"center",justifyContent:"center"}}>{examSummaryModel===m.v&&<div style={{width:8,height:8,borderRadius:"50%",background:C.pD}}/>}</div>
-<span style={{fontSize:13,fontWeight:examSummaryModel===m.v?700:500,color:examSummaryModel===m.v?C.pD:C.g600}}>{m.label}</span>
-</div>
-<span style={{fontSize:11,color:C.g400,marginLeft:24}}>{m.desc}</span>
-</label>))}
-</div>
-</div>
 </div>
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🎨 カラーテーマ</h3>
@@ -6744,7 +6747,6 @@ const fn=actions[sc.id];if(fn)fn();
 <button type="button" onClick={stopAndSaveExamInputOnly} disabled={btnFbBusy("examSave")} title="録音を停止し、書き起こしを要約せずそのまま履歴に保存" onMouseEnter={e=>showTip(e,"停止して書き起こしを保存（要約なし）")} onMouseLeave={hideTip} style={{padding:"10px 18px",borderRadius:14,border:"none",background:btnFbBusy("examSave")?"#9ca3af":"linear-gradient(135deg,#0f9d6e,#10b981)",color:C.w,fontSize:mob?12:14,fontWeight:700,fontFamily:"inherit",cursor:btnFbBusy("examSave")?"wait":"pointer",whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,.15)"}}>💾 停止して書き起こしを保存</button></>)}
 <button onClick={()=>setSessionAudioSave(v=>{const next=v===null?!audioSave:!v;return next})} title="録音音声をSupabaseに保存する" onMouseEnter={e=>showTip(e,"録音音声を保存する")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${(sessionAudioSave!==null?sessionAudioSave:audioSave)?C.p:C.g200}`,background:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#f0fdf4":C.g50,fontSize:11,fontWeight:600,color:(sessionAudioSave!==null?sessionAudioSave:audioSave)?"#2a4a18":C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>🎙️音声保存 {(sessionAudioSave!==null?sessionAudioSave:audioSave)?"ON":"OFF"}</button>
 {/* 要約モデルトグル: 録音開始前に選択できる位置（常時表示・録音中も変更可、要約実行時点の選択が使われる）。Claude選択中は非表示 */}
-{summaryModel!=="claude"&&<div style={{display:"flex",gap:3,alignItems:"center",whiteSpace:"nowrap"}}>{[["standard","3.6 Flash"],["lite","3.5 Lite"]].map(([v,label])=><button key={v} type="button" onClick={()=>{setExamSummaryModel(v);try{localStorage.setItem("mk_examSummaryModel",v)}catch{}}} onMouseEnter={e=>showTip(e,v==="lite"?"Gemini 3.5 Flash-Lite（最速・簡易）でカルテ要約":"Gemini 3.6 Flash（標準・既定）でカルテ要約")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:8,border:examSummaryModel===v?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:examSummaryModel===v?C.pLL:C.g50,fontSize:11,fontWeight:examSummaryModel===v?700:600,color:examSummaryModel===v?C.pD:C.g400,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{v==="lite"?"⚡ ":""}{label}</button>)}</div>}
 </div>
 {rs==="recording"&&<div style={{fontSize:11,color:C.g400}}>🎙 5秒ごとに自動書き起こし</div>}
 {/* 💾停止して保存の状態表示（保存ボタンは停止で消えるため、録音エリアに常設表示） */}

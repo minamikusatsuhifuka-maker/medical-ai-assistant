@@ -3,7 +3,7 @@
 ## プロジェクト概要
 - Next.js 14 / React 18 / Supabase / Vercel
 - メインファイル: app/page.js（単一ファイルで全UI・ロジック）
-- 要約API: Gemini 3.6 Flash（設定でClaude Sonnet 4.6切替可、診察はGemini 3.5 Flash-Lite選択可）
+- 要約API: Gemini 3.6 Flash（設定でClaude Sonnet 4.6切替可。診察のLiteトグルは複数疾患SOAPの分離に失敗するため撤去済み）
 - 書き起こしAPI: OpenAI Whisper
 
 ## 必須ルール（破るとアプリが壊れる）
@@ -29,7 +29,7 @@
 - 変更箇所は最小限にする
 
 ## APIファイル一覧
-- summarize/route.js: Gemini/Claude切替対応（診察のLite選択は model_preference: gemini-3-5-flash-lite）
+- summarize/route.js: Gemini/Claude切替対応（gemini-3-5-flash-lite 指定は旧クライアント互換で標準3.6系リストに丸める）
 - transcribe/route.js: Whisper（変更禁止）
 - その他Geminiルートは app/lib/gemini-models.js の GEMINI_MODELS（3.6 Flash第一候補）にフォールバック集約。モデル変更はこの1ファイルで行う
 
