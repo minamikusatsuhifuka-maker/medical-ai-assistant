@@ -4,16 +4,14 @@
 // ※二重管理を避けるため、モデル変更はこの1ファイルのみで行う。
 export const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 
-// カルテ要約（診察 summarize）のスピード重視オプション（3.5ファミリー最速・最安、thinkingは既定minimal）。
-export const GEMINI_LITE_MODEL = "gemini-3.5-flash-lite";
-
 // 定期チェック（gemini-model-check）の照合対象。このアプリが要約系で実際に呼ぶ「安定版」モデル。
 // 廃番検知は ListModels の結果とこのリストを照合する。
 // 注意: ListModels は新モデルの掲載が実提供より遅れることがある（2026-07の3.6-flash/3.5-flash-liteで実測。
 // generateContent は200で成功するのに一覧に未掲載）。そのため一覧に無いだけでは廃番と断定せず、
 // gemini-model-check 側で実呼び出しプローブによる最終確認を行う。
 // 廃番疑いが出たら、人が判断してこのファイルのモデル名を更新する（1ファイルで全ルートに反映）。
-export const ACTIVE_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
+// ※3.5-flash-lite は診察Lite撤去（複数疾患SOAP分離不可）に伴い監視対象から除外（使わないモデルの監視は不要）。
+export const ACTIVE_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 // 一部ルートが選好「gemini-3-pro」で使うプレビュー版。提供が流動的なので廃番警告は控えめに扱う（参考情報）。
 export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"];
 
