@@ -1,4 +1,5 @@
 import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { filterDangerousCorrections, CORRECTION_PROMPT_GUARD } from "../../lib/dangerous-correction";
 
 export const maxDuration = 60;
 
@@ -30,7 +31,8 @@ const SYSTEM_PROMPT = `あなたはクリニック経営・医療・マーケテ
 - 一般的な日本語の言い間違いは検出しない
 - 確信度が高い候補のみ返す
 - JSON形式のみで返す
-- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい用語","reason":"理由（カテゴリも明記）"}]}]}`;
+- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい用語","reason":"理由（カテゴリも明記）"}]}]}
+${CORRECTION_PROMPT_GUARD}`;
 
 async function scanChunk(text, apiKey) {
   // 旧 gemini-2.0-flash 直叩きは404（廃番）。中央ヘルパーの有効モデルフォールバックに統一。
@@ -100,7 +102,8 @@ export async function POST(request) {
     }
 
     return Response.json({
-      corrections: allCorrections,
+      // 汚染型（日常語・拡張置換・既知危険エントリ）の候補を提案段階で除外
+      corrections: filterDangerousCorrections(allCorrections),
       scannedChunks: chunks.length,
       totalLength: text.length
     });

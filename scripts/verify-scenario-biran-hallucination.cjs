@@ -87,5 +87,45 @@ console.log("■ 無音判定");
 check("lvゲート素通り後もisSilentChunkが実行される（診察）", /lvRef\.current<1\)\{return;\}bumpDiag\("lv"\);if\(await isSilentChunk\(b\)\)\{return\}/.test(src.replace(/\s+/g, "")) || (src.includes('bumpDiag("lv");if(await isSilentChunk(b))')));
 check("isSilentChunk はRMSベース＋判定不能時は送信（安全側）", src.includes("rms<silenceThrRef.current") && src.includes("catch{return false}"));
 
+// --- 7. 汚染型修正候補の提案段階ブロック（指示書 typo-scan-contamination-guard） ---
+console.log("■ 危険候補フィルタ isDangerousCorrection");
+const libSrc = fs.readFileSync(path.join(__dirname, "../app/lib/dangerous-correction.js"), "utf8");
+const libCtx = new Function(libSrc.replace(/^export /gm, "") + "; return { isDangerousCorrection, filterDangerousCorrections, KNOWN_DANGEROUS_FROMS, CORRECTION_PROMPT_GUARD };")();
+const { isDangerousCorrection, filterDangerousCorrections } = libCtx;
+// 危険候補は除外される
+check("「ただ→ただれ（びらん）」を弾く", !!isDangerousCorrection("ただ", "ただれ（びらん）"));
+check("「れも→でも」を弾く（2文字ひらがな）", !!isDangerousCorrection("れも", "でも"));
+check("「イブ→イボ」を弾く（既知の危険エントリ）", !!isDangerousCorrection("イブ", "イボ"));
+check("「たこ→胼胝」「べんち→胼胝」を弾く（ブロックリスト）", !!isDangerousCorrection("たこ", "胼胝") && !!isDangerousCorrection("べんち", "胼胝"));
+check("「アトピ→アトピー性皮膚炎」を弾く（before内包の拡張置換）", !!isDangerousCorrection("アトピ", "アトピー性皮膚炎"));
+check("「またね→また明日」を弾く（日常語を含む）", !!isDangerousCorrection("またね", "また明日"));
+// 正当な医療用語修正は通る
+check("「ヒルロイド→ヒルドイド」は通る", isDangerousCorrection("ヒルロイド", "ヒルドイド") === null);
+check("「ボチ→亜鉛華軟膏」は通る（2文字カタカナは一律では弾かない）", isDangerousCorrection("ボチ", "亜鉛華軟膏") === null);
+check("「デュビックセンター→デュピクセント」は通る", isDangerousCorrection("デュビックセンター", "デュピクセント") === null);
+check("「えきたいちっそ→液体窒素」は通る（長いひらがなはOK）", isDangerousCorrection("えきたいちっそ", "液体窒素") === null);
+check("「失神→湿疹」は通る", isDangerousCorrection("失神", "湿疹") === null);
+// corrections 配列レベルのフィルタ
+const filtered = filterDangerousCorrections([
+  { from: "ただ", candidates: [{ to: "ただれ（びらん）", reason: "x" }] },
+  { from: "ヒルロイド", candidates: [{ to: "ヒルドイド", reason: "薬品名" }] },
+  { from: "ヨクイニ", candidates: [{ to: "ヨクイニン", reason: "拡張型(弾かれる)" }, { to: "薏苡仁", reason: "生薬名" }] },
+]);
+check("filterDangerousCorrections: 危険fromごと除外", !filtered.some(c => c.from === "ただ"));
+check("filterDangerousCorrections: 正当候補は温存", filtered.some(c => c.from === "ヒルロイド"));
+check("filterDangerousCorrections: 候補単位で拡張置換のみ除外", (() => { const c = filtered.find(x => x.from === "ヨクイニ"); return c && c.candidates.length === 1 && c.candidates[0].to === "薏苡仁"; })());
+
+// --- 8. 全経路への配線（ソース確認） ---
+console.log("■ 全経路への適用");
+const fixSrc = fs.readFileSync(path.join(__dirname, "../app/api/fix-typos/route.js"), "utf8");
+const minSrc = fs.readFileSync(path.join(__dirname, "../app/api/minutes-typos/route.js"), "utf8");
+check("fix-typos: フィルタ適用＋プロンプト禁止事項", fixSrc.includes("filterDangerousCorrections(parsed.corrections)") && fixSrc.includes("CORRECTION_PROMPT_GUARD"));
+check("minutes-typos: フィルタ適用＋プロンプト禁止事項", minSrc.includes("filterDangerousCorrections(allCorrections)") && minSrc.includes("CORRECTION_PROMPT_GUARD"));
+check("プロンプト禁止事項の文言（拡張置換・見逃し優先）", libCtx.CORRECTION_PROMPT_GUARD.includes("語尾や注記を足すだけの置換") && libCtx.CORRECTION_PROMPT_GUARD.includes("見逃しを優先"));
+check("dictAddEntry: 登録時警告confirm（突破可）", /dictAddEntry=\(from,to\)=>\{const danger=isDangerousCorrection\(from,to\);/.test(src) && src.includes("本当に辞書へ登録しますか？"));
+check("applyAllTypos: 一括登録にも同ガード", src.includes("const toRegister=applied.filter(([f,to])=>{const danger=isDangerousCorrection(f,to)"));
+check("page.js が共通フィルタを import", src.includes('import { isDangerousCorrection } from "./lib/dangerous-correction"'));
+check("console.info で抑制ログ（無言で捨てない）", libSrc.includes("console.info(`危険候補を抑制:") && src.includes("console.info(`危険候補を抑制:"));
+
 console.log(`\n結果: ${pass} passed / ${fail} failed`);
 process.exit(fail ? 1 : 0);

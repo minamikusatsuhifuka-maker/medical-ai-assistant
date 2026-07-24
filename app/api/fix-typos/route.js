@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
 import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { filterDangerousCorrections, CORRECTION_PROMPT_GUARD } from "../../lib/dangerous-correction";
 
 export const maxDuration = 60;
 
@@ -18,7 +19,8 @@ WhisperによるAI音声認識の誤りを検出して正しい医療用語に�
 - 一般的な日本語の言い間違いや話し言葉は検出しない
 - 確信度が高い候補のみ返す（不確かな場合は候補に含めない）
 - JSON形式のみで返す
-- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい医療用語","reason":"理由"}]}]}`;
+- 形式: {"corrections":[{"from":"誤り語句","candidates":[{"to":"正しい医療用語","reason":"理由"}]}]}
+${CORRECTION_PROMPT_GUARD}`;
 
 export async function POST(request) {
   try {
@@ -94,7 +96,8 @@ export async function POST(request) {
     if (!parsed.corrections || !Array.isArray(parsed.corrections)) {
       return NextResponse.json({ corrections: [] });
     }
-    return NextResponse.json(parsed);
+    // 汚染型（日常語・拡張置換・既知危険エントリ）の候補を提案段階で除外
+    return NextResponse.json({ ...parsed, corrections: filterDangerousCorrections(parsed.corrections) });
   } catch (e) {
     console.error("fix-typos error:", e);
     return NextResponse.json({ error: "サーバーエラー" }, { status: 500 });
