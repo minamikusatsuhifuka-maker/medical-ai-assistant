@@ -1,5 +1,6 @@
 import { logUsage } from "../../lib/log-usage";
 import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { filterDangerousNoiseCandidates, NOISE_PROMPT_GUARD } from "../../lib/dangerous-correction";
 
 export const maxDuration = 30;
 
@@ -31,6 +32,7 @@ export async function POST(request) {
 - スタッフ間の業務会話
 
 ${registeredList ? `【既に登録済みのパターン（除外）】\n${registeredList}\n` : ""}
+${NOISE_PROMPT_GUARD}
 
 JSON形式のみで返してください：
 {"candidates":[{"text":"ノイズテキスト","reason":"理由"}]}
@@ -67,7 +69,8 @@ ${text.substring(0, 5000)}`;
     const registeredSet = new Set(registered || []);
     const filtered = (parsed.candidates || []).filter(c => !registeredSet.has(c.text));
 
-    return Response.json({ candidates: filtered });
+    // 汚染型（医療内容含有・短すぎ・日常語）の削除候補を提案段階で除外
+    return Response.json({ candidates: filterDangerousNoiseCandidates(filtered) });
   } catch (e) {
     console.error("scan-noise error:", e);
     return Response.json({ candidates: [], error: e.message }, { status: 500 });

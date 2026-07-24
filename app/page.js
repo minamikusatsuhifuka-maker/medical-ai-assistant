@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
-import { isDangerousCorrection } from "./lib/dangerous-correction";
+import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -3558,38 +3558,41 @@ const runHistNoiseScan=async()=>{
   if(!selected.length)return;
   setHistNoiseLd(true);
   sSt(`🚫 ノイズスキャン中... (${selected.length}件)`);
+  btnFbSet("histNoise","run","スキャン中…");
   try{
     const combined=selected.map(r=>r.input_text||"").filter(Boolean).join("\n---\n");
-    if(!combined.trim()){sSt("書き起こしテキストがありません");return}
+    if(!combined.trim()){sSt("書き起こしテキストがありません");btnFbSet("histNoise","err","⚠ 失敗: 書き起こしがありません");return}
     const res=await fetch("/api/scan-noise",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({text:combined,registered:noisePatterns})
     });
-    if(!res.ok){sSt("ノイズスキャンエラー: サーバーエラー("+res.status+")");return}
+    if(!res.ok){sSt("ノイズスキャンエラー: サーバーエラー("+res.status+")");btnFbSet("histNoise","err","⚠ 失敗: サーバーエラー("+res.status+")");return}
     const d=await res.json();
-    if(d.error){sSt("ノイズスキャンエラー: "+d.error);return}
+    if(d.error){sSt("ノイズスキャンエラー: "+d.error);btnFbSet("histNoise","err","⚠ 失敗: "+String(d.error).slice(0,40));return}
     if(!d.candidates||d.candidates.length===0){
-      sSt("✓ 新しいノイズパターンは見つかりませんでした");return
+      sSt("✓ 新しいノイズパターンは見つかりませんでした");btnFbSet("histNoise","ok","✓ 候補なし");return
     }
     const registeredSet=new Set(noisePatterns);
     const newCandidates=d.candidates.filter(c=>!registeredSet.has(c.text));
     if(newCandidates.length===0){
-      sSt("✓ 新しいノイズ候補はありません（全て登録済み）");return
+      sSt("✓ 新しいノイズ候補はありません（全て登録済み）");btnFbSet("histNoise","ok","✓ 新規候補なし");return
     }
     setNoiseCandidates(newCandidates);
     setNoiseModal(true);
     sSt("ノイズ候補が見つかりました");
+    btnFbSet("histNoise","ok","✓ "+newCandidates.length+"件検出");
   }catch(e){
-    sSt("ノイズスキャンエラー: "+e.message)
+    sSt("ノイズスキャンエラー: "+e.message);btnFbSet("histNoise","err","⚠ 失敗: "+String(e.message||e).slice(0,40))
   }finally{
     setHistNoiseLd(false)
   }
 };
 const runNoiseScan=async()=>{
   const recentText=[inp,minInp].filter(Boolean).join("\n---\n");
-  if(!recentText.trim()){sSt("書き起こしテキストがありません");return}
+  if(!recentText.trim()){sSt("書き起こしテキストがありません");btnFbSet("noiseScan","err","⚠ 失敗: 書き起こしがありません");return}
   setNoiseScanLd(true);sSt("🔍 ノイズ候補を分析中...");
+  btnFbSet("noiseScan","run","分析中…");
   try{
     const res=await fetch("/api/scan-noise",{
       method:"POST",
@@ -3597,18 +3600,22 @@ const runNoiseScan=async()=>{
       body:JSON.stringify({text:recentText,registered:noisePatterns})
     });
     const d=await res.json();
-    if(d.error){sSt("エラー: "+d.error);return}
-    if(!d.candidates||d.candidates.length===0){sSt("✓ 新しいノイズ候補は見つかりませんでした");return}
+    if(d.error){sSt("エラー: "+d.error);btnFbSet("noiseScan","err","⚠ 失敗: "+String(d.error).slice(0,40));return}
+    if(!res.ok){sSt("エラー: サーバーエラー("+res.status+")");btnFbSet("noiseScan","err","⚠ 失敗: サーバーエラー("+res.status+")");return}
+    if(!d.candidates||d.candidates.length===0){sSt("✓ 新しいノイズ候補は見つかりませんでした");btnFbSet("noiseScan","ok","✓ 候補なし");return}
     setNoiseCandidates(d.candidates);
     setNoiseModal(true);
     sSt("ノイズ候補が見つかりました");
-  }catch(e){sSt("エラー: "+e.message)}
+    btnFbSet("noiseScan","ok","✓ "+d.candidates.length+"件検出");
+  }catch(e){sSt("エラー: "+e.message);btnFbSet("noiseScan","err","⚠ 失敗: "+String(e.message||e).slice(0,40))}
   finally{setNoiseScanLd(false)}
 };
 const addNoisePattern=async(pattern)=>{
   if(!pattern||!pattern.trim())return;
   const p=pattern.trim();
   if(noisePatterns.includes(p)){sSt("既に登録されています");return}
+  const danger=isDangerousNoisePattern(p);
+  if(danger){console.info(`危険候補を抑制: ノイズ「${p}」（${danger}）`);if(!window.confirm(`⚠ このノイズ登録（${p}）は、この語を含む診察内容の行まで誤削除する可能性があります（${danger}）。\n本当に登録しますか？`))return}
   const updated=[...noisePatterns,p];
   setNoisePatterns(updated);
   saveNoisePatternsLocal(updated);
@@ -4228,7 +4235,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>setSelectedHistIds(new Set())} style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g600,fontFamily:"inherit",cursor:"pointer"}}>選択解除</button>
 <span style={{fontSize:11,color:C.pD,fontWeight:600}}>{selectedHistIds.size}件選択中</span>
 <button onClick={runHistTypoCheck} disabled={!selectedHistIds.size||histTypoLd} title="選択した履歴のAI誤字スキャン" style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.p}44`,background:!selectedHistIds.size||histTypoLd?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:!selectedHistIds.size||histTypoLd?C.g400:"#92400e",fontFamily:"inherit",cursor:!selectedHistIds.size||histTypoLd?"default":"pointer"}}>{histTypoLd?`🔬 スキャン中... (${selectedHistIds.size}件)`:"🔬 AI誤字スキャン"}</button>
-<button onClick={runHistNoiseScan} disabled={!selectedHistIds.size||histNoiseLd} title="選択した履歴の書き起こしからノイズパターンを検出" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #fca5a5`,background:!selectedHistIds.size||histNoiseLd?"#e5e7eb":"#fff1f2",fontSize:11,fontWeight:600,color:!selectedHistIds.size||histNoiseLd?C.g400:"#dc2626",fontFamily:"inherit",cursor:!selectedHistIds.size||histNoiseLd?"default":"pointer"}}>{histNoiseLd?`🚫 スキャン中... (${selectedHistIds.size}件)`:"🚫 ノイズスキャン"}</button>
+<button onClick={runHistNoiseScan} disabled={!selectedHistIds.size||histNoiseLd} title="選択した履歴の書き起こしからノイズパターンを検出" style={{padding:"3px 10px",borderRadius:7,border:`1px solid #fca5a5`,background:!selectedHistIds.size||histNoiseLd?"#e5e7eb":"#fff1f2",fontSize:11,fontWeight:600,color:!selectedHistIds.size||histNoiseLd?C.g400:"#dc2626",fontFamily:"inherit",cursor:!selectedHistIds.size||histNoiseLd?"default":"pointer"}}>{histNoiseLd?`🚫 スキャン中... (${selectedHistIds.size}件)`:"🚫 ノイズスキャン"}</button><BtnFb k="histNoise"/>
 <div style={{position:"relative"}}><button onClick={()=>setBulkMenu(v=>!v)} disabled={!selectedHistIds.size||bulkLd} title="選択した履歴を一括AI分析" style={{padding:"3px 10px",borderRadius:7,border:`1px solid ${C.p}44`,background:!selectedHistIds.size||bulkLd?"#e5e7eb":"#eff6ff",fontSize:11,fontWeight:600,color:!selectedHistIds.size||bulkLd?C.g400:"#2563eb",fontFamily:"inherit",cursor:!selectedHistIds.size||bulkLd?"default":"pointer"}}>{bulkLd?`⏳ 分析中... (${selectedHistIds.size}件)`:"📊 一括AI分析▼"}</button>
 {bulkMenu&&selectedHistIds.size>0&&<div style={{position:"absolute",top:"100%",left:0,marginTop:4,background:C.w,borderRadius:10,border:`1px solid ${C.g200}`,boxShadow:"0 4px 16px rgba(0,0,0,.15)",zIndex:100,minWidth:220,padding:4}}>
 {BULK_MODES.map(m=><button key={m.id} onClick={()=>runBulkAnalyze(m.id)} style={{display:"block",width:"100%",padding:"8px 12px",borderRadius:7,border:"none",background:C.w,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}} onMouseEnter={e=>e.target.style.background="#eff6ff"} onMouseLeave={e=>e.target.style.background=C.w}>{m.label}</button>)}
@@ -4289,7 +4296,7 @@ return cells;
 </div>}
 </div>
 <button onClick={async(e)=>{e.stopPropagation();setDailyTypoLd(dk);setTypoTarget("hist");const CHUNK_SIZE=3000;const MAX_CHUNKS=3;const fullText=recs.map(r=>r.input_text||"").filter(Boolean).join("\n---\n").slice(0,CHUNK_SIZE*MAX_CHUNKS);const chunks=[];for(let i=0;i<fullText.length;i+=CHUNK_SIZE)chunks.push(fullText.slice(i,i+CHUNK_SIZE));const limitedChunks=chunks.slice(0,MAX_CHUNKS);const allCorrections=[];const seenFroms=new Set();let errCount=0;try{for(let ci=0;ci<limitedChunks.length;ci++){setDailyTypoProgress(`${ci+1}/${limitedChunks.length}`);sSt(limitedChunks.length>1?`🔬 スキャン中... (${ci+1}/${limitedChunks.length})`:`🔬 ${dk} スキャン中...`);try{const res=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:limitedChunks[ci],dictionary:dict.map(([from,to])=>({from,to}))})});if(!res.ok){const errText=await res.text();console.error("API error response chunk "+ci+":",errText);errCount++;continue}const d=await res.json();if(d.error){console.error("Chunk "+ci+" error:",d.error);errCount++;continue}if(d.corrections&&d.corrections.length>0){d.corrections.forEach(c=>{if(seenFroms.has(c.from)){const idx=allCorrections.findIndex(x=>x.from===c.from);if(idx!==-1)allCorrections[idx]=c}else{seenFroms.add(c.from);allCorrections.push(c)}})}}catch(chunkErr){console.error("Chunk "+ci+" fetch error:",chunkErr);errCount++}}if(allCorrections.length===0){if(errCount===limitedChunks.length){sSt("校正エラー: 全チャンクでエラーが発生しました")}else{sSt("✓ 医療用語の誤りは見つかりませんでした")}return}const registeredFroms=new Set(dict.map(([f])=>f));const filteredCorrections=allCorrections.filter(c=>!registeredFroms.has(c.from));if(filteredCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};filteredCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(filteredCorrections);sSt(limitedChunks.length>1?`✓ ${allCorrections.length}件の校正候補が見つかりました（${limitedChunks.length}回に分けてスキャン）`:"校正候補が見つかりました")}catch(err){console.error("Daily typo scan error:",err);sSt("校正エラー: "+err.message)}finally{setDailyTypoLd(null);setDailyTypoProgress("")}}} title="この日の診療記録をAI誤字スキャン" onMouseEnter={e=>showTip(e,"この日の診療記録をAI誤字スキャン")} onMouseLeave={hideTip} disabled={dailyTypoLd===dk} style={{padding:"4px 10px",borderRadius:8,border:"1px solid rgba(160,220,100,0.3)",background:dailyTypoLd===dk?"#e5e7eb":"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600,color:dailyTypoLd===dk?C.g400:"#2a5018",fontFamily:"inherit",cursor:dailyTypoLd===dk?"wait":"pointer",whiteSpace:"nowrap"}}>{dailyTypoLd===dk?`🔬 スキャン中... ${dailyTypoProgress||""}`:"🔬 誤字スキャン"}</button>
-<button onClick={async(e)=>{e.stopPropagation();setDailyNoiseLd(dk);try{const fullText=recs.map(r=>r.input_text||"").filter(Boolean).join("\n---\n");if(!fullText.trim()){sSt("書き起こしテキストがありません");return}const CHUNK_SIZE=5000;const chunks=[];for(let i=0;i<fullText.length;i+=CHUNK_SIZE)chunks.push(fullText.slice(i,i+CHUNK_SIZE));const allCandidates=[];const seenTexts=new Set();const registeredSet=new Set(noisePatterns);let errCount=0;for(let ci=0;ci<chunks.length;ci++){setDailyNoiseProgress(`${ci+1}/${chunks.length}`);try{const res=await fetch("/api/scan-noise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:chunks[ci],registered:noisePatterns})});if(!res.ok){errCount++;continue}const d=await res.json();if(d.error){errCount++;continue}if(d.candidates&&d.candidates.length>0){d.candidates.forEach(c=>{if(!seenTexts.has(c.text)&&!registeredSet.has(c.text)){seenTexts.add(c.text);allCandidates.push(c)}})}}catch{errCount++}}if(allCandidates.length===0){sSt(errCount===chunks.length?"ノイズスキャンエラー: 全チャンクでエラーが発生しました":"✓ 新しいノイズ候補は見つかりませんでした");return}setNoiseCandidates(allCandidates);setNoiseModal(true);sSt(`✓ ノイズ候補${allCandidates.length}件（${chunks.length}チャンクをスキャン）`)}catch(err){sSt("ノイズスキャンエラー: "+err.message)}finally{setDailyNoiseLd(null);setDailyNoiseProgress("")}}} title="この日の診療記録をノイズスキャン" onMouseEnter={e=>showTip(e,"この日の書き起こしをノイズスキャン")} onMouseLeave={hideTip} disabled={dailyNoiseLd===dk} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:dailyNoiseLd===dk?"#e5e7eb":"#fff1f2",fontSize:11,fontWeight:600,color:dailyNoiseLd===dk?C.g400:"#dc2626",fontFamily:"inherit",cursor:dailyNoiseLd===dk?"wait":"pointer",whiteSpace:"nowrap"}}>{dailyNoiseLd===dk?`🚫 スキャン中... ${dailyNoiseProgress||""}`.trim():"🚫 ノイズスキャン"}</button>
+<button onClick={async(e)=>{e.stopPropagation();setDailyNoiseLd(dk);try{const fullText=recs.map(r=>r.input_text||"").filter(Boolean).join("\n---\n");if(!fullText.trim()){sSt("書き起こしテキストがありません");return}const CHUNK_SIZE=5000;const chunks=[];for(let i=0;i<fullText.length;i+=CHUNK_SIZE)chunks.push(fullText.slice(i,i+CHUNK_SIZE));const allCandidates=[];const seenTexts=new Set();const registeredSet=new Set(noisePatterns);let errCount=0;for(let ci=0;ci<chunks.length;ci++){setDailyNoiseProgress(`${ci+1}/${chunks.length}`);try{const res=await fetch("/api/scan-noise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:chunks[ci],registered:noisePatterns})});if(!res.ok){errCount++;continue}const d=await res.json();if(d.error){errCount++;continue}if(d.candidates&&d.candidates.length>0){d.candidates.forEach(c=>{if(!seenTexts.has(c.text)&&!registeredSet.has(c.text)){seenTexts.add(c.text);allCandidates.push(c)}})}}catch{errCount++}}if(allCandidates.length===0){sSt(errCount===chunks.length?"ノイズスキャンエラー: 全チャンクでエラーが発生しました":errCount>0?`✓ 新しいノイズ候補は見つかりませんでした（⚠${errCount}/${chunks.length}チャンク失敗）`:"✓ 新しいノイズ候補は見つかりませんでした");return}setNoiseCandidates(allCandidates);setNoiseModal(true);sSt(`✓ ノイズ候補${allCandidates.length}件（${chunks.length}チャンクをスキャン${errCount>0?`・⚠${errCount}チャンク失敗`:""}）`)}catch(err){sSt("ノイズスキャンエラー: "+err.message)}finally{setDailyNoiseLd(null);setDailyNoiseProgress("")}}} title="この日の診療記録をノイズスキャン" onMouseEnter={e=>showTip(e,"この日の書き起こしをノイズスキャン")} onMouseLeave={hideTip} disabled={dailyNoiseLd===dk} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:dailyNoiseLd===dk?"#e5e7eb":"#fff1f2",fontSize:11,fontWeight:600,color:dailyNoiseLd===dk?C.g400:"#dc2626",fontFamily:"inherit",cursor:dailyNoiseLd===dk?"wait":"pointer",whiteSpace:"nowrap"}}>{dailyNoiseLd===dk?`🚫 スキャン中... ${dailyNoiseProgress||""}`.trim():"🚫 ノイズスキャン"}</button>
 <span style={{fontSize:16,color:"#2a5018"}}>{isOpen?"▲":"▼"}</span>
 </div></div>
 {isOpen&&<div style={{display:"grid",gridTemplateColumns:mob?"1fr":"repeat(3,1fr)",gap:6,marginTop:6}}>
@@ -6612,9 +6619,12 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 <div style={{marginTop:24,padding:16,borderRadius:14,border:`1px solid ${C.g200}`,background:C.g50}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
     <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>🚫 書き起こしノイズフィルター（{noisePatterns.length}件）</h3>
+    <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+    <BtnFb k="noiseScan"/>
     <button onClick={runNoiseScan} disabled={noiseScanLd} style={{padding:"6px 14px",borderRadius:10,border:`1px solid ${C.p}`,background:noiseScanLd?C.g200:C.pLL,fontSize:12,fontWeight:600,color:noiseScanLd?C.g400:C.pD,fontFamily:"inherit",cursor:noiseScanLd?"wait":"pointer"}}>
       {noiseScanLd?"🔍 分析中...":"🔍 AIノイズ候補をピックアップ"}
     </button>
+    </span>
   </div>
   <p style={{fontSize:12,color:C.g500,marginBottom:12}}>登録したフレーズは書き起こし時に自動除去されます。AIが候補を自動検出することもできます。</p>
 

@@ -124,8 +124,46 @@ check("minutes-typos: フィルタ適用＋プロンプト禁止事項", minSrc.
 check("プロンプト禁止事項の文言（拡張置換・見逃し優先）", libCtx.CORRECTION_PROMPT_GUARD.includes("語尾や注記を足すだけの置換") && libCtx.CORRECTION_PROMPT_GUARD.includes("見逃しを優先"));
 check("dictAddEntry: 登録時警告confirm（突破可）", /dictAddEntry=\(from,to\)=>\{const danger=isDangerousCorrection\(from,to\);/.test(src) && src.includes("本当に辞書へ登録しますか？"));
 check("applyAllTypos: 一括登録にも同ガード", src.includes("const toRegister=applied.filter(([f,to])=>{const danger=isDangerousCorrection(f,to)"));
-check("page.js が共通フィルタを import", src.includes('import { isDangerousCorrection } from "./lib/dangerous-correction"'));
+check("page.js が共通フィルタを import", /import \{ isDangerousCorrection[^}]*\} from "\.\/lib\/dangerous-correction"/.test(src));
 check("console.info で抑制ログ（無言で捨てない）", libSrc.includes("console.info(`危険候補を抑制:") && src.includes("console.info(`危険候補を抑制:"));
+
+// --- 9. ノイズスキャンの汚染ガード（指示書 noise-scan-contamination-guard） ---
+console.log("■ ノイズ削除候補ガード isDangerousNoisePattern");
+const { isDangerousNoisePattern, filterDangerousNoiseCandidates } = libCtx2();
+function libCtx2() {
+  return new Function(libSrc.replace(/^export /gm, "") + "; return { isDangerousNoisePattern, filterDangerousNoiseCandidates, NOISE_PROMPT_GUARD };")();
+}
+// 危険な削除候補（医療内容を含む文）は除外される
+check("薬剤名を含む文を弾く（ヒルドイドを塗って…）", !!isDangerousNoisePattern("かゆみが強いのでヒルドイドを塗ってください"));
+check("症状語を含む文を弾く（湿疹）", !!isDangerousNoisePattern("湿疹が悪化しています"));
+check("部位語を含む文を弾く（背中）", !!isDangerousNoisePattern("背中に赤いのができて"));
+check("処置語を含む文を弾く（液体窒素）", !!isDangerousNoisePattern("液体窒素で焼きましょう"));
+check("2文字以下を弾く（部分一致で大量削除）", !!isDangerousNoisePattern("うん") && !!isDangerousNoisePattern("は"));
+check("日常語そのものを弾く（ただ）", !!isDangerousNoisePattern("ただ"));
+// 正当なノイズ（相槌連発・広告文・型番羅列・動画フレーズ）は通る
+check("動画フレーズは通る（次の映像でお会いしましょう）", isDangerousNoisePattern("次の映像でお会いしましょう") === null);
+check("相槌連発は通る（うんうんうんうん）", isDangerousNoisePattern("うんうんうんうん") === null);
+check("広告文は通る（今なら送料無料）", isDangerousNoisePattern("今なら送料無料でお届けします") === null);
+check("型番羅列は通る（A-123 B-456）", isDangerousNoisePattern("A-123 B-456 C-789") === null);
+check("チャンネル登録系は通る", isDangerousNoisePattern("チャンネル登録よろしくお願いします") === null);
+// candidates 配列レベルのフィルタ
+const noiseFiltered = filterDangerousNoiseCandidates([
+  { text: "ご視聴ありがとうございました", reason: "動画由来" },
+  { text: "ステロイドは怖くないですよ", reason: "誤検出(医療内容)" },
+  { text: "うん", reason: "短すぎ" },
+]);
+check("filterDangerousNoiseCandidates: 医療文・短文を除外し正当ノイズは温存", noiseFiltered.length === 1 && noiseFiltered[0].text === "ご視聴ありがとうございました");
+
+console.log("■ ノイズガードの全経路への適用");
+const noiseSrc = fs.readFileSync(path.join(__dirname, "../app/api/scan-noise/route.js"), "utf8");
+check("scan-noise: フィルタ適用＋プロンプト禁止事項", noiseSrc.includes("filterDangerousNoiseCandidates(filtered)") && noiseSrc.includes("NOISE_PROMPT_GUARD"));
+check("プロンプト禁止事項の文言（医療用語・誤削除より見逃し）", libCtx2().NOISE_PROMPT_GUARD.includes("医療用語・薬剤名・症状の記述を含む文を削除候補にしない") && libCtx2().NOISE_PROMPT_GUARD.includes("誤削除より見逃しを優先"));
+check("addNoisePattern: 登録時警告confirm（突破可）", src.includes("const danger=isDangerousNoisePattern(p)") && src.includes("本当に登録しますか？"));
+check("page.js が isDangerousNoisePattern を import", src.includes('import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction"'));
+check("scan-noise は失敗を500で返す（成功偽装なし）", noiseSrc.includes('{ candidates: [], error: "ノイズAI呼び出しに失敗しました" }, { status: 500 }'));
+check("BtnFb: 履歴ノイズスキャンに接続", src.includes('btnFbSet("histNoise","run"') && src.includes('<BtnFb k="histNoise"/>'));
+check("BtnFb: 設定ノイズスキャンに接続", src.includes('btnFbSet("noiseScan","run"') && src.includes('<BtnFb k="noiseScan"/>'));
+check("日次ノイズスキャン: 部分チャンク失敗を可視化", src.includes("チャンク失敗"));
 
 console.log(`\n結果: ${pass} passed / ${fail} failed`);
 process.exit(fail ? 1 : 0);
