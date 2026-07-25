@@ -284,6 +284,11 @@ const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設�
 // 未設定時の既定表示（設定は常時表示のため必ず含める）。院長が設定画面で自由に変更可
 const DEFAULT_TOP_MENU_VISIBLE=["hist","settings","minutes","tasks"];
 
+// === 履歴一覧ホバープレビューの遅延（指示書 hover-preview-transcript-summary） ===
+// 表示250ms=通りすがりの誤爆防止 / 閉じ150ms=ボタン→ポップオーバーへのマウス移動猶予。変更はこの2定数のみ
+const HOVER_PV_OPEN_MS=250;
+const HOVER_PV_CLOSE_MS=150;
+
 // === TEMPLATES ===
 const DEFAULT_VISIBLE_TPLS=["soap-std","soap-min","counseling-std"];
 const T=[
@@ -745,9 +750,18 @@ const[explainEditText,setExplainEditText]=useState("");
 const[dailyExplainLd,setDailyExplainLd]=useState(null);
 const[explainLastDk,setExplainLastDk]=useState(null);
 const[explainDraftCount,setExplainDraftCount]=useState(0);
+// 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
+const[hoverPreview,setHoverPreview]=useState(true);
+const[canHover,setCanHover]=useState(false);
+const[histHoverPv,setHistHoverPv]=useState(null);
+const hoverPvOpenTimer=useRef(null);
+const hoverPvCloseTimer=useRef(null);
+const hoverPvCacheRef=useRef({});
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1")}catch{}},[]);
+// ホバー可能端末の判定（タッチ端末ではホバープレビューを丸ごと無効化）
+useEffect(()=>{try{setCanHover(window.matchMedia("(hover: hover) and (pointer: fine)").matches)}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
 // Geminiモデル稼働チェック（ListModels照合）。手動ボタン＆起動時14日経過で自動実行。失敗しても本体機能に影響させない。
 const runModelCheck=async(manual=false)=>{try{setModelChecking(true);const res=await fetch("/api/gemini-model-check");const data=await res.json();if(data&&data.ok){setModelCheck(data);try{localStorage.setItem("mk_modelCheckAt",String(Date.now()));localStorage.setItem("mk_modelCheckResult",JSON.stringify(data))}catch{}}else if(manual){setModelCheck({ok:false,error:(data&&data.error)||"チェックに失敗しました",checkedAt:new Date().toISOString()})}}catch(e){if(manual)setModelCheck({ok:false,error:"チェックに失敗しました",checkedAt:new Date().toISOString()})}finally{setModelChecking(false)}};
@@ -1546,6 +1560,55 @@ escapeRef.current=()=>{if(typoModal){setTypoModal(null);return}if(dictModal){set
 const FAV_GROUPS=["保険","美容","カウンセリング","治療説明","美容施術説明","その他"];
 const showTip=(e,text)=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text,x:r.left+r.width/2,y:r.top-8,visible:true})};
 const hideTip=()=>setTooltip(t=>({...t,visible:false}));
+// ===== 履歴一覧ホバープレビュー（📝書起/📋要約） =====
+const hoverPvOn=hoverPreview&&canHover;
+const hoverPvClose=()=>{if(hoverPvOpenTimer.current){clearTimeout(hoverPvOpenTimer.current);hoverPvOpenTimer.current=null}if(hoverPvCloseTimer.current){clearTimeout(hoverPvCloseTimer.current);hoverPvCloseTimer.current=null}setHistHoverPv(null)};
+const hoverPvCancelClose=()=>{if(hoverPvCloseTimer.current){clearTimeout(hoverPvCloseTimer.current);hoverPvCloseTimer.current=null}};
+const hoverPvScheduleClose=()=>{hoverPvCancelClose();hoverPvCloseTimer.current=setTimeout(()=>{hoverPvCloseTimer.current=null;setHistHoverPv(null)},HOVER_PV_CLOSE_MS)};
+// ボタンから離れたとき: 未表示なら表示予約を破棄、表示中なら閉じ予約（ポップオーバー側に乗れば hoverPvCancelClose で継続）
+const hoverPvLeave=()=>{if(hoverPvOpenTimer.current){clearTimeout(hoverPvOpenTimer.current);hoverPvOpenTimer.current=null}hoverPvScheduleClose()};
+const hoverPvEnter=(e,r,kind)=>{
+  if(!hoverPvOn)return;
+  const rect=e.currentTarget.getBoundingClientRect();
+  if(hoverPvOpenTimer.current)clearTimeout(hoverPvOpenTimer.current);
+  hoverPvCancelClose();
+  hoverPvOpenTimer.current=setTimeout(async()=>{
+    hoverPvOpenTimer.current=null;
+    try{
+      const width=Math.min(640,window.innerWidth-32);
+      const left=Math.max(16,Math.min(rect.left,window.innerWidth-width-16));
+      const maxH=Math.round(window.innerHeight*0.6);
+      // 下に出すと画面外にはみ出す場合は上側（bottom基準）に反転
+      const placeBelow=rect.bottom+8+Math.min(maxH,260)<=window.innerHeight;
+      const pos=placeBelow?{top:rect.bottom+8}:{bottom:window.innerHeight-rect.top+8};
+      const title=kind==="input"?"📝 書き起こし":"📋 要約";
+      const field=kind==="input"?"input_text":"output_text";
+      const emptyMsg=kind==="input"?"（書き起こしなし）":"（要約なし）";
+      const cached=hoverPvCacheRef.current[r.id];
+      const held=r[field]!==undefined?r[field]:(cached?cached[field]:undefined);
+      if(held!==undefined){setHistHoverPv({id:r.id,kind,title,content:String(held??"").trim()||emptyMsg,left,pos,width,maxH});return}
+      // カードが保持していない場合のみホバー時に取得（record id単位でメモリキャッシュ・fail-openで一覧を壊さない）
+      setHistHoverPv({id:r.id,kind,title,loading:true,left,pos,width,maxH});
+      try{
+        if(!supabase)throw new Error("Supabase未接続");
+        const{data,error}=await supabase.from("records").select("input_text,output_text").eq("id",r.id).single();
+        if(error)throw error;
+        hoverPvCacheRef.current[r.id]=data||{};
+        setHistHoverPv(p=>p&&p.id===r.id&&p.kind===kind?{...p,loading:false,content:String((data||{})[field]??"").trim()||emptyMsg}:p);
+      }catch(err){
+        console.error("hover preview load error:",err);
+        setHistHoverPv(p=>p&&p.id===r.id&&p.kind===kind?{...p,loading:false,failed:true}:p);
+      }
+    }catch(err){console.error("hover preview error:",err)}
+  },HOVER_PV_OPEN_MS);
+};
+// 一覧スクロール中は位置がずれるため追従させず即閉じる（capture:trueで内側スクロール容器も検知）
+useEffect(()=>{
+  if(!histHoverPv)return;
+  const close=()=>hoverPvClose();
+  window.addEventListener("scroll",close,true);
+  return()=>window.removeEventListener("scroll",close,true);
+},[histHoverPv]);
 const loadFavorites=async()=>{if(!supabase)return;try{const{data}=await supabase.from("favorites").select("*").order("created_at",{ascending:false});if(data)setFavorites(data)}catch(e){console.error("Favorites load error:",e)}};
 const saveFavorite=async(group,title,content,recordId)=>{if(!supabase)return;try{await supabase.from("favorites").insert({record_id:recordId||"",group_name:group,title,content});setFavToast(`⭐ ${group}グループに保存しました`);setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav save error:",e)}};
 const saveFavoriteSplit=async(group,dateTitle,inputText,outputText,recordId)=>{if(!supabase)return;try{const rows=[];if(inputText&&inputText.trim())rows.push({record_id:recordId||"",group_name:group,title:dateTitle+"|書き起こし",content:inputText});if(outputText&&outputText.trim())rows.push({record_id:recordId||"",group_name:group,title:dateTitle+"|要約",content:outputText});if(rows.length===0)return;await supabase.from("favorites").insert(rows);setFavToast(`⭐ 書き起こし・要約を${group}グループに保存しました`);setTimeout(()=>setFavToast(""),2500);loadFavorites()}catch(e){console.error("Fav split save error:",e)}};
@@ -4376,8 +4439,8 @@ return cells;
 <div style={{fontSize:mob?14:13,color:C.g700,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{preview||"（内容なし）"}</div>
 {(()=>{const badges=detectContentBadges(r.input_text,r.output_text);return badges.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:3}}>{badges.map(b=><button key={b.key} onClick={e=>{e.stopPropagation();runBadgeAnalysis(r,b)}} style={{padding:"1px 6px",borderRadius:5,border:`1px solid ${b.color}44`,background:b.bg,fontSize:10,fontWeight:700,color:b.color,fontFamily:"inherit",cursor:"pointer"}}>{b.label}</button>)}</div>})()}
 <div style={{display:"flex",gap:3}}>
-<button onClick={()=>setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date:time,pid})} title="書き起こし内容を表示" onMouseEnter={e=>showTip(e,"書き起こし内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
-<button onClick={()=>setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date:time,pid})} title="要約内容を表示" onMouseEnter={e=>showTip(e,"要約内容を表示")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.p}`,background:C.pLL,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
+<button onClick={()=>{hoverPvClose();setHistPopup({title:"📝 書き起こし",content:r.input_text||"（書き起こしなし）",date:time,pid})}} title={hoverPvOn?undefined:"書き起こし内容を表示"} onMouseEnter={e=>{if(hoverPvOn)hoverPvEnter(e,r,"input");else showTip(e,"書き起こし内容を表示")}} onMouseLeave={()=>{if(hoverPvOn)hoverPvLeave();else hideTip()}} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📝書起</button>
+<button onClick={()=>{hoverPvClose();setHistPopup({title:"📋 要約",content:r.output_text||"（要約なし）",date:time,pid})}} title={hoverPvOn?undefined:"要約内容を表示"} onMouseEnter={e=>{if(hoverPvOn)hoverPvEnter(e,r,"output");else showTip(e,"要約内容を表示")}} onMouseLeave={()=>{if(hoverPvOn)hoverPvLeave();else hideTip()}} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${C.p}`,background:C.pLL,fontSize:11,fontWeight:600,color:"#2a4a18",fontFamily:"inherit",cursor:"pointer"}}>📋要約</button>
 <button onClick={()=>{const fullDate=r.created_at?new Date(r.created_at).toLocaleDateString("ja-JP",{year:"numeric",month:"numeric",day:"numeric"})+" "+new Date(r.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"";setFavModal({title:fullDate+(pid?" | ID:"+pid:""),input_text:r.input_text||"",output_text:r.output_text||"",recordId:r.id})}} title="お気に入りに保存" onMouseEnter={e=>showTip(e,"お気に入りに保存")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:`1px solid #f59e0b`,background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {r.input_text&&<button onClick={()=>runQualityCheck(r)} title="AI対応品質チェック" onMouseEnter={e=>showTip(e,"AI対応品質チェック")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:6,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:11,fontWeight:600,color:"#2563eb",fontFamily:"inherit",cursor:"pointer"}}>🔍品質</button>}
 </div>
@@ -4397,6 +4460,14 @@ return cells;
 <div style={{flex:1,overflow:"auto",padding:16}}>
 <pre style={{fontSize:12,color:C.g700,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.6,fontFamily:"inherit"}}>{dailyResult.content}</pre>
 </div></div></div>}
+{/* ホバープレビュー（閲覧専用・編集/コピーは従来モーダルで）。本体に乗っている間は閉じない */}
+{histHoverPv&&<div data-hover-preview="1" onMouseEnter={hoverPvCancelClose} onMouseLeave={hoverPvScheduleClose}
+ style={{position:"fixed",left:histHoverPv.left,...histHoverPv.pos,width:histHoverPv.width,maxWidth:"calc(100vw - 32px)",maxHeight:histHoverPv.maxH,overflowY:"auto",zIndex:9998,background:"#ffffff",border:`1px solid ${C.g200}`,borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,.18)",padding:"12px 14px"}}>
+<div style={{fontSize:12,fontWeight:700,color:C.pDD,marginBottom:6}}>{histHoverPv.title}</div>
+{histHoverPv.loading?<div style={{fontSize:12,color:C.g400}}>読み込み中…</div>
+:histHoverPv.failed?<div style={{fontSize:12,color:"#dc2626"}}>読み込めませんでした</div>
+:<div style={{fontSize:12.5,color:C.g700,lineHeight:1.7,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{histHoverPv.content}</div>}
+</div>}
 {histPopup&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setHistPopup(null)}>
 <div style={{background:"#ffffff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:`1px solid ${C.g200}`}}>
@@ -6477,6 +6548,15 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <div style={{display:"flex",alignItems:"center",gap:12}}>
 <button onClick={()=>setAudioSave(!audioSave)} style={{padding:"6px 20px",borderRadius:10,border:"none",background:audioSave?C.rG:C.g200,color:audioSave?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{audioSave?"ON":"OFF"}</button>
 <span style={{fontSize:12,color:audioSave?C.rG:C.g400}}>{audioSave?"録音停止時に自動保存されます":"音声は保存されません"}</span>
+</div></div>
+
+{/* 👁 ホバープレビュー */}
+<div style={{...card,marginBottom:16}}>
+<h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>👁 ホバーで内容をプレビュー</h3>
+<p style={{fontSize:12,color:C.g400,marginBottom:8}}>ONにすると履歴一覧の「📝書起」「📋要約」ボタンにマウスを載せるだけで内容が表示されます（クリックでの表示は従来どおり。タッチ端末では無効）。</p>
+<div style={{display:"flex",alignItems:"center",gap:12}}>
+<button onClick={()=>{const v=!hoverPreview;setHoverPreview(v);try{localStorage.setItem("mk_hoverPreview",v?"1":"0")}catch{}}} style={{padding:"6px 20px",borderRadius:10,border:"none",background:hoverPreview?C.rG:C.g200,color:hoverPreview?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>{hoverPreview?"ON":"OFF"}</button>
+<span style={{fontSize:12,color:hoverPreview?C.rG:C.g400}}>{hoverPreview?"ホバーで内容をプレビュー表示します":"クリックのみで表示します"}</span>
 </div></div>
 
 {/* 📊 API使用料 */}
