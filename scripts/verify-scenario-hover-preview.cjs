@@ -71,12 +71,21 @@ const TRANSCRIPT_2_FETCHED = "こちらはホバー時に単体取得された�
   const popover = page.locator('[data-hover-preview="1"]');
   const emptySpot = () => page.mouse.move(1200, 120); // 一覧の余白（ボタン・カード外）
 
+  // メイン画面のボタンをhydration完了まで再試行しつつクリックして、目印セレクタの出現を待つ。
+  // 本番ビルドはhydration完了前のクリックが空振りするため（薬剤ガード検証と同じ対策）。
+  const clickUntil = async (btnLocator, markerLocator) => {
+    for (let i = 0; i < 10; i++) {
+      await btnLocator.first().click();
+      try { await markerLocator.first().waitFor({ timeout: 1500 }); return; } catch {}
+    }
+    throw new Error("クリックが反映されません（hydration未完了？）");
+  };
+
   // ---- 一覧を開く ----
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.locator('textarea[placeholder*="録音ボタン"]').first().waitFor({ timeout: 20000 });
-  await page.getByRole("button", { name: /📂 履歴/ }).first().click();
   const sumBtn1 = page.getByRole("button", { name: "📋要約" }).first();
-  await sumBtn1.waitFor({ timeout: 15000 });
+  await clickUntil(page.getByRole("button", { name: /📂 履歴/ }), sumBtn1);
 
   // A) 250ms後に出現・直後は出ない
   await sumBtn1.hover();
