@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
+import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import dynamic from "next/dynamic";
 
@@ -3808,18 +3809,23 @@ finally{setUsageGuideLd(false)}
 };
 const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.6 Flash で要約中...");try{
 const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント\n\n【入力の扱い】書き起こしには音声認識の誤変換や、診療と無関係な文（広告文・キャッチコピー・製品コード/型番の羅列・意味不明な繰り返し）が混入することがある。診療会話として文脈が通らないそれらの断片はカルテに反映せず無視する";
-const enhancedPrompt=ct.prompt+FORBIDDEN_RULES;
+// 薬剤名ルールは診察SOAP/処置系のみ（カウンセリング・議事録には入れない）
+const enhancedPrompt=ct.prompt+FORBIDDEN_RULES+(ct.id==="counseling-std"?"":DRUG_NAME_PROMPT_RULES);
+// 薬剤名ハルシネーションガード: 書き起こしに音源のない薬剤名の直前に⚠を付ける（削除はしない・fail-open）。
+// 表示・保存・コピーの全経路に乗せるため、要約完了時点（保存前）で一括適用する。
+const applyDrugGuard=(summary)=>{try{const g=markUngroundedDrugs(summary,iR.current||"");if(g.flagged.length)console.info("薬剤ガード未照合:",g.flagged);return g}catch(e){console.error("drug-guard呼び出し失敗(fail-open):",e);return{text:summary,flagged:[]}}};
+const drugWarnSuffix=(g)=>g.flagged.length?` ⚠書き起こしに無い薬剤名${g.flagged.length}件(⚠印)要確認`:"";
 setProg(40);
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
 if(summaryModel==="claude"){
-const d=await r.json();if(d.error){sOut("エラー: "+d.error);btnFbSet("sum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{sOut(d.summary);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,d.summary);extractRx(d.summary);try{await navigator.clipboard.writeText(d.summary);sSt(`要約完了 ✓ [${d.model||"claude"}]`)}catch{sSt(`要約完了 [${d.model||"claude"}]`)}}
+const d=await r.json();if(d.error){sOut("エラー: "+d.error);btnFbSet("sum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{const g=applyDrugGuard(d.summary);sOut(g.text);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,g.text);extractRx(g.text);try{await navigator.clipboard.writeText(g.text);sSt(`要約完了 ✓ [${d.model||"claude"}]`+drugWarnSuffix(g))}catch{sSt(`要約完了 [${d.model||"claude"}]`+drugWarnSuffix(g))}}
 }else{
 const reader=r.body.getReader();const decoder=new TextDecoder();let buffer="";let finalSummary="";let usedModel="";
 while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop()||"";
 for(const line of lines){if(!line.startsWith("data: "))continue;try{const json=JSON.parse(line.slice(6));
 if(json.error){sOut("エラー: "+json.error);btnFbSet("sum","err","⚠ 失敗: "+String(json.error).slice(0,40));return}
 if(json.chunk){if(!finalSummary)btnFbClear("sum");/* ストリーミング: 結果欄に文字が流れ始めたら⏳表示を消す */finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
-if(json.done){setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,finalSummary);extractRx(finalSummary);try{await navigator.clipboard.writeText(finalSummary);sSt(`要約完了 ✓ [${usedModel}]`)}catch{sSt(`要約完了 [${usedModel}]`)}}}catch{}}}}
+if(json.done){const g=applyDrugGuard(finalSummary);sOut(g.text);setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,g.text);extractRx(g.text);try{await navigator.clipboard.writeText(g.text);sSt(`要約完了 ✓ [${usedModel}]`+drugWarnSuffix(g))}catch{sSt(`要約完了 [${usedModel}]`+drugWarnSuffix(g))}}}catch{}}}}
 }catch{sSt("エラーが発生しました");btnFbSet("sum","err","⚠ 失敗: 通信エラー")}finally{sLd(false);setProg(0)}};
 const stopSum=()=>{clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-final",duration_seconds:Math.min(10,Math.max(1,Math.round(e.data.size/16000))),request_meta:{blob_size:e.data.size,text_length:(d.text||"").length,room:rid,final:true}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());const ft=foldAccum(iR.current+(iR.current?"\n":"")+(noise?applyDict(noise):""));sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive")};
 const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:pId}};
