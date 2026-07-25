@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
+import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -278,7 +279,7 @@ URL.revokeObjectURL(url);
 };
 
 // === トップメニュー定義（表示/非表示のカスタマイズ対象。動作はmenuActionsで付与） ===
-const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary"},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks"},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル"}];
+const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary"},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks"},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"explain",i:"📚",t:"説明ナレッジ"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル"}];
 // 未設定時の既定表示（設定は常時表示のため必ず含める）。院長が設定画面で自由に変更可
 const DEFAULT_TOP_MENU_VISIBLE=["hist","settings","minutes","tasks"];
 
@@ -730,6 +731,19 @@ const[noisePatterns,setNoisePatterns]=useState([]);
 const[noiseScanLd,setNoiseScanLd]=useState(false);
 const[noiseCandidates,setNoiseCandidates]=useState([]);
 const[noiseModal,setNoiseModal]=useState(false);
+// 説明ナレッジ（疾患別・院長の説明の型: 日次抽出→承認→スタッフ閲覧）
+const[explainTab,setExplainTab]=useState("view");
+const[explainTopics,setExplainTopics]=useState([]);
+const[explainItems,setExplainItems]=useState([]);
+const[explainLd,setExplainLd]=useState(false);
+const[explainSel,setExplainSel]=useState(null);
+const[explainSearch,setExplainSearch]=useState("");
+const[explainAuthed,setExplainAuthed]=useState(false);
+const[explainEditId,setExplainEditId]=useState(null);
+const[explainEditText,setExplainEditText]=useState("");
+const[dailyExplainLd,setDailyExplainLd]=useState(null);
+const[explainLastDk,setExplainLastDk]=useState(null);
+const[explainDraftCount,setExplainDraftCount]=useState(0);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv))}catch{}},[]);
@@ -3273,7 +3287,7 @@ if(diseaseOnlyKw.some(k=>t.includes(k))&&text.length<100)return"disease";
 if(text.length>500&&(t.includes("---")||/s[）)]\s/.test(t)))return"soap";
 return null;
 };
-const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(500);if(data)sHist(data)}catch(e){console.error("Load error:",e)}};
+const loadHist=async()=>{if(!supabase)return;try{const{data}=await supabase.from("records").select("*").order("created_at",{ascending:false}).limit(500);if(data)sHist(data);loadExplainDraftCount()}catch(e){console.error("Load error:",e)}};
 const loadTodayStats=async()=>{
 if(!supabase)return;
 const now=new Date();
@@ -3628,6 +3642,49 @@ const removeNoisePattern=async(idx)=>{
   setNoisePatterns(updated);
   saveNoisePatternsLocal(updated);
   if(supabase&&p){try{await supabase.from("noise_patterns").delete().eq("pattern",p)}catch(e){console.error("noise_patterns delete error:",e)}}
+};
+// ===== 説明ナレッジ =====
+const isMissingExplainTable=(e)=>e&&(e.code==="42P01"||/does not exist|schema cache/i.test(e.message||""));
+const EXPLAIN_TABLE_HINT="⚠ 説明ナレッジのテーブル未作成です。supabase/migrations/add_explain_knowledge.sql をSQL Editorで実行してください";
+const loadExplain=async()=>{if(!supabase)return;setExplainLd(true);try{const[t,i]=await Promise.all([supabase.from("explain_topics").select("*").order("created_at",{ascending:true}),supabase.from("explain_items").select("*").order("created_at",{ascending:false})]);if(t.error)throw t.error;if(i.error)throw i.error;setExplainTopics(t.data||[]);setExplainItems(i.data||[]);setExplainDraftCount((i.data||[]).filter(x=>x.status==="draft").length)}catch(e){console.error("explain load error:",e);sSt(isMissingExplainTable(e)?EXPLAIN_TABLE_HINT:"説明ナレッジ読込エラー: "+(e.message||e))}finally{setExplainLd(false)}};
+const loadExplainDraftCount=async()=>{if(!supabase)return;try{const{count,error}=await supabase.from("explain_items").select("id",{count:"exact",head:true}).eq("status","draft");if(error)throw error;setExplainDraftCount(count||0)}catch(e){if(!isMissingExplainTable(e))console.error("explain draft count error:",e)}};
+const runExplainExtract=async(dk,recs)=>{
+  setDailyExplainLd(dk);setExplainLastDk(dk);btnFbSet("explainExtract","run","抽出中…");sSt(`📚 ${dk} の説明ナレッジを抽出中...`);
+  try{
+    if(!supabase)throw new Error("Supabase未接続");
+    const[t,i]=await Promise.all([supabase.from("explain_topics").select("id,name,aliases"),supabase.from("explain_items").select("id,topic_id,category,content,seen_count")]);
+    if(t.error)throw t.error;if(i.error)throw i.error;
+    const res=await fetch("/api/explain-extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:recs.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""})),date:dk})});
+    const d=await res.json().catch(()=>({}));
+    if(!res.ok||d.error)throw new Error(d.error||("サーバーエラー("+res.status+")"));
+    const plan=planMerge(d.topics||[],t.data||[],i.data||[]);
+    // 新規疾患を作成して仮キーを実idへ差し替え
+    const tmpIdMap={};
+    for(const nt of plan.newTopics){const ins=await supabase.from("explain_topics").insert({name:nt.name,aliases:nt.aliases}).select("id").single();if(ins.error)throw ins.error;tmpIdMap["tmp:"+nt.tmpKey]=ins.data.id}
+    // 新しいナレッジは draft で追加
+    if(plan.newItems.length>0){const rows=plan.newItems.map(ni=>({topic_id:tmpIdMap[ni.topicRef]||ni.topicRef,category:ni.category,content:ni.content,status:"draft",seen_count:1,source_date:dk.replace(/\//g,"-")}));const ins2=await supabase.from("explain_items").insert(rows);if(ins2.error)throw ins2.error}
+    // 実質同内容は seen_count をインクリメント（頻度=重要度）
+    for(const id of plan.increments){const cur=(i.data||[]).find(x=>x.id===id);const up=await supabase.from("explain_items").update({seen_count:(cur?.seen_count||1)+1,updated_at:new Date().toISOString()}).eq("id",id);if(up.error)throw up.error}
+    setExplainDraftCount(c=>c+plan.newItems.length);
+    const okMsg=`✓ ${plan.newItems.length}件追加・${plan.increments.length}件カウント更新`;
+    sSt("説明ナレッジ: "+okMsg);btnFbSet("explainExtract","ok",okMsg);
+  }catch(e){
+    console.error("explain extract error:",e);
+    const msg=isMissingExplainTable(e)?"テーブル未作成(SQL実行が必要)":String(e.message||e).slice(0,48);
+    sSt(isMissingExplainTable(e)?EXPLAIN_TABLE_HINT:"説明ナレッジ抽出エラー: "+msg);btnFbSet("explainExtract","err","⚠ 失敗: "+msg);
+  }finally{setDailyExplainLd(null)}
+};
+// 承認操作のパスワードゲート（既存の削除パスワードDEL_PWDを流用・セッション中は再入力不要）
+const explainAuth=()=>{if(explainAuthed)return true;const pwd=window.prompt("管理パスワードを入力してください:");if(pwd===DEL_PWD){setExplainAuthed(true);return true}if(pwd!==null)alert("パスワードが違います");return false};
+const explainSetStatus=async(ids,status,contentOverride)=>{
+  if(!explainAuth())return;
+  try{
+    for(const id of ids){const patch={status,updated_at:new Date().toISOString()};if(contentOverride!==undefined&&ids.length===1)patch.content=contentOverride;const up=await supabase.from("explain_items").update(patch).eq("id",id);if(up.error)throw up.error}
+    setExplainItems(prev=>prev.map(it=>ids.includes(it.id)?{...it,status,...(contentOverride!==undefined&&ids.length===1?{content:contentOverride}:{})}:it));
+    setExplainDraftCount(c=>Math.max(0,c-ids.length));
+    setExplainEditId(null);setExplainEditText("");
+    sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:`✗ ${ids.length}件を却下しました`);
+  }catch(e){console.error("explain status error:",e);sSt("更新エラー: "+(e.message||e))}
 };
 const BULK_MODES=[{id:"treatment",label:"🏥 疾患別治療説明・プランまとめ"},{id:"patient",label:"👤 患者説明文の自動生成"},{id:"protocol",label:"📋 治療プロトコル抽出"},{id:"faq",label:"❓ よくある質問FAQ生成"},{id:"training",label:"📚 スタッフ向け研修資料生成"}];
 const runBulkAnalyze=async(mode)=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setBulkMenu(false);setBulkLd(true);const modeLabel=BULK_MODES.find(m=>m.id===mode)?.label||mode;sSt(`⏳ 分析中... (${selected.length}件)`);try{const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));const r=await fetch("/api/bulk-analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records,mode})});if(!r.ok){sSt("分析エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("分析エラー: "+d.error);return}setBulkResult({title:modeLabel,content:d.result||""});sSt("分析完了")}catch(e){sSt("分析エラー: "+e.message)}finally{setBulkLd(false)}};
@@ -4223,6 +4280,7 @@ if(page==="hist")return(<div style={{maxWidth:1200,margin:"0 auto",padding:mob?"
 <button onClick={()=>setCalView("list")} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${calView==="list"?C.pD:C.g200}`,background:calView==="list"?C.pLL:"#fff",fontSize:11,fontWeight:600,color:calView==="list"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>📋 リスト</button>
 <button onClick={()=>setCalView("calendar")} style={{padding:"3px 10px",borderRadius:6,border:`1px solid ${calView==="calendar"?C.pD:C.g200}`,background:calView==="calendar"?C.pLL:"#fff",fontSize:11,fontWeight:600,color:calView==="calendar"?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>📅 カレンダー</button>
 </div>
+{explainDraftCount>0&&<button onClick={()=>{loadExplain();setExplainTab("approve");setPage("explain")}} title="説明ナレッジの未承認draftを確認" style={{height:36,padding:"0 14px",borderRadius:8,border:"1px solid #a78bfa",background:"#f5f3ff",fontSize:14,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>📚 未承認 {explainDraftCount}件</button>}
 <button onClick={()=>{loadFavorites();setPage("favs")}} style={{height:36,padding:"0 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:14,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ お気に入り</button>
 <button onClick={()=>setPage("main")} style={{...btn(C.p,C.pDD),height:36,padding:"0 14px",fontSize:14}}>✕ 閉じる</button>
 </div>
@@ -4295,6 +4353,8 @@ return cells;
 {DAILY_MODES.map(m=><button key={m.id} onClick={()=>runDaily(m.id)} style={{display:"block",width:"100%",padding:"8px 12px",borderRadius:7,border:"none",background:C.w,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:"pointer",textAlign:"left"}} onMouseEnter={e=>e.target.style.background="#eff6ff"} onMouseLeave={e=>e.target.style.background=C.w}>{m.label}</button>)}
 </div>}
 </div>
+{explainLastDk===dk&&<BtnFb k="explainExtract"/>}
+<button onClick={e=>{e.stopPropagation();runExplainExtract(dk,recs)}} disabled={dailyExplainLd===dk} title="この日の診察から疾患別の説明ナレッジを抽出（下書き→承認制）" onMouseEnter={e=>showTip(e,"この日の診察から説明ナレッジを抽出")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #c4b5fd",background:dailyExplainLd===dk?"#e5e7eb":"#f5f3ff",fontSize:11,fontWeight:600,color:dailyExplainLd===dk?C.g400:"#6d28d9",fontFamily:"inherit",cursor:dailyExplainLd===dk?"wait":"pointer",whiteSpace:"nowrap"}}>{dailyExplainLd===dk?"📚 抽出中...":"📚 説明ナレッジ"}</button>
 <button onClick={async(e)=>{e.stopPropagation();setDailyTypoLd(dk);setTypoTarget("hist");const CHUNK_SIZE=3000;const MAX_CHUNKS=3;const fullText=recs.map(r=>r.input_text||"").filter(Boolean).join("\n---\n").slice(0,CHUNK_SIZE*MAX_CHUNKS);const chunks=[];for(let i=0;i<fullText.length;i+=CHUNK_SIZE)chunks.push(fullText.slice(i,i+CHUNK_SIZE));const limitedChunks=chunks.slice(0,MAX_CHUNKS);const allCorrections=[];const seenFroms=new Set();let errCount=0;try{for(let ci=0;ci<limitedChunks.length;ci++){setDailyTypoProgress(`${ci+1}/${limitedChunks.length}`);sSt(limitedChunks.length>1?`🔬 スキャン中... (${ci+1}/${limitedChunks.length})`:`🔬 ${dk} スキャン中...`);try{const res=await fetch("/api/fix-typos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:limitedChunks[ci],dictionary:dict.map(([from,to])=>({from,to}))})});if(!res.ok){const errText=await res.text();console.error("API error response chunk "+ci+":",errText);errCount++;continue}const d=await res.json();if(d.error){console.error("Chunk "+ci+" error:",d.error);errCount++;continue}if(d.corrections&&d.corrections.length>0){d.corrections.forEach(c=>{if(seenFroms.has(c.from)){const idx=allCorrections.findIndex(x=>x.from===c.from);if(idx!==-1)allCorrections[idx]=c}else{seenFroms.add(c.from);allCorrections.push(c)}})}}catch(chunkErr){console.error("Chunk "+ci+" fetch error:",chunkErr);errCount++}}if(allCorrections.length===0){if(errCount===limitedChunks.length){sSt("校正エラー: 全チャンクでエラーが発生しました")}else{sSt("✓ 医療用語の誤りは見つかりませんでした")}return}const registeredFroms=new Set(dict.map(([f])=>f));const filteredCorrections=allCorrections.filter(c=>!registeredFroms.has(c.from));if(filteredCorrections.length===0){sSt("✓ 新しい誤字候補はありません（全て登録済み）");return}const sel={};filteredCorrections.forEach((c,i)=>{if(c.candidates&&c.candidates.length===1)sel[i]=0});setTypoSelections(sel);setTypoCustomInputs({});setTypoModal(filteredCorrections);sSt(limitedChunks.length>1?`✓ ${allCorrections.length}件の校正候補が見つかりました（${limitedChunks.length}回に分けてスキャン）`:"校正候補が見つかりました")}catch(err){console.error("Daily typo scan error:",err);sSt("校正エラー: "+err.message)}finally{setDailyTypoLd(null);setDailyTypoProgress("")}}} title="この日の診療記録をAI誤字スキャン" onMouseEnter={e=>showTip(e,"この日の診療記録をAI誤字スキャン")} onMouseLeave={hideTip} disabled={dailyTypoLd===dk} style={{padding:"4px 10px",borderRadius:8,border:"1px solid rgba(160,220,100,0.3)",background:dailyTypoLd===dk?"#e5e7eb":"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600,color:dailyTypoLd===dk?C.g400:"#2a5018",fontFamily:"inherit",cursor:dailyTypoLd===dk?"wait":"pointer",whiteSpace:"nowrap"}}>{dailyTypoLd===dk?`🔬 スキャン中... ${dailyTypoProgress||""}`:"🔬 誤字スキャン"}</button>
 <button onClick={async(e)=>{e.stopPropagation();setDailyNoiseLd(dk);try{const fullText=recs.map(r=>r.input_text||"").filter(Boolean).join("\n---\n");if(!fullText.trim()){sSt("書き起こしテキストがありません");return}const CHUNK_SIZE=5000;const chunks=[];for(let i=0;i<fullText.length;i+=CHUNK_SIZE)chunks.push(fullText.slice(i,i+CHUNK_SIZE));const allCandidates=[];const seenTexts=new Set();const registeredSet=new Set(noisePatterns);let errCount=0;for(let ci=0;ci<chunks.length;ci++){setDailyNoiseProgress(`${ci+1}/${chunks.length}`);try{const res=await fetch("/api/scan-noise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:chunks[ci],registered:noisePatterns})});if(!res.ok){errCount++;continue}const d=await res.json();if(d.error){errCount++;continue}if(d.candidates&&d.candidates.length>0){d.candidates.forEach(c=>{if(!seenTexts.has(c.text)&&!registeredSet.has(c.text)){seenTexts.add(c.text);allCandidates.push(c)}})}}catch{errCount++}}if(allCandidates.length===0){sSt(errCount===chunks.length?"ノイズスキャンエラー: 全チャンクでエラーが発生しました":errCount>0?`✓ 新しいノイズ候補は見つかりませんでした（⚠${errCount}/${chunks.length}チャンク失敗）`:"✓ 新しいノイズ候補は見つかりませんでした");return}setNoiseCandidates(allCandidates);setNoiseModal(true);sSt(`✓ ノイズ候補${allCandidates.length}件（${chunks.length}チャンクをスキャン${errCount>0?`・⚠${errCount}チャンク失敗`:""}）`)}catch(err){sSt("ノイズスキャンエラー: "+err.message)}finally{setDailyNoiseLd(null);setDailyNoiseProgress("")}}} title="この日の診療記録をノイズスキャン" onMouseEnter={e=>showTip(e,"この日の書き起こしをノイズスキャン")} onMouseLeave={hideTip} disabled={dailyNoiseLd===dk} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fca5a5",background:dailyNoiseLd===dk?"#e5e7eb":"#fff1f2",fontSize:11,fontWeight:600,color:dailyNoiseLd===dk?C.g400:"#dc2626",fontFamily:"inherit",cursor:dailyNoiseLd===dk?"wait":"pointer",whiteSpace:"nowrap"}}>{dailyNoiseLd===dk?`🚫 スキャン中... ${dailyNoiseProgress||""}`.trim():"🚫 ノイズスキャン"}</button>
 <span style={{fontSize:16,color:"#2a5018"}}>{isOpen?"▲":"▼"}</span>
@@ -5010,6 +5070,75 @@ if(page==="knowledge"){const KB_MODES=[{id:"report",label:"📊 月次品質レ�
 </div>)}
 
 // === SATISFACTION ANALYSIS PAGE ===
+if(page==="explain"){
+const topicById={};explainTopics.forEach(t=>{topicById[t.id]=t});
+const approvedByTopic={};explainItems.filter(i=>i.status==="approved").forEach(i=>{(approvedByTopic[i.topic_id]=approvedByTopic[i.topic_id]||[]).push(i)});
+const q=explainSearch.trim().toLowerCase();
+const viewTopics=explainTopics.filter(t=>approvedByTopic[t.id]?.length).map(t=>({t,items:approvedByTopic[t.id],total:approvedByTopic[t.id].reduce((s,i)=>s+(i.seen_count||1),0)})).filter(x=>!q||x.t.name.toLowerCase().includes(q)||(x.t.aliases||[]).some(a=>String(a).toLowerCase().includes(q))||x.items.some(i=>String(i.content).toLowerCase().includes(q))).sort((a,b)=>b.total-a.total);
+const selEntry=viewTopics.find(x=>x.t.id===explainSel)||null;
+const draftItems=explainItems.filter(i=>i.status==="draft");
+const draftTopics=explainTopics.map(t=>({t,items:draftItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
+const catOf=(id)=>EXPLAIN_CATEGORIES.find(c=>c.id===id)||{label:id,icon:"📌"};
+const buildCopyText=(entry)=>{let s=`【${entry.t.name}】\n`;EXPLAIN_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id);if(!its.length)return;s+=`\n■ ${c.label}\n`;its.sort((a,b)=>(b.seen_count||1)-(a.seen_count||1)).forEach(i=>{s+=`・${i.content}\n`})});return s};
+return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>📚 説明ナレッジ</h2>
+<div style={{display:"flex",gap:6,alignItems:"center"}}>
+<button onClick={loadExplain} disabled={explainLd} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{explainLd?"⏳ 読込中...":"🔄 再読込"}</button>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div></div>
+<p style={{fontSize:12,color:C.g500,marginBottom:10}}>診察履歴から抽出した疾患別の「院長の説明の型」。承認済みナレッジをスタッフが閲覧できます。抽出は履歴画面の各日の「📚 説明ナレッジ」ボタンから。</p>
+{st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")||st.includes("⚠")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")||st.includes("⚠")?"#fef2f2":"#fffbeb"}}>{st}</div>}
+<div style={{display:"flex",gap:6,marginBottom:14}}>
+<button onClick={()=>setExplainTab("view")} style={{padding:"8px 18px",borderRadius:10,border:"none",background:explainTab==="view"?C.p:C.g100,color:explainTab==="view"?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>👀 閲覧</button>
+<button onClick={()=>setExplainTab("approve")} style={{padding:"8px 18px",borderRadius:10,border:"none",background:explainTab==="approve"?"#6d28d9":C.g100,color:explainTab==="approve"?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✅ 承認（院長）{explainDraftCount>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:9,background:"#fbbf24",color:"#78350f",fontSize:11,fontWeight:700}}>{explainDraftCount}</span>}</button>
+</div>
+{explainTopics.length===0&&!explainLd&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:30}}>まだナレッジがありません。<br/>履歴画面の各日ヘッダの「📚 説明ナレッジ」ボタンで抽出してください。<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_explain_knowledge.sql をSQL Editorで実行）</span></div>}
+{explainTab==="view"&&explainTopics.length>0&&<div>
+<input value={explainSearch} onChange={e=>{setExplainSearch(e.target.value);setExplainSel(null)}} placeholder="🔍 疾患名・キーワードで検索" style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",outline:"none",marginBottom:12,boxSizing:"border-box"}}/>
+{viewTopics.length===0&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>承認済みのナレッジがありません（承認タブで院長の承認待ち）</div>}
+<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+{viewTopics.map(x=>(<button key={x.t.id} onClick={()=>setExplainSel(explainSel===x.t.id?null:x.t.id)} style={{padding:"8px 14px",borderRadius:12,border:explainSel===x.t.id?`2px solid ${C.rG}`:`1.5px solid ${C.g200}`,background:explainSel===x.t.id?"#dcfce7":C.w,fontSize:13,fontWeight:explainSel===x.t.id?700:600,color:explainSel===x.t.id?"#166534":C.g700,fontFamily:"inherit",cursor:"pointer"}}>{x.t.name}<span style={{marginLeft:6,fontSize:11,color:C.g400}}>×{x.total}</span></button>))}
+</div>
+{selEntry&&<div style={{...card}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>{selEntry.t.name}{(selEntry.t.aliases||[]).length>0&&<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>別名: {(selEntry.t.aliases||[]).join("・")}</span>}</div>
+<button onClick={()=>{navigator.clipboard.writeText(buildCopyText(selEntry));sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+</div>
+{EXPLAIN_CATEGORIES.map(c=>{const its=selEntry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return null;return(<div key={c.id} style={{marginBottom:14}}>
+<div style={{fontSize:13,fontWeight:700,color:"#2a5018",padding:"6px 10px",background:"rgba(160,220,100,0.15)",borderRadius:8,marginBottom:6}}>■ {c.icon} {c.label}</div>
+{its.map(i=>(<div key={i.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 10px",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:13,color:C.g700,lineHeight:1.7,flex:1,whiteSpace:"pre-wrap"}}>・{i.content}</span>
+{(i.seen_count||1)>1&&<span title="別日の診察でも同内容が抽出された回数（頻出度）" style={{padding:"1px 7px",borderRadius:8,background:"#fef3c7",color:"#92400e",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>×{i.seen_count}</span>}
+</div>))}
+</div>)})}
+</div>}
+</div>}
+{explainTab==="approve"&&explainTopics.length>0&&<div>
+{draftTopics.length===0&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓</div>}
+{draftTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>下書き {x.items.length}件</span></div>
+<button onClick={()=>explainSetStatus(x.items.map(i=>i.id),"approved")} style={{padding:"5px 14px",borderRadius:10,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ この疾患を一括承認（{x.items.length}件）</button>
+</div>
+{x.items.map(i=>{const c=catOf(i.category);const isEdit=explainEditId===i.id;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fdfcff"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#6d28d9",marginBottom:6}}>{c.icon} {c.label}{i.source_date&&<span style={{marginLeft:8,fontWeight:500,color:C.g400}}>（{i.source_date}）</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+{isEdit?<textarea value={explainEditText} onChange={e=>setExplainEditText(e.target.value)} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #c4b5fd`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:8,whiteSpace:"pre-wrap"}}>{i.content}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{isEdit?(<>
+<button onClick={()=>{if(explainEditText.trim())explainSetStatus([i.id],"approved",explainEditText.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 この内容で承認</button>
+<button onClick={()=>{setExplainEditId(null);setExplainEditText("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</>):(<>
+<button onClick={()=>explainSetStatus([i.id],"approved")} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 承認</button>
+<button onClick={()=>{if(!explainAuth())return;setExplainEditId(i.id);setExplainEditText(i.content)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集して承認</button>
+<button onClick={()=>explainSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
+</>)}
+</div>
+</div>)})}
+</div>))}
+</div>}
+</div>);
+}
 if(page==="satisfaction")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"10px 8px":"20px 16px",background:"#F5F0EB",minHeight:"100vh"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
 <h2 style={{fontSize:18,fontWeight:700,color:"#5C4A3A",margin:0}}>📊 患者満足度分析</h2>
@@ -6689,7 +6818,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {(()=>{
 // よく使うものだけ常時表示、残りは「⋯その他」で展開（既定は折りたたみ）。設定(settings)は常時表示固定
-const menuActions={hist:()=>{loadHist();setPage("hist")},caselib:()=>{loadFavorites();setPage("caselib")},tasks:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")},manual:()=>window.open('/manual.pdf','_blank')};
+const menuActions={hist:()=>{loadHist();setPage("hist")},caselib:()=>{loadFavorites();setPage("caselib")},tasks:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")},explain:()=>{loadExplain();setPage("explain")},manual:()=>window.open('/manual.pdf','_blank')};
 const avail=TOP_MENU.filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh]));
 const vis=new Set([...(topMenuVisible||DEFAULT_TOP_MENU_VISIBLE),"settings"]);
 const shown=avail.filter(m=>vis.has(m.p)),hidden=avail.filter(m=>!vis.has(m.p));
