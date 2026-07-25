@@ -5,17 +5,28 @@
 // サーバ(要約route)とクライアント(page.js)の両方から使える純関数のみを置く（サーバ専用依存を入れないこと）。
 // 段階2(院内採用薬マスタでの書き起こし正規化)までの暫定対策。
 
+import { DRUG_MASTER } from "./drug-master.js";
+
 // 要約プロンプトへ追記する薬剤名ルール（診察SOAP要約のみ。議事録・カウンセリングには入れない）
+// 段階2: 院内採用薬マスタを全件注入し、マスタ一致は正式名称での断定を許可（根拠がマスタにあるため）。
+// ルール3が核心: マスタを与えると「一覧から選んで埋める」方向に振れやすいので、補完禁止を明示する。
 export const DRUG_NAME_PROMPT_RULES = `
 
 【薬剤名の記載ルール(厳守)】
-1. 薬剤名は、書き起こしに音として登場したものだけを書く。
-   疾患名・症状・一般的な治療方針からの推測で、書き起こしにない薬剤名を補ってはならない。
+以下は当院の採用薬一覧である。
+<採用薬一覧>
+${DRUG_MASTER.map((d) => d.name).join("\n")}
+</採用薬一覧>
+
+1. 書き起こしに薬剤名らしき語があり、それが上記採用薬一覧のいずれかと音として明らかに対応する場合、
+   正式名称で断定して書いてよい。
+   例: 「ゼビア靴」→ ゼビアックスローション / 「ディフェインゲール」「リフェリンゲル」→ ディフェリンゲル
+2. 書き起こしに薬剤名らしき語があるが、採用薬一覧に対応がない場合は、
+   原文表記(推定) の形式で書き、正式名称に確定させない。他院処方・市販薬の可能性があるため削除もしない。
+3. 疾患名・症状・一般的な治療方針からの推測で、書き起こしにない薬剤名を補ってはならない。
+   採用薬一覧に載っていることは、その薬が会話に出た根拠にはならない。
    例: 「ざ瘡」「ウォッシュゲル」という語から「クリンダマイシンゲル」等を補うことは禁止。
-2. 書き起こしの薬剤名が音声認識で崩れていると判断できる場合、断定形で正式名称に置き換えない。
-   原文表記(推定: 正式名称) の形式で書く。
-   例: ゼビア靴(推定: ゼビアックスローション)
-3. 薬剤の言及が書き起こしに一切ない場合、P) には「処方の言及なし」と書く。
+4. 薬剤の言及が書き起こしに一切ない場合、P) には「処方の言及なし」と書く。
    空欄にしたり、標準治療を推測して埋めたりしない。`;
 
 // 一般語のため未照合でも警告しない除外リスト（剤形・一般名詞・日常外来語。薬剤名ではない語だけを置く）。
@@ -118,15 +129,39 @@ export function isGroundedInTranscript(candidate, normTranscript) {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// 候補を採用薬マスタで解決し、照合語（一致した薬剤の name＋全 keys）を返す。未解決なら null。
+// 一致判定は音韻正規化のうえ「候補がキーと等価 or キーを包含」（例: 候補「ゼビアックスローション」は key「ゼビアックス」で解決）。
+// 複数エントリに当たる場合（ヘパリン系・剤形違い等）は全エントリの keys を合算する（照合が広がる=警告されにくい安全側）。
+export function resolveDrugProbes(candidate) {
+  const nc = normalizePhonetic(candidate);
+  if (!nc) return null;
+  const probes = new Set();
+  for (const d of DRUG_MASTER) {
+    const allKeys = [d.name, ...(d.keys || [])];
+    if (allKeys.some((k) => { const nk = normalizePhonetic(k); return nk && (nc === nk || nc.includes(nk)); })) {
+      allKeys.forEach((k) => probes.add(k));
+    }
+  }
+  return probes.size ? [...probes] : null;
+}
+
 // 要約中の薬剤名候補を書き起こしと照合し、未照合語の直前に⚠を付けて返す。
 // 削除はしない（医療情報を機械判断で消すのは危険。院長が見て判断する）。
+// 段階2: 候補をマスタで解決できた場合は、その薬剤の keys のいずれかが書き起こしに音韻近似すればOK
+// （「ゼビアックスローション」全長より key「ゼビアックス」の方が崩れた音「ゼビア靴」に当たりやすい）。
+// マスタで解決できない候補は従来どおり候補文字列そのもので照合する。
 // fail-open 必須: 例外時は summaryText を無加工で返す（ガードの失敗で要約を落とさない規約）。
 export function markUngroundedDrugs(summaryText, transcriptText) {
   try {
     const summary = String(summaryText ?? "");
     if (!summary.trim()) return { text: summary, flagged: [] };
     const normT = normalizePhonetic(String(transcriptText ?? ""));
-    const flagged = extractDrugCandidates(summary).filter((c) => !isGroundedInTranscript(c, normT));
+    const isGrounded = (c) => {
+      const probes = resolveDrugProbes(c);
+      if (probes) return probes.some((p) => isGroundedInTranscript(p, normT));
+      return isGroundedInTranscript(c, normT);
+    };
+    const flagged = extractDrugCandidates(summary).filter((c) => !isGrounded(c));
     let text = summary;
     // 長い候補から付与（短い候補が長い候補の部分文字列でも二重付与しない）。
     // 既に⚠が付いている語には重ねない（再生成時の多重付与防止）。
