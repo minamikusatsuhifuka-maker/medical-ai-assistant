@@ -30,6 +30,20 @@ function assert(cond, msg) {
   console.log("  ✓ " + msg);
 }
 
+// 書き起こし欄へ入力して⚡要約ボタンが活性化するまで再試行する。
+// 本番ビルドはReactのhydration完了前にfillするとstateに反映されずボタンがdisabledのままになるため。
+async function fillTranscript(page, text) {
+  const tx = page.locator('textarea[placeholder*="録音ボタン"]').first();
+  await tx.waitFor({ timeout: 20000 });
+  const btn = page.getByRole("button", { name: "⚡ 要約" });
+  for (let i = 0; i < 10; i++) {
+    await tx.fill(text);
+    await page.waitForTimeout(700);
+    if (await btn.isEnabled()) return;
+  }
+  throw new Error("⚡ 要約ボタンが活性化しません（hydration未完了？）");
+}
+
 // §1 の実例（書き起こし抜粋）
 const REAL_TRANSCRIPT = `ユルムに使ってもらってる洗い流すタイプのウォッシュゲルとリフェリンゲルは刺激なく使えてますか?
 ディフェインゲールが全然いらなくて じゃあそれ余ってる感じですかね じゃあ今日はモッシュゲール以外で
@@ -132,9 +146,7 @@ async function part2() {
   });
 
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
-  const tx = page.locator('textarea[placeholder*="録音ボタン"]').first();
-  await tx.waitFor({ timeout: 20000 });
-  await tx.fill(REAL_TRANSCRIPT);
+  await fillTranscript(page, REAL_TRANSCRIPT);
   await page.getByRole("button", { name: "⚡ 要約" }).click();
 
   // 表示: 結果欄に⚠付きで反映される
@@ -166,8 +178,7 @@ async function part2() {
     body: `data: ${JSON.stringify({ chunk: CLEAN_SUMMARY, model: "gemini-3.6-flash" })}\n\n` + `data: ${JSON.stringify({ done: true, model: "gemini-3.6-flash", total: CLEAN_SUMMARY })}\n\n`,
   }));
   await page.reload({ waitUntil: "domcontentloaded" });
-  await tx.waitFor({ timeout: 20000 });
-  await tx.fill(REAL_TRANSCRIPT);
+  await fillTranscript(page, REAL_TRANSCRIPT);
   await page.getByRole("button", { name: "⚡ 要約" }).click();
   await page.getByText("ウォッシュゲル継続").first().waitFor({ timeout: 10000 });
   const bodyText2 = await page.locator("body").innerText();
@@ -208,9 +219,7 @@ async function part3() {
 
   try {
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    const tx = page.locator('textarea[placeholder*="録音ボタン"]').first();
-    await tx.waitFor({ timeout: 20000 });
-    await tx.fill(REAL_TRANSCRIPT);
+    await fillTranscript(page, REAL_TRANSCRIPT);
     await page.getByRole("button", { name: "⚡ 要約" }).click();
     await page.getByText(/要約完了/).first().waitFor({ timeout: 120000 });
     await page.waitForTimeout(800); // ガード適用後の最終sOut反映を待つ
