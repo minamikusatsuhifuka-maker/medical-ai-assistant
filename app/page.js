@@ -284,10 +284,12 @@ const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設�
 // 未設定時の既定表示（設定は常時表示のため必ず含める）。院長が設定画面で自由に変更可
 const DEFAULT_TOP_MENU_VISIBLE=["hist","settings","minutes","tasks"];
 
-// === 履歴一覧ホバープレビューの遅延（指示書 hover-preview-transcript-summary） ===
-// 表示250ms=通りすがりの誤爆防止 / 閉じ150ms=ボタン→ポップオーバーへのマウス移動猶予。変更はこの2定数のみ
-const HOVER_PV_OPEN_MS=250;
+// === 履歴一覧ホバープレビューの遅延（指示書 hover-preview-transcript-summary / quick-fixes で高速化） ===
+// 表示80ms=誤爆防止しつつ体感即時 / 閉じ150ms=ボタン→ポップオーバーへのマウス移動猶予。変更はこの3定数のみ
+const HOVER_PV_OPEN_MS=80;
 const HOVER_PV_CLOSE_MS=150;
+// 連続モード: 直前のプレビューを閉じてから この時間内に別ボタンへホバーしたら遅延ゼロで即表示（メニューバー挙動・60件流し見のテンポ用）
+const HOVER_PV_CHAIN_MS=500;
 
 // === TEMPLATES ===
 const DEFAULT_VISIBLE_TPLS=["soap-std","soap-min","counseling-std"];
@@ -620,7 +622,12 @@ const DEFAULT_DICT=[
 // 端末のlocalStorage(mk_dict)には削除前の辞書コピーが残存し得るため、読み込み・マージ時に常時除去する
 // （「いただれ（びらん）きました」等の誤置換が削除後も再発する根本原因）。
 const DICT_BANNED_FROM=new Set(["ただ","たこ","べんち"]);
-const sanitizeDict=(entries)=>Array.isArray(entries)?entries.filter(e=>Array.isArray(e)&&e[0]&&e[1]&&!DICT_BANNED_FROM.has(String(e[0]).trim())):entries;
+// 既知の有害辞書エントリ（from→toペア一致で読み込み・マージのたびに無条件除去する。今後はここに追加）
+const POISONED_DICT_ENTRIES=[
+  ["れも","でも"], // 「これも」を「こでも」に破壊する。2026-07 院長判断で恒久除去
+];
+const isPoisonedDictEntry=(from,to)=>POISONED_DICT_ENTRIES.some(([pf,pt])=>String(from).trim()===pf&&String(to).trim()===pt);
+const sanitizeDict=(entries)=>Array.isArray(entries)?entries.filter(e=>Array.isArray(e)&&e[0]&&e[1]&&!DICT_BANNED_FROM.has(String(e[0]).trim())&&!isPoisonedDictEntry(e[0],e[1])):entries;
 
 // 議事録の「表示専用」整形レンダラ。保存テキストは一切変えず、CSSの余白だけで可読化する。
 // ・見出し(■/【】) ・箇条書き(・/･/-) ・番号(1.) ・空行 を判定し、項目間の余白とぶら下げインデントを付ける。
@@ -757,6 +764,7 @@ const[histHoverPv,setHistHoverPv]=useState(null);
 const hoverPvOpenTimer=useRef(null);
 const hoverPvCloseTimer=useRef(null);
 const hoverPvCacheRef=useRef({});
+const hoverPvLastCloseRef=useRef(0);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm)setSummaryModel(sm);const mm=localStorage.getItem("mk_minutesModel");if(mm&&["gemini-3-6-flash","gemini-3-5-flash","gemini-3-pro","claude"].includes(mm))setMinutesModel(mm);const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np)setNoisePatterns(JSON.parse(np));const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1")}catch{}},[]);
@@ -1562,9 +1570,9 @@ const showTip=(e,text)=>{const r=e.currentTarget.getBoundingClientRect();setTool
 const hideTip=()=>setTooltip(t=>({...t,visible:false}));
 // ===== 履歴一覧ホバープレビュー（📝書起/📋要約） =====
 const hoverPvOn=hoverPreview&&canHover;
-const hoverPvClose=()=>{if(hoverPvOpenTimer.current){clearTimeout(hoverPvOpenTimer.current);hoverPvOpenTimer.current=null}if(hoverPvCloseTimer.current){clearTimeout(hoverPvCloseTimer.current);hoverPvCloseTimer.current=null}setHistHoverPv(null)};
+const hoverPvClose=()=>{if(hoverPvOpenTimer.current){clearTimeout(hoverPvOpenTimer.current);hoverPvOpenTimer.current=null}if(hoverPvCloseTimer.current){clearTimeout(hoverPvCloseTimer.current);hoverPvCloseTimer.current=null}setHistHoverPv(p=>{if(p)hoverPvLastCloseRef.current=Date.now();return null})};
 const hoverPvCancelClose=()=>{if(hoverPvCloseTimer.current){clearTimeout(hoverPvCloseTimer.current);hoverPvCloseTimer.current=null}};
-const hoverPvScheduleClose=()=>{hoverPvCancelClose();hoverPvCloseTimer.current=setTimeout(()=>{hoverPvCloseTimer.current=null;setHistHoverPv(null)},HOVER_PV_CLOSE_MS)};
+const hoverPvScheduleClose=()=>{hoverPvCancelClose();hoverPvCloseTimer.current=setTimeout(()=>{hoverPvCloseTimer.current=null;setHistHoverPv(p=>{if(p)hoverPvLastCloseRef.current=Date.now();return null})},HOVER_PV_CLOSE_MS)};
 // ボタンから離れたとき: 未表示なら表示予約を破棄、表示中なら閉じ予約（ポップオーバー側に乗れば hoverPvCancelClose で継続）
 const hoverPvLeave=()=>{if(hoverPvOpenTimer.current){clearTimeout(hoverPvOpenTimer.current);hoverPvOpenTimer.current=null}hoverPvScheduleClose()};
 const hoverPvEnter=(e,r,kind)=>{
@@ -1572,6 +1580,8 @@ const hoverPvEnter=(e,r,kind)=>{
   const rect=e.currentTarget.getBoundingClientRect();
   if(hoverPvOpenTimer.current)clearTimeout(hoverPvOpenTimer.current);
   hoverPvCancelClose();
+  // 連続モード: 表示中に隣のボタンへ移った・閉じてからHOVER_PV_CHAIN_MS以内 → 遅延ゼロで即差し替え表示
+  const chain=histHoverPv!==null||(Date.now()-hoverPvLastCloseRef.current)<HOVER_PV_CHAIN_MS;
   hoverPvOpenTimer.current=setTimeout(async()=>{
     hoverPvOpenTimer.current=null;
     try{
@@ -1600,7 +1610,7 @@ const hoverPvEnter=(e,r,kind)=>{
         setHistHoverPv(p=>p&&p.id===r.id&&p.kind===kind?{...p,loading:false,failed:true}:p);
       }
     }catch(err){console.error("hover preview error:",err)}
-  },HOVER_PV_OPEN_MS);
+  },chain?0:HOVER_PV_OPEN_MS);
 };
 // 一覧スクロール中は位置がずれるため追従させず即閉じる（capture:trueで内側スクロール容器も検知）
 useEffect(()=>{

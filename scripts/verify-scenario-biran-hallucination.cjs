@@ -16,16 +16,24 @@ const check = (name, cond, detail) => {
 
 // --- 1. sanitizeDict（ソースから抽出して実行） ---
 console.log("■ 辞書サニタイズ");
-const mSan = src.match(/const DICT_BANNED_FROM=new Set\(\[[^\]]*\]\);\nconst sanitizeDict=[^\n]*;/);
+// DICT_BANNED_FROM〜sanitizeDict の一連の定義（間の POISONED_DICT_ENTRIES 等を含む）を丸ごと抽出して実行する
+const mSan = src.match(/const DICT_BANNED_FROM=new Set\(\[[^\]]*\]\);[\s\S]*?const sanitizeDict=[^\n]*;/);
 check("sanitizeDict がソースに存在", !!mSan);
 if (mSan) {
-  const ctx = {};
-  new Function("ctx", mSan[0].replace(/const DICT_BANNED_FROM/, "ctx.DICT_BANNED_FROM").replace(/new Set/, "new Set").replace(/const sanitizeDict/, "ctx.sanitizeDict").replace(/DICT_BANNED_FROM\.has/, "ctx.DICT_BANNED_FROM.has"))(ctx);
-  const dirty = [["ただ", "ただれ（びらん）"], ["たこ", "胼胝"], ["べんち", "胼胝"], ["失神", "湿疹"], ["びらん", "びらん"]];
-  const cleaned = ctx.sanitizeDict(dirty);
+  const { sanitizeDict, POISONED_DICT_ENTRIES } = new Function(mSan[0] + "\nreturn { sanitizeDict, POISONED_DICT_ENTRIES };")();
+  const dirty = [["ただ", "ただれ（びらん）"], ["たこ", "胼胝"], ["べんち", "胼胝"], ["失神", "湿疹"], ["びらん", "びらん"], ["れも", "でも"], ["れも", "レモン"]];
+  const cleaned = sanitizeDict(dirty);
   check("「ただ」→ただれ（びらん）を除去", !cleaned.some(e => e[0] === "ただ"));
   check("「たこ」「べんち」も除去", !cleaned.some(e => e[0] === "たこ" || e[0] === "べんち"));
   check("正当な「失神」→湿疹は温存", cleaned.some(e => e[0] === "失神"));
+  // 「れも→でも」恒久浄化（2026-07 院長判断・quick-fixes指示書）
+  check("POISONED_DICT_ENTRIES に れも→でも が定義されている", Array.isArray(POISONED_DICT_ENTRIES) && POISONED_DICT_ENTRIES.some(([f, t]) => f === "れも" && t === "でも"));
+  check("「れも」→でも（汚染ペア）を除去", !cleaned.some(e => e[0] === "れも" && e[1] === "でも"));
+  check("ペア不一致の「れも」→レモンは温存（fromだけで消さない）", cleaned.some(e => e[0] === "れも" && e[1] === "レモン"));
+  // 浄化後の辞書では「これも」が破壊されない（短word経路 split/join 相当で確認）
+  const applySimple = (text, d) => { let r = text; for (const [f, t] of d) r = r.split(f).join(t); return r; };
+  check("浄化後の辞書で「これも」が破壊されない", applySimple("これも塗ってください", cleaned.filter(e => e[1] !== "レモン")) === "これも塗ってください");
+  check("浄化前の辞書なら「これも」が壊れる（テスト自体の有効性確認）", applySimple("これも塗ってください", [["れも", "でも"]]) !== "これも塗ってください");
 }
 check("mk_dict 読み込みにサニタイズ適用", /setDict\(sanitizeDict\(JSON\.parse\(d\)\)\)/.test(src));
 check("Supabaseマージにサニタイズ適用", /const merged=sanitizeDict\(\[\.\.\.sbEntries,\.\.\.localOnly\]\)/.test(src));

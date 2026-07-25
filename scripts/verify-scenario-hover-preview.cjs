@@ -87,12 +87,12 @@ const TRANSCRIPT_2_FETCHED = "こちらはホバー時に単体取得された�
   const sumBtn1 = page.getByRole("button", { name: "📋要約" }).first();
   await clickUntil(page.getByRole("button", { name: /📂 履歴/ }), sumBtn1);
 
-  // A) 250ms後に出現・直後は出ない
+  // A) 80ms後に出現・40msではまだ出ない
   await sumBtn1.hover();
-  await page.waitForTimeout(120);
-  assert((await popover.count()) === 0, "hover直後(120ms)はまだ出ない(250ms遅延=誤爆防止)");
+  await page.waitForTimeout(40);
+  assert((await popover.count()) === 0, "hover直後(40ms)はまだ出ない(80ms遅延=誤爆防止)");
   await page.waitForTimeout(400);
-  assert(await popover.isVisible(), "hoverから250ms経過でポップオーバー出現");
+  assert(await popover.isVisible(), "hoverから80ms経過でポップオーバー出現");
   const pvText = await popover.innerText();
   assert(pvText.includes("📋 要約") && pvText.includes("ステロイド外用を継続"), "要約テキストが空でなく表示される");
   assert(!pvText.includes("📋 コピー"), "ポップオーバーは閲覧専用(コピー/編集ボタンなし)");
@@ -108,6 +108,26 @@ const TRANSCRIPT_2_FETCHED = "こちらはホバー時に単体取得された�
   await emptySpot();
   await page.waitForTimeout(400);
   assert((await popover.count()) === 0, "余白へ移動すると150ms後に閉じる");
+
+  // C2) 連続モード: 閉じてからHOVER_PV_CHAIN_MS(500ms)以内の別ボタンhoverは遅延ゼロで即表示
+  //   直前のC)で閉じてから約400ms経過 → まだ猶予内。hover後60msで既に表示されていることを確認
+  await page.getByRole("button", { name: "📋要約" }).nth(1).hover();
+  await page.waitForTimeout(60);
+  assert(await popover.isVisible(), "閉じた直後(500ms以内)の別ボタンhoverは遅延なしで即表示(連続モード)");
+  // 表示中に別ボタンへ直接移動しても即差し替え
+  await page.getByRole("button", { name: "📝書起" }).first().hover();
+  await page.waitForTimeout(60);
+  assert(await popover.isVisible() && (await popover.innerText()).includes("📝 書き起こし"), "表示中に別ボタンへ移動すると即座に内容が差し替わる");
+  // 連続モードの失効: 閉じて700ms待つと80ms遅延に戻る
+  await emptySpot();
+  await page.waitForTimeout(700);
+  await page.getByRole("button", { name: "📋要約" }).nth(1).hover();
+  await page.waitForTimeout(40);
+  assert((await popover.count()) === 0, "閉じて700ms後のhoverでは即表示されない(80ms遅延が復活)");
+  await page.waitForTimeout(300);
+  assert(await popover.isVisible(), "700ms後のhoverも80ms遅延の後には表示される");
+  await emptySpot();
+  await page.waitForTimeout(700); // 連続モードを確実に失効させてから次のシナリオへ
 
   // D) 📝書起でも出る（rec-1=カード保持→fetchなし）
   const inpBtn1 = page.getByRole("button", { name: "📝書起" }).first();
