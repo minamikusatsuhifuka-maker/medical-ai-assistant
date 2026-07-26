@@ -6,6 +6,7 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
+import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, extractDiseaseHeadings, findIntakeTopicMatch, planIntakeMerge } from "./lib/intake-knowledge";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -280,7 +281,7 @@ URL.revokeObjectURL(url);
 };
 
 // === トップメニュー定義（表示/非表示のカスタマイズ対象。動作はmenuActionsで付与） ===
-const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary"},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks"},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"explain",i:"📚",t:"説明ナレッジ"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル"}];
+const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary"},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks"},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"explain",i:"📚",t:"説明ナレッジ"},{p:"intake",i:"🩺",t:"事前問診"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル"}];
 // 未設定時の既定表示（設定は常時表示のため必ず含める）。院長が設定画面で自由に変更可
 const DEFAULT_TOP_MENU_VISIBLE=["hist","settings","minutes","tasks"];
 
@@ -757,6 +758,18 @@ const[explainEditText,setExplainEditText]=useState("");
 const[dailyExplainLd,setDailyExplainLd]=useState(null);
 const[explainLastDk,setExplainLastDk]=useState(null);
 const[explainDraftCount,setExplainDraftCount]=useState(0);
+// 事前問診（疾患別・医師の質問を抽出→承認→スタッフ閲覧。説明ナレッジと同じ3段構成）
+const[intakeTab,setIntakeTab]=useState("view");
+const[intakeTopics,setIntakeTopics]=useState([]);
+const[intakeItems,setIntakeItems]=useState([]);
+const[intakeLd,setIntakeLd]=useState(false);
+const[intakeSel,setIntakeSel]=useState(null);
+const[intakeDays,setIntakeDays]=useState(90);
+const[intakeFilter,setIntakeFilter]=useState("");
+const[intakeRunning,setIntakeRunning]=useState(false);
+const[intakeProg,setIntakeProg]=useState(null);
+const[intakeEditId,setIntakeEditId]=useState(null);
+const[intakeEditQ,setIntakeEditQ]=useState("");
 // 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
 const[hoverPreview,setHoverPreview]=useState(true);
 const[canHover,setCanHover]=useState(false);
@@ -3760,6 +3773,95 @@ const explainSetStatus=async(ids,status,contentOverride)=>{
     sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:`✗ ${ids.length}件を却下しました`);
   }catch(e){console.error("explain status error:",e);sSt("更新エラー: "+(e.message||e))}
 };
+// ===== 事前問診（説明ナレッジと同じ3段構成・同じ承認パスワードゲートを流用） =====
+const isMissingIntakeTable=(e)=>e&&(e.code==="42P01"||/does not exist|schema cache/i.test(e.message||""));
+const INTAKE_TABLE_HINT="⚠ 事前問診のテーブル未作成です。supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行してください";
+const loadIntake=async()=>{if(!supabase)return;setIntakeLd(true);try{const[t,i]=await Promise.all([supabase.from("intake_topics").select("*").order("created_at",{ascending:true}),supabase.from("intake_items").select("*").order("created_at",{ascending:false})]);if(t.error)throw t.error;if(i.error)throw i.error;setIntakeTopics(t.data||[]);setIntakeItems(i.data||[])}catch(e){console.error("intake load error:",e);sSt(isMissingIntakeTable(e)?INTAKE_TABLE_HINT:"事前問診読込エラー: "+(e.message||e))}finally{setIntakeLd(false)}};
+const runIntakeExtract=async()=>{
+  if(intakeRunning)return;
+  setIntakeRunning(true);setIntakeProg(null);btnFbSet("intakeExtract","run","抽出中…");
+  try{
+    if(!supabase)throw new Error("Supabase未接続");
+    // 期間内の診察記録をページングで取得（上限3000件・新しい順）
+    const fromDate=new Date(Date.now()-intakeDays*24*60*60*1000);
+    const recs=[];
+    for(let pg=0;pg<3;pg++){
+      const{data,error}=await supabase.from("records").select("input_text,output_text,created_at").gte("created_at",fromDate.toISOString()).order("created_at",{ascending:false}).range(pg*1000,pg*1000+999);
+      if(error)throw error;recs.push(...(data||[]));if(!data||data.length<1000)break;
+    }
+    // 要約の「# 疾患名」見出しで疾患ごとにグループ化（見出しの無い記録は対象外）
+    const groups={};
+    for(const r of recs){for(const name of extractDiseaseHeadings(r.output_text)){(groups[name]=groups[name]||[]).push(r)}}
+    let names=Object.keys(groups);
+    const filter=intakeFilter.trim();
+    if(filter)names=names.filter(n=>n.includes(filter));
+    if(names.length===0){sSt("対象疾患が見つかりません（要約に「# 疾患名」見出しのある記録が対象）");btnFbSet("intakeExtract","err","⚠ 対象疾患なし");return}
+    names.sort((a,b)=>groups[b].length-groups[a].length);
+    // 既存topics/itemsを取得してマージ計画に使う
+    const[t0,i0]=await Promise.all([supabase.from("intake_topics").select("*"),supabase.from("intake_items").select("id,topic_id,category,question,seen_count,status")]);
+    if(t0.error)throw t0.error;if(i0.error)throw i0.error;
+    const topics=[...(t0.data||[])];const items=[...(i0.data||[])];
+    let added=0,bumped=0,failed=0;
+    for(let ix=0;ix<names.length;ix++){
+      const name=names[ix];
+      setIntakeProg({done:ix,total:names.length,current:name});
+      try{
+        // 疾患ごとに最大30記録（新しい順）をサンプリング。全件処理はしない（追加実行でseen_countが育つ設計）
+        const sample=groups[name].slice(0,30).map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));
+        const res=await fetch("/api/intake-extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({disease:name,records:sample})});
+        const d=await res.json().catch(()=>({}));
+        if(!res.ok||d.error)throw new Error(d.error||("サーバーエラー("+res.status+")"));
+        // topic を作成 or 期間・件数を更新
+        let topic=findIntakeTopicMatch(name,topics);
+        const periodPatch={period_from:fromDate.toISOString().slice(0,10),period_to:new Date().toISOString().slice(0,10),record_count:sample.length};
+        if(!topic){const ins=await supabase.from("intake_topics").insert({name,...periodPatch,status:"draft"}).select("*").single();if(ins.error)throw ins.error;topic=ins.data;topics.push(topic)}
+        else{const up=await supabase.from("intake_topics").update(periodPatch).eq("id",topic.id);if(up.error)throw up.error}
+        // 重複は集約して seen_count 加算（頻度1でも捨てない）
+        const plan=planIntakeMerge(d.items||[],items.filter(x=>x.topic_id===topic.id));
+        if(plan.newItems.length>0){
+          const rows=plan.newItems.map(n=>({topic_id:topic.id,category:n.category,question:n.question,intent:n.intent||null,status:"draft",seen_count:1}));
+          const ins2=await supabase.from("intake_items").insert(rows).select("id,topic_id,category,question,seen_count,status");
+          if(ins2.error)throw ins2.error;items.push(...(ins2.data||[]));added+=plan.newItems.length;
+        }
+        for(const id of plan.increments){const cur=items.find(x=>x.id===id);const up2=await supabase.from("intake_items").update({seen_count:(cur?.seen_count||1)+1,updated_at:new Date().toISOString()}).eq("id",id);if(up2.error)throw up2.error;if(cur)cur.seen_count=(cur.seen_count||1)+1;bumped++}
+      }catch(err){console.error("intake extract error("+name+"):",err);failed++}
+      setIntakeProg({done:ix+1,total:names.length,current:name});
+    }
+    const okMsg=`✓ ${names.length}疾患処理・${added}件追加・${bumped}件カウント更新`+(failed?`・⚠${failed}疾患失敗`:"");
+    sSt("事前問診: "+okMsg);btnFbSet("intakeExtract",failed===names.length?"err":"ok",failed===names.length?"⚠ 全疾患で失敗":okMsg);
+    loadIntake();
+  }catch(e){
+    console.error("intake extract error:",e);
+    const msg=isMissingIntakeTable(e)?"テーブル未作成(SQL実行が必要)":String(e.message||e).slice(0,48);
+    sSt(isMissingIntakeTable(e)?INTAKE_TABLE_HINT:"事前問診抽出エラー: "+msg);btnFbSet("intakeExtract","err","⚠ 失敗: "+msg);
+  }finally{setIntakeRunning(false)}
+};
+// 承認/却下/編集して承認（説明ナレッジと同じパスワードゲート explainAuth を流用）
+const intakeSetStatus=async(ids,status,questionOverride)=>{
+  if(!explainAuth())return;
+  try{
+    for(const id of ids){const patch={status,updated_at:new Date().toISOString()};if(questionOverride!==undefined&&ids.length===1)patch.question=questionOverride;const up=await supabase.from("intake_items").update(patch).eq("id",id);if(up.error)throw up.error}
+    // 承認済み項目が1つでも生まれた疾患は topic を approved に
+    if(status==="approved"){const tids=[...new Set(intakeItems.filter(it=>ids.includes(it.id)).map(it=>it.topic_id))];for(const tid of tids){await supabase.from("intake_topics").update({status:"approved"}).eq("id",tid)}setIntakeTopics(prev=>prev.map(t=>tids.includes(t.id)?{...t,status:"approved"}:t))}
+    setIntakeItems(prev=>prev.map(it=>ids.includes(it.id)?{...it,status,...(questionOverride!==undefined&&ids.length===1?{question:questionOverride}:{})}:it));
+    setIntakeEditId(null);setIntakeEditQ("");
+    sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:`✗ ${ids.length}件を却下しました`);
+  }catch(e){console.error("intake status error:",e);sSt("更新エラー: "+(e.message||e))}
+};
+// 印刷用出力（紙で使う運用を想定）: 別ウィンドウに問診リストを書き出して印刷ダイアログを開く
+const printIntake=(entry)=>{
+  try{
+    const esc=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    let html=`<html><head><title>事前問診 ${esc(entry.t.name)}</title><style>body{font-family:'Hiragino Sans','Yu Gothic',sans-serif;padding:24px;color:#222}h1{font-size:18px;border-bottom:2px solid #555;padding-bottom:6px}h2{font-size:14px;background:#f0f0f0;padding:4px 8px;margin:14px 0 6px}li{font-size:13px;line-height:1.9;margin-bottom:4px}.note{font-size:11px;color:#666;border:1px solid #ccc;padding:6px 10px;margin-bottom:12px}.intent{color:#888;font-size:11px}</style></head><body>`;
+    html+=`<h1>🩺 事前問診チェックリスト: ${esc(entry.t.name)}</h1><p class="note">${esc(INTAKE_DISCLAIMER)}</p>`;
+    INTAKE_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return;html+=`<h2>${c.icon} ${esc(c.id)}</h2><ul>`;its.forEach(i=>{html+=`<li>☐ ${esc(i.question)}${i.intent?` <span class="intent">（${esc(i.intent)}）</span>`:""}</li>`});html+="</ul>"});
+    html+=`<p class="note">出力日: ${new Date().toLocaleDateString("ja-JP")}</p></body></html>`;
+    const w=window.open("","_blank");if(!w){sSt("⚠ ポップアップがブロックされました");return}
+    w.document.write(html);w.document.close();setTimeout(()=>{try{w.print()}catch{}},300);
+  }catch(e){console.error("intake print error:",e);sSt("印刷エラー: "+(e.message||e))}
+};
+const buildIntakeCopyText=(entry)=>{let s=`【事前問診: ${entry.t.name}】\n※${INTAKE_DISCLAIMER}\n`;INTAKE_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return;s+=`\n■ ${c.id}\n`;its.forEach(i=>{s+=`□ ${i.question}\n`})});return s};
+
 const BULK_MODES=[{id:"treatment",label:"🏥 疾患別治療説明・プランまとめ"},{id:"patient",label:"👤 患者説明文の自動生成"},{id:"protocol",label:"📋 治療プロトコル抽出"},{id:"faq",label:"❓ よくある質問FAQ生成"},{id:"training",label:"📚 スタッフ向け研修資料生成"}];
 const runBulkAnalyze=async(mode)=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setBulkMenu(false);setBulkLd(true);const modeLabel=BULK_MODES.find(m=>m.id===mode)?.label||mode;sSt(`⏳ 分析中... (${selected.length}件)`);try{const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));const r=await fetch("/api/bulk-analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records,mode})});if(!r.ok){sSt("分析エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("分析エラー: "+d.error);return}setBulkResult({title:modeLabel,content:d.result||""});sSt("分析完了")}catch(e){sSt("分析エラー: "+e.message)}finally{setBulkLd(false)}};
 
@@ -5155,6 +5257,91 @@ if(page==="knowledge"){const KB_MODES=[{id:"report",label:"📊 月次品質レ�
   </div>
 </div>}
 </div>)}
+
+// === INTAKE (事前問診) PAGE ===
+if(page==="intake"){
+const approvedByTopic={};intakeItems.filter(i=>i.status==="approved").forEach(i=>{(approvedByTopic[i.topic_id]=approvedByTopic[i.topic_id]||[]).push(i)});
+const viewTopics=intakeTopics.filter(t=>approvedByTopic[t.id]?.length).map(t=>({t,items:approvedByTopic[t.id],total:approvedByTopic[t.id].reduce((s,i)=>s+(i.seen_count||1),0)})).sort((a,b)=>b.total-a.total);
+const selEntry=viewTopics.find(x=>x.t.id===intakeSel)||null;
+const draftItems=intakeItems.filter(i=>i.status==="draft");
+const draftTopics=intakeTopics.map(t=>({t,items:draftItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
+const intakeCatOf=(id)=>INTAKE_CATEGORIES.find(c=>c.id===id)||{id,icon:"📌"};
+return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+<h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>🩺 事前問診</h2>
+<div style={{display:"flex",gap:6,alignItems:"center"}}>
+<button onClick={loadIntake} disabled={intakeLd} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>{intakeLd?"⏳ 読込中...":"🔄 再読込"}</button>
+<button onClick={()=>setPage("main")} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
+</div></div>
+<div style={{fontSize:12,color:"#92400e",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,padding:"8px 12px",marginBottom:10,fontWeight:600}}>{INTAKE_DISCLAIMER}</div>
+{st&&st!=="待機中"&&<div style={{fontSize:12,color:st.includes("✓")?"#22c55e":st.includes("エラー")||st.includes("⚠")?"#ef4444":"#f59e0b",fontWeight:600,marginBottom:8,textAlign:"center",padding:"4px 8px",borderRadius:8,background:st.includes("✓")?"#f0fdf4":st.includes("エラー")||st.includes("⚠")?"#fef2f2":"#fffbeb"}}>{st}</div>}
+<div style={{display:"flex",gap:6,marginBottom:14}}>
+<button onClick={()=>setIntakeTab("view")} style={{padding:"8px 18px",borderRadius:10,border:"none",background:intakeTab==="view"?C.p:C.g100,color:intakeTab==="view"?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>👀 閲覧</button>
+<button onClick={()=>setIntakeTab("approve")} style={{padding:"8px 18px",borderRadius:10,border:"none",background:intakeTab==="approve"?"#6d28d9":C.g100,color:intakeTab==="approve"?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✅ 承認（院長）{draftItems.length>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:9,background:"#fbbf24",color:"#78350f",fontSize:11,fontWeight:700}}>{draftItems.length}</span>}</button>
+</div>
+{intakeTab==="approve"&&<div>
+{/* 抽出パネル: 過去の診察から疾患ごとに医師の質問を抽出（期間・疾患フィルタ指定） */}
+<div style={{...card,marginBottom:14}}>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:8}}>📥 診察履歴から問診項目を抽出</div>
+<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+<span style={{fontSize:12,color:C.g500}}>対象期間:</span>
+{[30,90,180].map(d=><button key={d} onClick={()=>setIntakeDays(d)} style={{padding:"4px 12px",borderRadius:8,border:intakeDays===d?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:intakeDays===d?C.pLL:C.w,fontSize:12,fontWeight:intakeDays===d?700:500,color:intakeDays===d?C.pDD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>過去{d}日</button>)}
+<input value={intakeFilter} onChange={e=>setIntakeFilter(e.target.value)} placeholder="疾患名で絞る（空欄=全疾患）" style={{flex:1,minWidth:180,padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none"}}/>
+</div>
+<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+<button onClick={runIntakeExtract} disabled={intakeRunning} style={{padding:"8px 18px",borderRadius:10,border:"none",background:intakeRunning?C.g200:"#6d28d9",color:intakeRunning?C.g500:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:intakeRunning?"wait":"pointer"}}>{intakeRunning?"⏳ 抽出中...":"📥 抽出を実行"}</button>
+<BtnFb k="intakeExtract"/>
+{intakeProg&&<span style={{fontSize:12,color:C.g500,fontWeight:600}}>{intakeProg.done}/{intakeProg.total}疾患 完了{intakeRunning?`（処理中: ${intakeProg.current}）`:""}</span>}
+</div>
+<p style={{fontSize:11,color:C.g400,marginTop:6,marginBottom:0}}>要約に「# 疾患名」見出しのある記録が対象。疾患ごとに最新30記録まで処理し、再実行すると同内容は頻度(×N)が育ちます。</p>
+</div>
+{draftTopics.length===0&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行）</span></div>}
+{draftTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>下書き {x.items.length}件（{x.t.record_count||0}記録から抽出）</span></div>
+<button onClick={()=>intakeSetStatus(x.items.map(i=>i.id),"approved")} style={{padding:"5px 14px",borderRadius:10,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ この疾患を一括承認（{x.items.length}件）</button>
+</div>
+{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fdfcff"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#6d28d9",marginBottom:6}}>{c.icon} {c.id}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+{isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #c4b5fd`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
+{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{isEdit?(<>
+<button onClick={()=>{if(intakeEditQ.trim())intakeSetStatus([i.id],"approved",intakeEditQ.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 この内容で承認</button>
+<button onClick={()=>{setIntakeEditId(null);setIntakeEditQ("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</>):(<>
+<button onClick={()=>intakeSetStatus([i.id],"approved")} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 承認</button>
+<button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集して承認</button>
+<button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
+</>)}
+</div>
+</div>)})}
+</div>))}
+</div>}
+{intakeTab==="view"&&<div>
+{viewTopics.length===0&&!intakeLd&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:30}}>承認済みの問診項目がまだありません。<br/><span style={{fontSize:11,color:C.g400}}>承認（院長）タブで抽出→承認すると、ここに表示されます。</span></div>}
+<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+{viewTopics.map(x=>(<button key={x.t.id} onClick={()=>setIntakeSel(intakeSel===x.t.id?null:x.t.id)} style={{padding:"8px 14px",borderRadius:12,border:intakeSel===x.t.id?`2px solid ${C.rG}`:`1.5px solid ${C.g200}`,background:intakeSel===x.t.id?"#dcfce7":C.w,fontSize:13,fontWeight:intakeSel===x.t.id?700:600,color:intakeSel===x.t.id?"#166534":C.g700,fontFamily:"inherit",cursor:"pointer"}}>{x.t.name}<span style={{marginLeft:6,fontSize:11,color:C.g400}}>{x.items.length}問</span></button>))}
+</div>
+{selEntry&&<div style={{...card}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>{selEntry.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>{selEntry.items.length}問</span></div>
+<div style={{display:"flex",gap:6}}>
+<button onClick={()=>{navigator.clipboard.writeText(buildIntakeCopyText(selEntry));sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>printIntake(selEntry)} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:12,fontWeight:600,color:"#1d4ed8",fontFamily:"inherit",cursor:"pointer"}}>🖨 印刷</button>
+</div>
+</div>
+{INTAKE_CATEGORIES.map(c=>{const its=selEntry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return null;return(<div key={c.id} style={{marginBottom:14}}>
+<div style={{fontSize:13,fontWeight:700,color:"#2a5018",padding:"6px 10px",background:"rgba(160,220,100,0.15)",borderRadius:8,marginBottom:6}}>■ {c.icon} {c.id}</div>
+{its.map(i=>(<div key={i.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 10px",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:13,color:C.g700,lineHeight:1.7,flex:1,whiteSpace:"pre-wrap"}}>□ {i.question}{i.intent&&<span style={{marginLeft:8,fontSize:11,color:C.g400}}>（{i.intent}）</span>}</span>
+{(i.seen_count||1)>1&&<span title="別の診察でも同じ質問が抽出された回数（頻出度）" style={{padding:"1px 7px",borderRadius:8,background:"#fef3c7",color:"#92400e",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>×{i.seen_count}</span>}
+</div>))}
+</div>)})}
+</div>}
+</div>}
+</div>);
+}
 
 // === SATISFACTION ANALYSIS PAGE ===
 if(page==="explain"){
@@ -6914,7 +7101,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {(()=>{
 // よく使うものだけ常時表示、残りは「⋯その他」で展開（既定は折りたたみ）。設定(settings)は常時表示固定
-const menuActions={hist:()=>{loadHist();setPage("hist")},caselib:()=>{loadFavorites();setPage("caselib")},tasks:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")},explain:()=>{loadExplain();setPage("explain")},manual:()=>window.open('/manual.pdf','_blank')};
+const menuActions={hist:()=>{loadHist();setPage("hist")},caselib:()=>{loadFavorites();setPage("caselib")},tasks:()=>{loadTasks();loadStaff();loadMinHist();loadTodos();setPage("tasks")},explain:()=>{loadExplain();setPage("explain")},intake:()=>{loadIntake();setPage("intake")},manual:()=>window.open('/manual.pdf','_blank')};
 const avail=TOP_MENU.filter(m=>!m.mh||!(mob&&mobileHideItems[m.mh]));
 const vis=new Set([...(topMenuVisible||DEFAULT_TOP_MENU_VISIBLE),"settings"]);
 const shown=avail.filter(m=>vis.has(m.p)),hidden=avail.filter(m=>!vis.has(m.p));
