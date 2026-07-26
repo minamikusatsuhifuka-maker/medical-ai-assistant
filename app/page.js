@@ -7,7 +7,7 @@ import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, findIntakeTopicMatch, planIntakeMerge } from "./lib/intake-knowledge";
-import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings } from "./lib/disease-canonical";
+import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings, isNonDiseaseKey } from "./lib/disease-canonical";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -3805,6 +3805,9 @@ const runIntakeExtract=async()=>{
     const groups={};let unclassified=0;
     for(const r of recs){const parsed=parseDiseaseHeadings(r.output_text,aliasMap);unclassified+=parsed.unclassified;for(const name of parsed.names){(groups[name]=groups[name]||[]).push(r)}}
     let names=Object.keys(groups);
+    // 非疾患（美容メニュー・皮膚科外・症状名のみ）は事前問診の対象外（削除はせず件数集計のみ）
+    const nonDiseaseCount=names.filter(n=>isNonDiseaseKey(n)).length;
+    names=names.filter(n=>!isNonDiseaseKey(n));
     const filter=intakeFilter.trim();
     if(filter)names=names.filter(n=>n.includes(filter));
     // 最低出現件数のしきい値（既定3・1に下げれば全件）: 出現1件の見出しが7割を占め名寄せ労力に見合わないため
@@ -3841,7 +3844,8 @@ const runIntakeExtract=async()=>{
       }catch(err){console.error("intake extract error("+name+"):",err);failed++}
       setIntakeProg({done:ix+1,total:names.length,current:name});
     }
-    const okMsg=`✓ ${names.length}疾患処理・${added}件追加・${bumped}件カウント更新`+(failed?`・⚠${failed}疾患失敗`:"")+(unclassified?`（未分類見出し${unclassified}件は対象外）`:"");
+    const skipNote=[unclassified?`未分類見出し${unclassified}件`:"",nonDiseaseCount?`非疾患${nonDiseaseCount}種`:""].filter(Boolean).join("・");
+    const okMsg=`✓ ${names.length}疾患処理・${added}件追加・${bumped}件カウント更新`+(failed?`・⚠${failed}疾患失敗`:"")+(skipNote?`（${skipNote}は対象外）`:"");
     sSt("事前問診: "+okMsg);btnFbSet("intakeExtract",failed===names.length?"err":"ok",failed===names.length?"⚠ 全疾患で失敗":okMsg);
     loadIntake();
   }catch(e){

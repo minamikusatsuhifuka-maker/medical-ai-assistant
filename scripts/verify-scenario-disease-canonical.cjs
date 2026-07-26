@@ -31,24 +31,8 @@ async function loadLib() {
   return import(pathToFileURL(path.join(dir, "disease-canonical.js")).href);
 }
 
-// エイリアス辞書の初期案（院長へ提示するもの。DBには適用しない。Part2の効果測定にのみ使用）
-const ALIAS_PROPOSAL = {
-  "胼胝腫": "胼胝", "たこ": "胼胝", "タコ": "胼胝",
-  "ウオノメ": "鶏眼", "魚の目": "鶏眼",
-  "水いぼ": "伝染性軟属腫", "水イボ": "伝染性軟属腫", "みずいぼ": "伝染性軟属腫",
-  "虫咬傷": "虫刺症", "虫咬症": "虫刺症", "昆虫刺傷": "虫刺症", "虫さされ": "虫刺症",
-  "AGA": "男性型脱毛症",
-  "巻き爪": "陥入爪",
-  "ひょう疽": "爪囲炎",
-  "粉瘤": "表皮嚢腫",
-  "とびひ": "伝染性膿痂疹", "飛び火": "伝染性膿痂疹",
-  "ただれ": "びらん", "皮膚糜爛": "びらん",
-  "汗疱状湿疹": "汗疱", "異汗性湿疹": "汗疱",
-  "やけど": "熱傷", "火傷": "熱傷",
-  "ヘルペス": "単純疱疹",
-  "ホクロ": "色素性母斑", "ほくろ": "色素性母斑",
-  "結節性痒疹": "痒疹", // normalization-correction §3-D で院長確定（統合する）
-};
+// エイリアス辞書の最終セット（正本は scripts/disease-aliases-data.cjs。登録は setup-disease-aliases.cjs）
+const ALIAS_PROPOSAL = require("./disease-aliases-data.cjs").ALIASES;
 
 // ========== Part1: 単体（v3: 部位5カテゴリ正規化・包括語括弧の例外・独立維持） ==========
 async function part1() {
@@ -110,6 +94,25 @@ async function part1() {
   assert(c("胼胝（たこ）") === "胼胝" && c("爪囲炎（そういえん）") === "爪囲炎" && c("男性型脱毛症（AGA）") === "男性型脱毛症", "「正式名（読み仮名/略号）」型は括弧外を採る");
   // エイリアス適用
   assert(c("タコ（胼胝腫）", ALIAS_PROPOSAL) === "胼胝", "エイリアス適用: 胼胝腫→胼胝");
+  // ===== normalization-addendum §1: パーサ残骸 =====
+  assert(c("S）") === null && c("カルテ要約") === null && c("記載不能") === null && c("詳細病名不明") === null, "S）/カルテ要約/記載不能/詳細病名不明 は疾患として扱わない");
+  assert(c("O)") === null && c("P：") === null, "構造ガード: 2文字以下で）)：:を含む見出しは疾患として扱わない");
+  assert(c("びらん（詳細不明）") === "びらん", "「不明」の完全一致除外が「びらん（詳細不明）」を誤爆しない");
+  const pS = lib.parseDiseaseHeadings("# \nS）\nO）\nP）3日に1回、2ヶ月後再診");
+  assert(pS.names.length === 0, "空見出し行「# 」の次行S）を見出しとして拾わない（regex根治）");
+  // ===== normalization-addendum §2: 非疾患フラグ =====
+  assert(lib.isNonDiseaseKey("医療脱毛") && lib.isNonDiseaseKey("緑内障") && lib.isNonDiseaseKey("かゆみ") && lib.isNonDiseaseKey("腋窩"), "非疾患リスト: 美容/皮膚科外/症状名のみが判定される");
+  assert(!lib.isNonDiseaseKey("尋常性ざ瘡") && !lib.isNonDiseaseKey("体部湿疹"), "非疾患リスト: 疾患キーは判定されない");
+  // ===== normalization-addendum §3: 追加エイリアス =====
+  for (const h of ["足の匂い", "足の臭い", "足の細菌感染症", "足の細菌感染", "足部細菌感染症", "足部細菌性感染症", "足部雑菌臭", "足の皮膚感染症", "足の炎症", "細菌感染", "細菌感染の可能性"]) {
+    assert(c(h, ALIAS_PROPOSAL) === "足部臭", `§3-A: ${h} → 足部臭`);
+  }
+  assert(c("ざ瘡", ALIAS_PROPOSAL) === "尋常性ざ瘡" && c("眼瞼炎", ALIAS_PROPOSAL) === "眼瞼皮膚炎" && c("脱頭髪症", ALIAS_PROPOSAL) === "脱毛症", "§3-B: ざ瘡/眼瞼炎/脱頭髪症の統合");
+  assert(c("擦破傷", ALIAS_PROPOSAL) === "擦過傷" && c("皮膚擦過傷", ALIAS_PROPOSAL) === "擦過傷" && c("皮膚外傷", ALIAS_PROPOSAL) === "外傷", "§3-B: 擦過傷/外傷系の統合");
+  assert(c("炎症性皮膚疾患", ALIAS_PROPOSAL) === "炎症性皮膚炎" && c("原発性局所多汗症", ALIAS_PROPOSAL) === "多汗症" && c("指先のびらん", ALIAS_PROPOSAL) === "びらん", "§3-B: 炎症性皮膚炎/多汗症/びらんの統合");
+  // §3-C 統合しないもの（回帰）
+  assert(c("マダニ（マダニ刺咬症）", ALIAS_PROPOSAL) === "マダニ刺咬症", "§3-C: マダニ刺咬症は虫刺症に統合しない");
+  assert(c("いんきんたむし（股部白癬）", ALIAS_PROPOSAL) === "股部白癬", "§3-C: 股部白癬は他の白癬に寄せない");
   // §3-D 追加のエイリアス決定（normalization-correction・院長確定）
   assert(c("痒疹（結節性痒疹）", ALIAS_PROPOSAL) === "痒疹" && c("結節性痒疹", ALIAS_PROPOSAL) === "痒疹", "§3-D: 結節性痒疹→痒疹に統合（エイリアス）");
   assert(c("脱毛症") === "脱毛症" && c("脱毛症") !== c("薄毛（男性型脱毛症）") && c("脱毛症") !== c("円形脱毛症"), "§3-D: 脱毛症(詳細不明)は独立のまま（男性型・円形に寄せない）");
@@ -156,8 +159,13 @@ async function part2() {
   console.log(`  対象記録: ${recs.length}件`);
   console.log(`  正規化前: ${raw.size}種`);
   console.log(`  正規化後（エイリアス適用前）: ${canon.size}種（未分類見出し ${unclassified}行）`);
-  console.log(`  正規化後（エイリアス初期案適用後）: ${canonAlias.size}種`);
-  const top = [...canonAlias.entries()].sort((a, b) => b[1] - a[1]);
+  console.log(`  正規化後（エイリアス適用後）: ${canonAlias.size}種`);
+  // 非疾患フラグ（抽出対象外・件数集計には残す）
+  const nonDisease = [...canonAlias.entries()].filter(([k]) => lib.isNonDiseaseKey(k)).sort((a, b) => b[1] - a[1]);
+  console.log(`  非疾患フラグ: ${nonDisease.length}種・計${nonDisease.reduce((s, [, n]) => s + n, 0)}件`);
+  console.log(`    ${nonDisease.map(([k, n]) => `${k}(${n})`).join(" / ")}`);
+  const top = [...canonAlias.entries()].filter(([k]) => !lib.isNonDiseaseKey(k)).sort((a, b) => b[1] - a[1]);
+  console.log(`  抽出対象の疾患（非疾患除外後）: ${top.length}種`);
   const ge3 = top.filter(([, n]) => n >= 3);
   const cover = ge3.reduce((s, [, n]) => s + n, 0) / top.reduce((s, [, n]) => s + n, 0) * 100;
   console.log(`  最低出現3件以上: ${ge3.length}疾患（見出しベースのカバー率 ${cover.toFixed(1)}%）`);

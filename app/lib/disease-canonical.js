@@ -78,8 +78,22 @@ export const VARIANT_MAP = [
 ];
 const normalizeVariant = (s) => VARIANT_MAP.reduce((t, [from, to]) => t.split(from).join(to), s);
 
-// プレースホルダ（疾患として扱わない。「未分類」として件数のみ集計する）
+// プレースホルダ（疾患として扱わない。「未分類」として件数のみ集計する。今後の追加はこの2定数へ）
+// 含有判定: この語を含む行はプレースホルダ（「疾患名不明」「記載なし# 皮膚炎」等を包含）
 const PLACEHOLDER_RE = /疾患名|記載なし/;
+// 完全一致判定: 行全体がこの語のときだけプレースホルダ（含有にすると「びらん（詳細不明）」等の正当な見出しまで死ぬため）
+const PLACEHOLDER_EXACT = ["カルテ要約", "記載不能", "詳細病名不明", "病名不明", "不明"];
+
+// 非疾患の見出し（事前問診の抽出対象から外す。削除はせず件数集計には残す。正規化キー基準・定数1箇所）
+export const NON_DISEASE_KEYS = new Set([
+  // 美容・自費メニュー
+  "医療脱毛", "医療脱毛希望", "医療脱毛相談", "顔脱毛", "ヒゲ脱毛", "髭脱毛", "美肌治療", "小じわ", "妊娠線", "紫外線対策",
+  // 皮膚科以外の疾患・処置
+  "緑内障", "膀胱炎", "頸部痛", "末梢神経障害", "シェーグレン症候群", "アレルギー性鼻炎", "アレルギー性結膜炎", "ワクチン接種",
+  // 症状名のみ・部位のみで疾患が特定できないもの
+  "かゆみ", "痒み", "赤み", "紅斑", "発疹", "腋窩", "顔と爪の症状", "足の症状", "頭部・耳の症状", "頬・背中の皮膚症状", "皮膚病変", "外傷後の爪の変化・足底の角化",
+]);
+export const isNonDiseaseKey = (k) => NON_DISEASE_KEYS.has(k);
 
 const hasKanji = (s) => /[一-龯々]/.test(s);
 
@@ -94,8 +108,10 @@ export function toCanonicalDisease(heading, aliasMap) {
   // 評価文の混入を切り落とす（全角/半角スペース + A)S)O)P) 以降。全角・半角括弧の両方）
   h = h.replace(/[\s　]+[ASOP][）)].*$/, "").trim();
   if (!h) return null;
-  // プレースホルダは疾患として扱わない
-  if (PLACEHOLDER_RE.test(h)) return null;
+  // プレースホルダは疾患として扱わない（含有=疾患名/記載なし、完全一致=カルテ要約/記載不能/詳細病名不明 等）
+  if (PLACEHOLDER_RE.test(h) || PLACEHOLDER_EXACT.includes(h)) return null;
+  // 構造ガード: 2文字以下で ）)：: を含む見出しは疾患ではない（空見出し行の次行「S）」等が拾われた残骸の再発防止）
+  if ([...h].length <= 2 && /[）)：:]/.test(h)) return null;
   // 半角括弧→全角に統一
   h = h.replace(/\(/g, "（").replace(/\)/g, "）");
 
@@ -144,7 +160,9 @@ export function toCanonicalDisease(heading, aliasMap) {
 export function parseDiseaseHeadings(outputText, aliasMap) {
   const names = [];
   let unclassified = 0;
-  for (const m of String(outputText ?? "").matchAll(/^#\s+(.+?)\s*$/gm)) {
+  // 注意: \s は改行にもマッチするため /^#\s+(.+?)$/ だと空見出し行「# 」の次行（S）等）を捕捉してしまう。
+  // 行内空白のみ許可する（「S）」が見出し化した実バグの根治）
+  for (const m of String(outputText ?? "").matchAll(/^#[ \t　]+(.+?)[ \t　]*$/gm)) {
     const key = toCanonicalDisease(m[1], aliasMap);
     if (key) { if (!names.includes(key)) names.push(key); }
     else unclassified++;
