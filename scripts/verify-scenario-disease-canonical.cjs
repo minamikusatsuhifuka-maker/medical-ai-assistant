@@ -57,25 +57,29 @@ async function part1() {
     assert(c(h) === "体部湿疹", `${h} → 体部湿疹`);
   }
   assert(c("お尻の痒み（臀部湿疹）") === "陰部・臀部湿疹", "お尻の痒み（臀部湿疹）→ 陰部・臀部湿疹");
-  assert(c("殿部接触皮膚炎") === "接触皮膚炎", "殿部接触皮膚炎 → 接触皮膚炎（部位でなく病型に寄せる）");
+  assert(c("殿部接触皮膚炎") === "接触皮膚炎", "殿部接触皮膚炎 → 接触皮膚炎（コード側の切り出し・エイリアス不要で成立）");
   for (const h of ["湿疹", "湿疹（湿疹）", "湿疹（皮膚炎）", "皮膚炎", "皮膚炎（皮膚炎）", "湿疹・皮膚炎"]) {
     assert(c(h) === "体部湿疹", `${h} → 体部湿疹（裸の包括語）`);
   }
 
   // 独立を維持すべきもの（統合されないこと）
   for (const h of ["脂漏性皮膚炎", "脂漏性湿疹", "フケ症（脂漏性皮膚炎）", "頭皮湿疹（脂漏性皮膚炎）"]) {
-    assert(c(h) === "脂漏性皮膚炎", `${h} → 脂漏性皮膚炎（頭部湿疹に吸収されない・院長決定）`);
+    assert(c(h, ALIAS_PROPOSAL) === "脂漏性皮膚炎", `${h} → 脂漏性皮膚炎（頭部湿疹に吸収されない・院長決定）`);
   }
   for (const h of ["まぶたの湿疹（眼瞼皮膚炎）", "目元の湿疹（眼瞼皮膚炎）", "眼瞼湿疹"]) {
-    assert(c(h) === "眼瞼皮膚炎", `${h} → 眼瞼皮膚炎（顔面湿疹に吸収されない）`);
+    assert(c(h, ALIAS_PROPOSAL) === "眼瞼皮膚炎", `${h} → 眼瞼皮膚炎（顔面湿疹に吸収されない）`);
   }
   for (const h of ["かぶれ（接触性皮膚炎）", "靴ズレ（接触性皮膚炎）", "カミソリ負け（接触性皮膚炎）", "接触性皮膚炎"]) {
-    assert(c(h) === "接触皮膚炎", `${h} → 接触皮膚炎（標準病名・院長決定）`);
+    assert(c(h, ALIAS_PROPOSAL) === "接触皮膚炎", `${h} → 接触皮膚炎（標準病名・エイリアス経由=院長がUIで編集可能）`);
   }
+  // fail-open: エイリアス辞書が無くても落ちず、素の切り出し形（中間形）を返す（名寄せが弱まるだけで抽出は動く）
+  assert(c("接触性皮膚炎") === "接触性皮膚炎" && c("脂漏性湿疹") === "脂漏性湿疹", "エイリアス辞書なし（fail-open時）は言い換え前の形をそのまま返す");
+  // 前置部位つきの切り出し（コード側=PHENOTYPE_NAMESの構造処理・回帰）
+  assert(c("殿部接触性皮膚炎", ALIAS_PROPOSAL) === "接触皮膚炎", "殿部接触性皮膚炎 → 切り出し（コード）+言い換え（エイリアス）で接触皮膚炎");
   // 表皮嚢腫→粉瘤（院内呼称・エイリアス経由）
   assert(c("粉瘤（表皮嚢腫）", ALIAS_PROPOSAL) === "粉瘤" && c("表皮嚢腫", ALIAS_PROPOSAL) === "粉瘤" && c("粉瘤", ALIAS_PROPOSAL) === "粉瘤", "粉瘤（表皮嚢腫）/表皮嚢腫/粉瘤 → すべて粉瘤（エイリアス反転）");
   assert(c("乾燥肌の湿疹（皮脂欠乏性湿疹）") === "皮脂欠乏性湿疹", "乾燥肌の湿疹（皮脂欠乏性湿疹）→ 皮脂欠乏性湿疹");
-  assert(c("汗疱（汗疱状湿疹）") === "汗疱" && c("異汗性湿疹（汗疱）") === "汗疱", "汗疱系は相互統合して汗疱へ");
+  assert(c("汗疱（汗疱状湿疹）", ALIAS_PROPOSAL) === "汗疱" && c("異汗性湿疹（汗疱）", ALIAS_PROPOSAL) === "汗疱" && c("異汗性湿疹", ALIAS_PROPOSAL) === "汗疱", "汗疱系は相互統合して汗疱へ（エイリアス経由）");
   assert(c("アトピー（アトピー性皮膚炎）") === "アトピー性皮膚炎", "アトピー性皮膚炎は独立");
   assert(c("慢性湿疹", ALIAS_PROPOSAL) === "体部湿疹", "慢性湿疹 → 体部湿疹（エイリアス・院長決定）");
 
@@ -211,7 +215,8 @@ async function part3() {
   const page = await ctx.newPage();
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
-  page.on("dialog", async (d) => { if (d.type() === "prompt") await d.accept(DEL_PWD); else await d.accept(); });
+  const dialogs = [];
+  page.on("dialog", async (d) => { dialogs.push({ type: d.type(), msg: d.message() }); if (d.type() === "prompt") await d.accept(DEL_PWD); else await d.accept(); });
 
   let idc = 0;
   const genId = (p) => `${p}-${String(++idc).padStart(3, "0")}`;
@@ -311,16 +316,43 @@ async function part3() {
   assert(db.aliases.some((a) => a.alias === "胼胝" && a.canonical === "尋常性ざ瘡"), "統合元の名前が自動でエイリアス登録された");
   console.log("  ✓ 統合UI: items付け替え+自動エイリアス登録+topic削除");
 
-  // エイリアス手動追加・削除
+  // エイリアス手動追加
   await page.getByPlaceholder("寄せる見出し（例: 胼胝腫）").fill("胼胝腫");
   await page.getByPlaceholder("統合先（例: 胼胝）").fill("胼胝");
   await page.getByRole("button", { name: "追加", exact: true }).click();
   await waitText(/エイリアス「胼胝腫 → 胼胝」を登録しました/);
   assert(db.aliases.some((a) => a.alias === "胼胝腫"), "エイリアスの手動追加ができる");
+  // 一覧: 統合先ごとのグループ化+件数
+  await waitText(/胼胝（1件）/);
+  console.log("  ✓ エイリアス一覧が統合先ごとにグループ化され件数が出る");
+  // 検索: alias/canonical の部分一致絞り込み
+  await page.getByPlaceholder("🔍 エイリアス・統合先で絞り込み").fill("胼胝腫");
+  await waitText(/1\/2行/);
+  console.log("  ✓ エイリアス検索で絞り込める（1/2行）");
+  await page.getByPlaceholder("🔍 エイリアス・統合先で絞り込み").fill("");
+  // 編集: canonical を変更して保存
+  await page.getByText("胼胝腫", { exact: true }).locator("xpath=following::button[contains(.,'✏')][1]").click();
+  // canonical入力欄 = 💾保存ボタンの直前のinput（style属性はブラウザが正規化するためセレクタに使わない）
+  await page.getByRole("button", { name: "💾 保存" }).locator("xpath=preceding-sibling::input[1]").fill("たこ改");
+  await page.getByRole("button", { name: "💾 保存" }).click();
+  await waitText(/エイリアスを更新しました/);
+  assert(db.aliases.some((a) => a.alias === "胼胝腫" && a.canonical === "たこ改"), "エイリアスの編集（canonical変更）ができる");
+  // 反映ボタン: トピック名がエイリアスに一致する場合のみ手動でrename
+  await page.getByPlaceholder("寄せる見出し（例: 胼胝腫）").fill("尋常性ざ瘡");
+  await page.getByPlaceholder("統合先（例: 胼胝）").fill("ニキビ改");
+  await page.getByRole("button", { name: "追加", exact: true }).click();
+  await waitText(/エイリアス「尋常性ざ瘡 → ニキビ改」を登録しました/);
+  await page.getByRole("button", { name: "⇢ 既存トピックにも反映" }).click();
+  await waitText(/既存トピックへ反映しました（名称変更1件・統合0件）/);
+  assert(db.topics.some((t) => t.name === "ニキビ改"), "「既存トピックにも反映」でトピック名が更新される（手動実行のみ）");
+  console.log("  ✓ ⇢ 既存トピックにも反映（rename）");
+  // 削除（確認ダイアログつき）
+  const beforeDel = db.aliases.length;
   await page.getByRole("button", { name: "✕", exact: true }).first().click();
   await page.waitForTimeout(500);
-  assert(db.aliases.length === 1, "エイリアスの削除ができる");
-  console.log("  ✓ エイリアス辞書の追加・削除");
+  assert(db.aliases.length === beforeDel - 1, "エイリアスの削除ができる");
+  assert(dialogs.some((d) => d.type === "confirm" && d.msg.includes("削除します")), "削除時に確認ダイアログが出る");
+  console.log("  ✓ エイリアス辞書の追加・検索・編集・削除・反映");
 
   assert(pageErrors.length === 0, "pageerror ゼロ" + (pageErrors.length ? ": " + pageErrors.join(" | ") : ""));
   await browser.close();

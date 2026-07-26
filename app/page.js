@@ -779,6 +779,10 @@ const[intakeAliasFrom,setIntakeAliasFrom]=useState("");
 const[intakeAliasTo,setIntakeAliasTo]=useState("");
 const[intakeVisitFilter,setIntakeVisitFilter]=useState("all");
 const[intakeAdminSearch,setIntakeAdminSearch]=useState("");
+const[intakeAliasSearch,setIntakeAliasSearch]=useState("");
+const[intakeAliasEditId,setIntakeAliasEditId]=useState(null);
+const[intakeAliasEditAlias,setIntakeAliasEditAlias]=useState("");
+const[intakeAliasEditCanonical,setIntakeAliasEditCanonical]=useState("");
 const[intakeOpenTopics,setIntakeOpenTopics]=useState(new Set());
 const[intakeClosedDrafts,setIntakeClosedDrafts]=useState(new Set());
 // 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
@@ -3911,9 +3915,46 @@ const intakeAddAlias=async()=>{
   if(!explainAuth())return;
   try{const ins=await supabase.from("disease_aliases").upsert({alias:a,canonical:c},{onConflict:"alias"});if(ins.error)throw ins.error;setIntakeAliasFrom("");setIntakeAliasTo("");sSt(`✓ エイリアス「${a} → ${c}」を登録しました（次回抽出から適用）`);loadIntakeAliases()}catch(e){console.error("alias add error:",e);sSt(isMissingIntakeTable(e)?"⚠ disease_aliasesテーブル未作成です。supabase/migrations/add_disease_aliases.sql をSQL Editorで実行してください":"エイリアス登録エラー: "+(e.message||e))}
 };
-const intakeDelAlias=async(id)=>{
+const intakeDelAlias=async(a)=>{
   if(!explainAuth())return;
-  try{const del=await supabase.from("disease_aliases").delete().eq("id",id);if(del.error)throw del.error;loadIntakeAliases();sSt("✓ エイリアスを削除しました")}catch(e){console.error("alias del error:",e);sSt("エイリアス削除エラー: "+(e.message||e))}
+  if(!window.confirm(`エイリアス「${a.alias} → ${a.canonical}」を削除します。よろしいですか？`))return;
+  try{const del=await supabase.from("disease_aliases").delete().eq("id",a.id);if(del.error)throw del.error;loadIntakeAliases();sSt("✓ エイリアスを削除しました")}catch(e){console.error("alias del error:",e);sSt("エイリアス削除エラー: "+(e.message||e))}
+};
+// 既存行の編集（alias/canonical両方）。編集してもDBの言い換えが変わるだけで既存トピック名は自動では変わらない
+const intakeUpdateAlias=async(id)=>{
+  const a=intakeAliasEditAlias.trim(),c=intakeAliasEditCanonical.trim();
+  if(!a||!c||a===c){sSt("⚠ エイリアスと統合先を正しく入力してください");return}
+  if(!explainAuth())return;
+  try{
+    const up=await supabase.from("disease_aliases").update({alias:a,canonical:c}).eq("id",id);if(up.error)throw up.error;
+    setIntakeAliasEditId(null);setIntakeAliasEditAlias("");setIntakeAliasEditCanonical("");
+    sSt("✓ エイリアスを更新しました（既存トピックへ反映するには「⇢ 既存トピックにも反映」を押してください）");
+    loadIntakeAliases();
+  }catch(e){console.error("alias update error:",e);sSt(String(e.code)==="23505"?"⚠ 同じエイリアスが既に存在します":"エイリアス更新エラー: "+(e.message||e))}
+};
+// エイリアス編集を既存トピックへ手動反映（自動では走らせない: 承認済み項目の紐付けに影響するため）。
+// トピック名がエイリアスに一致する行を統合先名へrename。統合先名のトピックが既にあれば統合UIと同じ処理（items付替+旧topic削除）
+const intakeApplyAliasesToTopics=async()=>{
+  if(!explainAuth())return;
+  const map=Object.fromEntries(intakeAliases.map(a=>[a.alias,a.canonical]));
+  const targets=intakeTopics.filter(t=>map[t.name]);
+  if(!targets.length){sSt("反映が必要なトピックはありません（トピック名とエイリアスの不一致なし）");return}
+  if(!window.confirm(`${targets.length}件のトピック名をエイリアスに合わせて更新します:\n${targets.map(t=>`・${t.name} → ${map[t.name]}`).join("\n")}\n\nよろしいですか？`))return;
+  try{
+    let renamed=0,merged=0;
+    for(const t of targets){
+      const newName=map[t.name];
+      const dup=intakeTopics.find(x=>x.id!==t.id&&x.name===newName);
+      if(dup){
+        const up=await supabase.from("intake_items").update({topic_id:dup.id}).eq("topic_id",t.id);if(up.error)throw up.error;
+        const del=await supabase.from("intake_topics").delete().eq("id",t.id);if(del.error)throw del.error;merged++;
+      }else{
+        const up=await supabase.from("intake_topics").update({name:newName}).eq("id",t.id);if(up.error)throw up.error;renamed++;
+      }
+    }
+    sSt(`✓ 既存トピックへ反映しました（名称変更${renamed}件・統合${merged}件）`);
+    loadIntake();
+  }catch(e){console.error("apply aliases error:",e);sSt("反映エラー: "+(e.message||e))}
 };
 // 印刷用出力（紙で使う運用を想定）: 別ウィンドウに問診リストを書き出して印刷ダイアログを開く
 const printIntake=(entry)=>{
@@ -5416,13 +5457,42 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <input value={intakeAliasTo} onChange={e=>setIntakeAliasTo(e.target.value)} placeholder="統合先（例: 胼胝）" style={{flex:1,minWidth:150,padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none"}}/>
 <button onClick={intakeAddAlias} style={{padding:"6px 14px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>追加</button>
 </div>
-{intakeAliases.length>0&&<div style={{maxHeight:150,overflowY:"auto",border:`1px solid ${C.g100}`,borderRadius:8,padding:"4px 8px",marginBottom:6}}>
-{intakeAliases.map(a=>(<div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:`1px solid ${C.g100}`}}>
-<span style={{fontSize:12,color:C.g700}}>{a.alias} <span style={{color:C.g400}}>→</span> <b>{a.canonical}</b></span>
-<button onClick={()=>intakeDelAlias(a.id)} style={{padding:"1px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+{intakeAliases.length>0&&(()=>{
+const aq=intakeAliasSearch.trim().toLowerCase();
+const filtered=intakeAliases.filter(a=>!aq||a.alias.toLowerCase().includes(aq)||a.canonical.toLowerCase().includes(aq));
+const groups={};filtered.forEach(a=>{(groups[a.canonical]=groups[a.canonical]||[]).push(a)});
+const gkeys=Object.keys(groups).sort((a,b)=>a.localeCompare(b,"ja"));
+return(<div style={{marginBottom:6}}>
+<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+<input value={intakeAliasSearch} onChange={e=>setIntakeAliasSearch(e.target.value)} placeholder="🔍 エイリアス・統合先で絞り込み" style={{flex:1,minWidth:160,padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none"}}/>
+<span style={{fontSize:11,color:C.g400,whiteSpace:"nowrap"}}>{filtered.length}/{intakeAliases.length}行</span>
+<button onClick={intakeApplyAliasesToTopics} title="エイリアスの変更を既存トピック名にも反映する（名称変更・重複トピックの統合）。自動では走りません" style={{padding:"6px 12px",borderRadius:8,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:12,fontWeight:600,color:"#1d4ed8",fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>⇢ 既存トピックにも反映</button>
+</div>
+<div style={{maxHeight:260,overflowY:"auto",border:`1px solid ${C.g100}`,borderRadius:8,padding:"4px 8px"}}>
+{gkeys.map(k=>(<div key={k} style={{marginBottom:4}}>
+<div style={{fontSize:12,fontWeight:700,color:C.pDD,padding:"4px 0 2px"}}>{k}<span style={{marginLeft:6,fontSize:10,fontWeight:500,color:C.g400}}>（{groups[k].length}件）</span></div>
+{groups[k].map(a=>(intakeAliasEditId===a.id?(
+<div key={a.id} style={{display:"flex",gap:4,alignItems:"center",padding:"3px 0 3px 12px",flexWrap:"wrap"}}>
+<input value={intakeAliasEditAlias} onChange={e=>setIntakeAliasEditAlias(e.target.value)} style={{flex:1,minWidth:110,padding:"3px 8px",borderRadius:6,border:"1.5px solid #93c5fd",fontSize:12,fontFamily:"inherit",outline:"none"}}/>
+<span style={{fontSize:11,color:C.g400}}>→</span>
+<input value={intakeAliasEditCanonical} onChange={e=>setIntakeAliasEditCanonical(e.target.value)} style={{flex:1,minWidth:110,padding:"3px 8px",borderRadius:6,border:"1.5px solid #93c5fd",fontSize:12,fontFamily:"inherit",outline:"none"}}/>
+<button onClick={()=>intakeUpdateAlias(a.id)} style={{padding:"2px 10px",borderRadius:6,border:"none",background:C.rG,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存</button>
+<button onClick={()=>{setIntakeAliasEditId(null);setIntakeAliasEditAlias("");setIntakeAliasEditCanonical("")}} style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</div>
+):(
+<div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0 2px 12px",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:12,color:C.g700}}>{a.alias}</span>
+<div style={{display:"flex",gap:4}}>
+<button onClick={()=>{if(!explainAuth())return;setIntakeAliasEditId(a.id);setIntakeAliasEditAlias(a.alias);setIntakeAliasEditCanonical(a.canonical)}} style={{padding:"1px 8px",borderRadius:6,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:10,color:"#1d4ed8",fontFamily:"inherit",cursor:"pointer"}}>✏</button>
+<button onClick={()=>intakeDelAlias(a)} style={{padding:"1px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>
+</div>
+)))}
 </div>))}
-</div>}
-<p style={{fontSize:11,color:C.g400,margin:0}}>統合はトピックの問診項目を付け替え、統合元の名前を自動でエイリアス登録します。エイリアスは次回抽出のグループ化から適用（テーブル未作成の場合は supabase/migrations/add_disease_aliases.sql をSQL Editorで実行）。</p>
+</div>
+</div>);
+})()}
+<p style={{fontSize:11,color:C.g400,margin:0}}>統合はトピックの問診項目を付け替え、統合元の名前を自動でエイリアス登録します。エイリアスは次回抽出のグループ化から適用。編集後に既存のトピック名も変えたい場合は「⇢ 既存トピックにも反映」を押してください（テーブル未作成の場合は supabase/migrations/add_disease_aliases.sql をSQL Editorで実行）。</p>
 </div>
 {draftTopics.length===0&&!intakeQ&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行）</span></div>}
 {draftSec.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{draftSec.map(x=>intakeChip("d",x,"#6d28d9"))}</div>}
