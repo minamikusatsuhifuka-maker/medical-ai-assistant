@@ -778,6 +778,9 @@ const[intakeMergeTo,setIntakeMergeTo]=useState("");
 const[intakeAliasFrom,setIntakeAliasFrom]=useState("");
 const[intakeAliasTo,setIntakeAliasTo]=useState("");
 const[intakeVisitFilter,setIntakeVisitFilter]=useState("all");
+const[intakeAdminSearch,setIntakeAdminSearch]=useState("");
+const[intakeOpenTopics,setIntakeOpenTopics]=useState(new Set());
+const[intakeClosedDrafts,setIntakeClosedDrafts]=useState(new Set());
 // 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
 const[hoverPreview,setHoverPreview]=useState(true);
 const[canHover,setCanHover]=useState(false);
@@ -5332,8 +5335,27 @@ const approvedByTopic={};intakeItems.filter(i=>i.status==="approved").forEach(i=
 const viewTopics=intakeTopics.filter(t=>approvedByTopic[t.id]?.length).map(t=>({t,items:approvedByTopic[t.id],total:approvedByTopic[t.id].reduce((s,i)=>s+(i.seen_count||1),0)})).sort((a,b)=>b.total-a.total);
 const selEntry=viewTopics.find(x=>x.t.id===intakeSel)||null;
 const draftItems=intakeItems.filter(i=>i.status==="draft");
-const draftTopics=intakeTopics.map(t=>({t,items:draftItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
 const intakeCatOf=(id)=>INTAKE_CATEGORIES.find(c=>c.id===id)||{id,icon:"📌"};
+// 承認タブの検索（疾患名・question・intentの部分一致・3セクション横断）と疾患単位の開閉。
+// 572件を毎回すべてDOMに描画すると重いため、畳んでいる疾患の項目はレンダリングしない
+const intakeQ=intakeAdminSearch.trim().toLowerCase();
+const intakeItemMatch=(i)=>String(i.question||"").toLowerCase().includes(intakeQ)||String(i.intent||"").toLowerCase().includes(intakeQ);
+const intakeSection=(status)=>{
+  const its=intakeItems.filter(i=>i.status===status);
+  return intakeTopics.map(t=>{
+    const all=its.filter(i=>i.topic_id===t.id);
+    const nameHit=intakeQ&&t.name.toLowerCase().includes(intakeQ);
+    const vis=intakeQ?(nameHit?all:all.filter(intakeItemMatch)):all;
+    return{t,all,vis};
+  }).filter(x=>x.all.length>0&&(!intakeQ||x.vis.length>0));
+};
+const draftSec=intakeSection("draft"),apprSec=intakeSection("approved"),rejSec=intakeSection("rejected");
+const intakeHitCount=[draftSec,apprSec,rejSec].reduce((s,sec)=>s+sec.reduce((a,x)=>a+x.vis.length,0),0);
+// 開閉: draftは既定展開（閉じたものをSetに）、approved/rejectedは既定折りたたみ（開いたものをSetに）。検索中はヒット疾患を強制展開
+const intakeIsOpen=(sec,id)=>intakeQ?true:(sec==="d"?!intakeClosedDrafts.has(id):intakeOpenTopics.has(sec+":"+id));
+const intakeToggleOpen=(sec,id)=>{if(intakeQ)return;if(sec==="d"){setIntakeClosedDrafts(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n})}else{setIntakeOpenTopics(p=>{const n=new Set(p);const k=sec+":"+id;if(n.has(k))n.delete(k);else n.add(k);return n})}};
+const intakeChip=(sec,x,color)=>(<button key={x.t.id} onClick={()=>intakeToggleOpen(sec,x.t.id)} style={{padding:"5px 12px",borderRadius:10,border:intakeIsOpen(sec,x.t.id)?`2px solid ${color}`:`1.5px solid ${C.g200}`,background:intakeIsOpen(sec,x.t.id)?"#fff":C.g50,fontSize:12,fontWeight:600,color:C.g700,fontFamily:"inherit",cursor:intakeQ?"default":"pointer",whiteSpace:"nowrap"}}>{x.t.name} <span style={{color:C.g400}}>({intakeQ?x.vis.length:x.all.length})</span></button>);
+const draftTopics=draftSec.map(x=>({t:x.t,items:x.vis}));
 return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16px"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
 <h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>🩺 事前問診</h2>
@@ -5348,6 +5370,12 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <button onClick={()=>setIntakeTab("approve")} style={{padding:"8px 18px",borderRadius:10,border:"none",background:intakeTab==="approve"?"#6d28d9":C.g100,color:intakeTab==="approve"?C.w:C.g500,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✅ 承認（院長）{draftItems.length>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:9,background:"#fbbf24",color:"#78350f",fontSize:11,fontWeight:700}}>{draftItems.length}</span>}</button>
 </div>
 {intakeTab==="approve"&&<div>
+{/* 検索: 疾患名・問診文・intentを3セクション（下書き/承認済み/却下済み）横断で部分一致 */}
+<div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+<input value={intakeAdminSearch} onChange={e=>setIntakeAdminSearch(e.target.value)} placeholder="🔍 疾患名・問診文で検索（下書き/承認済み/却下済みを横断）" style={{flex:1,padding:"10px 14px",borderRadius:12,border:`1px solid ${C.g200}`,fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+{intakeQ&&<span style={{fontSize:12,fontWeight:700,color:intakeHitCount?C.pD:"#dc2626",whiteSpace:"nowrap"}}>{intakeHitCount}件ヒット</span>}
+{intakeQ&&<button onClick={()=>setIntakeAdminSearch("")} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>クリア</button>}
+</div>
 {/* 抽出パネル: 過去の診察から疾患ごとに医師の質問を抽出（期間・疾患フィルタ指定） */}
 <div style={{...card,marginBottom:14}}>
 <div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:8}}>📥 診察履歴から問診項目を抽出</div>
@@ -5396,8 +5424,9 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 </div>}
 <p style={{fontSize:11,color:C.g400,margin:0}}>統合はトピックの問診項目を付け替え、統合元の名前を自動でエイリアス登録します。エイリアスは次回抽出のグループ化から適用（テーブル未作成の場合は supabase/migrations/add_disease_aliases.sql をSQL Editorで実行）。</p>
 </div>
-{draftTopics.length===0&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行）</span></div>}
-{draftTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+{draftTopics.length===0&&!intakeQ&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行）</span></div>}
+{draftSec.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{draftSec.map(x=>intakeChip("d",x,"#6d28d9"))}</div>}
+{draftTopics.filter(x=>intakeIsOpen("d",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <div style={{fontSize:14,fontWeight:700,color:C.pDD}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>下書き {x.items.length}件（{x.t.record_count||0}記録から抽出）</span></div>
 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -5421,16 +5450,17 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 </div>
 </div>)})}
 </div>))}
-{/* 承認済み一覧: 承認後に間違いを直す導線（却下・編集）。下書きと同じ作法・同じパスワードゲート */}
+{/* 承認済み一覧: 承認後に間違いを直す導線（却下・編集）。下書きと同じ作法・同じパスワードゲート。
+    既定は疾患チップのみ表示（572件を全描画すると重いため、畳み中の項目はレンダリングしない） */}
 {(()=>{
-const apprItems=intakeItems.filter(i=>i.status==="approved");
-const apprTopics=intakeTopics.map(t=>({t,items:apprItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
-if(!apprTopics.length)return null;
+const apprCount=intakeItems.filter(i=>i.status==="approved").length;
+if(!apprSec.length)return null;
 return(<div style={{marginTop:18}}>
-<div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8}}>✅ 承認済み（{apprItems.length}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>間違って承認した項目はここから却下・編集できます</span></div>
-{apprTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
-<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>承認済み {x.items.length}件</span></div>
-{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #bbf7d0",background:"#f7fdf7"}}>
+<div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8}}>✅ 承認済み（{apprCount}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>疾患名をクリックで展開。間違って承認した項目は却下・編集できます</span></div>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{apprSec.map(x=>intakeChip("a",x,"#16a34a"))}</div>
+{apprSec.filter(x=>intakeIsOpen("a",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>承認済み {x.vis.length}件</span></div>
+{x.vis.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #bbf7d0",background:"#f7fdf7"}}>
 <div style={{fontSize:11,fontWeight:700,color:"#166534",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
 {isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #86efac`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
 {i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
@@ -5447,16 +5477,16 @@ return(<div style={{marginTop:18}}>
 </div>))}
 </div>);
 })()}
-{/* 却下済み一覧: rejectedは再抽出で復活しない仕様のため、誤操作の回復手段として「下書きに戻す」を用意（同じパスワードゲート） */}
+{/* 却下済み一覧: rejectedは再抽出で復活しない仕様のため、誤操作の回復手段として「下書きに戻す」を用意（同じパスワードゲート）。既定は疾患チップのみ */}
 {(()=>{
-const rejItems=intakeItems.filter(i=>i.status==="rejected");
-const rejTopics=intakeTopics.map(t=>({t,items:rejItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
-if(!rejTopics.length)return null;
+const rejCount=intakeItems.filter(i=>i.status==="rejected").length;
+if(!rejSec.length)return null;
 return(<div style={{marginTop:18}}>
-<div style={{fontSize:14,fontWeight:700,color:"#dc2626",marginBottom:8}}>✗ 却下済み（{rejItems.length}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下は再抽出で復活しません。誤操作はここから下書きに戻せます</span></div>
-{rejTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
-<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下済み {x.items.length}件</span></div>
-{x.items.map(i=>{const c=intakeCatOf(i.category);const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #fecaca",background:"#fffafa"}}>
+<div style={{fontSize:14,fontWeight:700,color:"#dc2626",marginBottom:8}}>✗ 却下済み（{rejCount}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>疾患名をクリックで展開。却下は再抽出で復活しません。誤操作はここから下書きに戻せます</span></div>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{rejSec.map(x=>intakeChip("r",x,"#dc2626"))}</div>
+{rejSec.filter(x=>intakeIsOpen("r",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下済み {x.vis.length}件</span></div>
+{x.vis.map(i=>{const c=intakeCatOf(i.category);const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #fecaca",background:"#fffafa"}}>
 <div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
 <div style={{fontSize:13,color:C.g500,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap",textDecoration:"line-through"}}>{i.question}</div>
 {i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}

@@ -309,6 +309,11 @@ async function part2() {
   await page.getByRole("button", { name: /✅ 承認（院長）/ }).click();
   await waitText(/✅ 承認済み（4件）/);
   console.log("  ✓ 承認タブに承認済み一覧（4件）が表示される");
+  // 既定は疾患チップのみ（項目は畳まれ、DOMにレンダリングされない）
+  assert((await page.getByText("汗をかいた後に悪化しますか？").count()) === 0, "承認済みは既定で畳まれ項目が描画されない");
+  await page.getByRole("button", { name: /尋常性ざ瘡 \(4\)/ }).click();
+  await page.getByText("汗をかいた後に悪化しますか？").first().waitFor({ timeout: 5000 });
+  console.log("  ✓ 疾患チップのクリックで展開される");
   const promptsBefore = dialogs.filter((d) => d.type === "prompt").length;
   // 却下: 「汗をかいた後に悪化しますか？」を承認済みから外す
   const target = page.getByText("汗をかいた後に悪化しますか？");
@@ -328,6 +333,7 @@ async function part2() {
   // ---- 却下済み一覧: 誤操作の回復導線（下書きに戻す） ----
   await waitText(/✗ 却下済み（2件）/);
   console.log("  ✓ 承認タブに却下済み一覧（2件）が表示される");
+  await page.getByRole("button", { name: /尋常性ざ瘡 \(2\)/ }).click(); // 却下済みセクションのチップを展開
   const restoreTarget = page.getByText("汗をかいた後に悪化しますか？");
   await restoreTarget.first().waitFor();
   // 質問テキストのDOM直後に現れる「下書きに戻す」= 同一カード内のボタン（has:div方式は祖先全体にマッチし別項目を押す）
@@ -339,6 +345,23 @@ async function part2() {
   await waitText(/下書き 1件/);
   console.log("  ✓ 戻した項目が下書き一覧に現れる");
   assert(dialogs.filter((d) => d.type === "prompt").length === promptsBefore, "却下済み一覧の操作も同じパスワードゲート（再要求なし）");
+
+  // ---- 折りたたみの再クリック＋検索（3セクション横断） ----
+  await page.getByText("かゆみや痛みはありますか？").first().waitFor({ timeout: 5000 }); // 承認済みは前シナリオのチップ操作で展開済み
+  await page.getByRole("button", { name: /尋常性ざ瘡 \(3\)/ }).click(); // 再クリックで畳む
+  await page.waitForTimeout(300);
+  assert((await page.getByText("かゆみや痛みはありますか？").count()) === 0, "チップ再クリックで折りたたまれ項目が消える");
+  const searchBox = page.getByPlaceholder("🔍 疾患名・問診文で検索（下書き/承認済み/却下済みを横断）");
+  await searchBox.fill("汗をかいた");
+  await waitText("1件ヒット");
+  await page.getByText("汗をかいた後に悪化しますか？").first().waitFor({ timeout: 5000 });
+  console.log("  ✓ 検索でヒット件数表示＋該当疾患が自動展開されマッチ項目のみ表示");
+  await searchBox.fill("いつ頃から");
+  await waitText("1件ヒット"); // approved「いつ頃から症状が出ていますか？（承認後修正）」のみ
+  assert((await page.getByText("（承認後修正）").count()) >= 1, "検索は承認済みセクションも横断する");
+  await searchBox.fill("");
+  await page.waitForTimeout(300);
+  assert((await page.getByText("（承認後修正）").count()) === 0, "検索クリアで元の折りたたみ状態に戻る");
 
   assert(pageErrors.length === 0, "pageerror ゼロ" + (pageErrors.length ? ": " + pageErrors.join(" | ") : ""));
   await browser.close();
