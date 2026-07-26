@@ -305,7 +305,7 @@ async function part2() {
   // 却下: 「汗をかいた後に悪化しますか？」を承認済みから外す
   const target = page.getByText("汗をかいた後に悪化しますか？");
   await target.first().waitFor();
-  await page.locator("div", { has: target }).locator("button", { hasText: "✗ 却下" }).last().click();
+  await target.first().locator("xpath=following::button[contains(.,'✗ 却下')][1]").click();
   await waitText("✗ 1件を却下しました");
   assert(db.items.filter((i) => i.status === "approved").length === 3 && db.items.filter((i) => i.status === "rejected").length === 2, "承認済みからの却下で approved3/rejected2 になった");
   // 編集: 承認済みのまま文面だけ直す
@@ -316,6 +316,21 @@ async function part2() {
   const edited = db.items.find((i) => i.question.includes("（承認後修正）"));
   assert(edited && edited.status === "approved", "承認済みの編集は question のみ更新され status=approved のまま");
   assert(dialogs.filter((d) => d.type === "prompt").length === promptsBefore, "承認済み一覧の操作も同じパスワードゲート（同セッションは再要求なし）");
+
+  // ---- 却下済み一覧: 誤操作の回復導線（下書きに戻す） ----
+  await waitText(/✗ 却下済み（2件）/);
+  console.log("  ✓ 承認タブに却下済み一覧（2件）が表示される");
+  const restoreTarget = page.getByText("汗をかいた後に悪化しますか？");
+  await restoreTarget.first().waitFor();
+  // 質問テキストのDOM直後に現れる「下書きに戻す」= 同一カード内のボタン（has:div方式は祖先全体にマッチし別項目を押す）
+  await restoreTarget.first().locator("xpath=following::button[contains(.,'下書きに戻す')][1]").click();
+  await waitText(/↩ 1件を下書きに戻しました/);
+  const restored = db.items.find((i) => i.question === "汗をかいた後に悪化しますか？");
+  assert(restored && restored.status === "draft", "却下済みからの復帰で status=draft に戻る");
+  assert(db.items.filter((i) => i.status === "rejected").length === 1 && db.items.filter((i) => i.status === "approved").length === 3, "他の項目のstatusは不変（rejected1/approved3）");
+  await waitText(/下書き 1件/);
+  console.log("  ✓ 戻した項目が下書き一覧に現れる");
+  assert(dialogs.filter((d) => d.type === "prompt").length === promptsBefore, "却下済み一覧の操作も同じパスワードゲート（再要求なし）");
 
   assert(pageErrors.length === 0, "pageerror ゼロ" + (pageErrors.length ? ": " + pageErrors.join(" | ") : ""));
   await browser.close();

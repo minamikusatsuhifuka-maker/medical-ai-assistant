@@ -3873,7 +3873,7 @@ const intakeSetStatus=async(ids,status,questionOverride)=>{
     if(status==="approved"){const tids=[...new Set(intakeItems.filter(it=>ids.includes(it.id)).map(it=>it.topic_id))];for(const tid of tids){await supabase.from("intake_topics").update({status:"approved"}).eq("id",tid)}setIntakeTopics(prev=>prev.map(t=>tids.includes(t.id)?{...t,status:"approved"}:t))}
     setIntakeItems(prev=>prev.map(it=>ids.includes(it.id)?{...it,status,...(questionOverride!==undefined&&ids.length===1?{question:questionOverride}:{})}:it));
     setIntakeEditId(null);setIntakeEditQ("");
-    sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:`✗ ${ids.length}件を却下しました`);
+    sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:status==="draft"?`↩ ${ids.length}件を下書きに戻しました`:`✗ ${ids.length}件を却下しました`);
   }catch(e){console.error("intake status error:",e);sSt("更新エラー: "+(e.message||e))}
 };
 // その疾患の draft のみ一括削除（approved/rejectedは消さない・確認ダイアログ・管理パスワードゲート）
@@ -5442,6 +5442,26 @@ return(<div style={{marginTop:18}}>
 <button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #86efac",background:"#f0fdf4",fontSize:12,fontWeight:600,color:"#166534",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集</button>
 <button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
 </>)}
+</div>
+</div>)})}
+</div>))}
+</div>);
+})()}
+{/* 却下済み一覧: rejectedは再抽出で復活しない仕様のため、誤操作の回復手段として「下書きに戻す」を用意（同じパスワードゲート） */}
+{(()=>{
+const rejItems=intakeItems.filter(i=>i.status==="rejected");
+const rejTopics=intakeTopics.map(t=>({t,items:rejItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
+if(!rejTopics.length)return null;
+return(<div style={{marginTop:18}}>
+<div style={{fontSize:14,fontWeight:700,color:"#dc2626",marginBottom:8}}>✗ 却下済み（{rejItems.length}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下は再抽出で復活しません。誤操作はここから下書きに戻せます</span></div>
+{rejTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下済み {x.items.length}件</span></div>
+{x.items.map(i=>{const c=intakeCatOf(i.category);const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #fecaca",background:"#fffafa"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+<div style={{fontSize:13,color:C.g500,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap",textDecoration:"line-through"}}>{i.question}</div>
+{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+<button onClick={()=>intakeSetStatus([i.id],"draft")} style={{padding:"4px 14px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>↩ 下書きに戻す</button>
 </div>
 </div>)})}
 </div>))}
