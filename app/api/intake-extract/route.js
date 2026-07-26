@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
 import { GEMINI_MODELS, extractGeminiText } from "../../lib/gemini-models";
-import { INTAKE_CATEGORY_IDS, scrubPII } from "../../lib/intake-knowledge";
+import { INTAKE_CATEGORY_IDS, scrubPII, fixNonWords } from "../../lib/intake-knowledge";
 
 export const maxDuration = 120;
 
@@ -40,6 +40,9 @@ const SYSTEM_PROMPT = `以下は同一疾患の診察の書き起こしである
   共通: どちらでも聞くもの
 - 意味が重複する質問は1つにまとめる。記録に根拠のない質問を創作しない。
 - 全て自然な日本語のみで書く。書き起こし由来の意味不明な英単語・記号・ノイズを問診文に混入させない。
+- 問診文は自然な日本語で書く。存在しない語や省略形を作らない。
+  誤: 痛増 / 痒増 / 症状増
+  正: 痛み / かゆみ / 症状の増加
 
 【個人情報】
 - 氏名、年齢、具体的な日付、勤務先、学校名、家族構成の固有情報、
@@ -186,8 +189,8 @@ export async function POST(request) {
         }
         return {
           category: INTAKE_CATEGORY_IDS.includes(it?.category) ? it.category : null,
-          question: scrubPII(String(it?.question ?? "").trim()),
-          intent: scrubPII(String(it?.intent ?? "").trim()),
+          question: fixNonWords(scrubPII(String(it?.question ?? "").trim())),
+          intent: fixNonWords(scrubPII(String(it?.intent ?? "").trim())),
           visit_type: ["初診", "再診", "共通"].includes(it?.visit_type) ? it.visit_type : "共通",
         };
       })

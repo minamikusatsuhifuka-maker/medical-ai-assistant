@@ -109,6 +109,14 @@ async function part1() {
   const v4 = lib.planIntakeMergeV2([{ category: "既往・治療歴", question: "ご家族に同じ症状の方はいますか？", intent: "家族歴", visit_type: "怪しい値" }], exV2);
   assert(v4.newItems.length === 1 && v4.newItems[0].visit_type === "共通", "V2: 新規は登録され、不正な visit_type は共通に正規化");
   assert(lib.planIntakeMergeV2([{ existing: 99 }, { existing: 0 }], exV2).increments.length === 0, "V2: 範囲外の existing 番号は無視（fail-open）");
+
+  // ===== intake-nonword-fix: 非語の機械置換 =====
+  assert(lib.fixNonWords("イボがある場所に痛増や痒みはありますか？") === "イボがある場所に痛みや痒みはありますか？", "fixNonWords: 痛増→痛み");
+  assert(lib.fixNonWords("痒増はありますか") === "かゆみはありますか" && lib.fixNonWords("症状増はありますか") === "症状の増加はありますか", "fixNonWords: 痒増/症状増も置換");
+  assert(lib.fixNonWords("温熱による症状増悪の有無の確認") === "温熱による症状増悪の有無の確認", "fixNonWords: 実在語「症状増悪」は壊さない（増悪保護）");
+  assert(lib.fixNonWords("特定の間柄や場面で汗が増えますか？") === "特定の間柄や場面で汗が増えますか？", "fixNonWords: 実在語「間柄」は置換対象外（設計の担保）");
+  assert(lib.fixNonWords(null) === null || lib.fixNonWords(null) === "", "fixNonWords: 不正入力でも例外を出さない（fail-open）");
+  assert(Array.isArray(lib.NON_WORD_FIXES) && lib.NON_WORD_FIXES.length >= 3, "NON_WORD_FIXES が定数表として定義されている");
   console.log("── Part1 OK\n");
 }
 

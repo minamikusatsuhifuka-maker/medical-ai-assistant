@@ -114,5 +114,29 @@ export function planIntakeMergeV2(extractedItems, existingItems) {
   return { newItems, increments, rejectedSkips };
 }
 
+// 生成文に混じる非語の修正表（intake-nonword-fix。プロンプト指示は一定確率で漏れるため機械的後処理を本命とする）。
+// 日本語として存在しない語だけを入れること。実在する語（文脈次第で誤用になる「間柄」等）は入れない —
+// 誤って正しい文を壊すため（そうした誤用は院長が承認画面の✏編集で手修正する）。今後の追加はこの表へ。
+// ※「症状増悪」「疼痛増悪」等の実在語を壊さないよう、直後が「悪」の場合は置換しない。
+export const NON_WORD_FIXES = [
+  ["痛増", "痛み"],
+  ["痒増", "かゆみ"],
+  ["症状増", "症状の増加"],
+];
+
+// question / intent を保存する直前に通す非語の機械置換。fail-open: 例外時は元のテキストをそのまま返す。
+export function fixNonWords(text) {
+  try {
+    let t = String(text ?? "");
+    for (const [from, to] of NON_WORD_FIXES) {
+      t = t.replace(new RegExp(from + "(?!悪)", "g"), to);
+    }
+    return t;
+  } catch (e) {
+    console.error("fixNonWords error (fail-open):", e);
+    return text;
+  }
+}
+
 // 個人情報の機械チェック（説明ナレッジの scrubPII をそのまま流用。新規実装しない）
 export { scrubPII };
