@@ -297,6 +297,26 @@ async function part2() {
   assert(printText.includes("基本問診（全疾患共通・毎回確認）") && printText.includes("妊娠中・授乳中"), "印刷にも固定基本問診セットが冒頭に入る");
   await popup.close();
 
+  // ---- 承認済み一覧: 承認後の間違いを直す導線（却下・編集） ----
+  await page.getByRole("button", { name: /✅ 承認（院長）/ }).click();
+  await waitText(/✅ 承認済み（4件）/);
+  console.log("  ✓ 承認タブに承認済み一覧（4件）が表示される");
+  const promptsBefore = dialogs.filter((d) => d.type === "prompt").length;
+  // 却下: 「汗をかいた後に悪化しますか？」を承認済みから外す
+  const target = page.getByText("汗をかいた後に悪化しますか？");
+  await target.first().waitFor();
+  await page.locator("div", { has: target }).locator("button", { hasText: "✗ 却下" }).last().click();
+  await waitText("✗ 1件を却下しました");
+  assert(db.items.filter((i) => i.status === "approved").length === 3 && db.items.filter((i) => i.status === "rejected").length === 2, "承認済みからの却下で approved3/rejected2 になった");
+  // 編集: 承認済みのまま文面だけ直す
+  await page.getByRole("button", { name: "✏ 編集", exact: true }).first().click();
+  await page.locator("textarea").last().fill("いつ頃から症状がありますか？（承認後修正）");
+  await page.getByRole("button", { name: "💾 保存（承認済みのまま）" }).click();
+  await waitText("✓ 1件を承認しました");
+  const edited = db.items.find((i) => i.question.includes("（承認後修正）"));
+  assert(edited && edited.status === "approved", "承認済みの編集は question のみ更新され status=approved のまま");
+  assert(dialogs.filter((d) => d.type === "prompt").length === promptsBefore, "承認済み一覧の操作も同じパスワードゲート（同セッションは再要求なし）");
+
   assert(pageErrors.length === 0, "pageerror ゼロ" + (pageErrors.length ? ": " + pageErrors.join(" | ") : ""));
   await browser.close();
   console.log("── Part2 OK\n");

@@ -5421,6 +5421,32 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 </div>
 </div>)})}
 </div>))}
+{/* 承認済み一覧: 承認後に間違いを直す導線（却下・編集）。下書きと同じ作法・同じパスワードゲート */}
+{(()=>{
+const apprItems=intakeItems.filter(i=>i.status==="approved");
+const apprTopics=intakeTopics.map(t=>({t,items:apprItems.filter(i=>i.topic_id===t.id)})).filter(x=>x.items.length>0);
+if(!apprTopics.length)return null;
+return(<div style={{marginTop:18}}>
+<div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8}}>✅ 承認済み（{apprItems.length}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>間違って承認した項目はここから却下・編集できます</span></div>
+{apprTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>承認済み {x.items.length}件</span></div>
+{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #bbf7d0",background:"#f7fdf7"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#166534",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+{isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #86efac`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
+{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{isEdit?(<>
+<button onClick={()=>{if(intakeEditQ.trim())intakeSetStatus([i.id],"approved",intakeEditQ.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存（承認済みのまま）</button>
+<button onClick={()=>{setIntakeEditId(null);setIntakeEditQ("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</>):(<>
+<button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #86efac",background:"#f0fdf4",fontSize:12,fontWeight:600,color:"#166534",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集</button>
+<button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
+</>)}
+</div>
+</div>)})}
+</div>))}
+</div>);
+})()}
 </div>}
 {intakeTab==="view"&&<div>
 {viewTopics.length===0&&!intakeLd&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:30}}>承認済みの問診項目がまだありません。<br/><span style={{fontSize:11,color:C.g400}}>承認（院長）タブで抽出→承認すると、ここに表示されます。</span></div>}
