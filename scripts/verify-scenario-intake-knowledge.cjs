@@ -203,12 +203,13 @@ async function part2() {
   await page.getByRole("button", { name: /✅ 承認（院長）/ }).click();
   await waitText("📥 診察履歴から問診項目を抽出");
   await page.getByRole("button", { name: "過去30日" }).click();
+  await page.getByRole("button", { name: "1（全件）" }).click(); // モックは2記録のため既定の最低出現3では対象外
   await page.getByRole("button", { name: "📥 抽出を実行" }).click();
   await waitText("1/1疾患 完了");
   await waitText(/1疾患処理・4件追加/);
   console.log("  ✓ 期間指定(過去30日)→抽出実行→進捗表示→✓4件追加");
   assert(extractCalls === 1, "抽出APIは疾患単位で1回だけ呼ばれた（2記録を1疾患に集約）");
-  assert(db.topics.length === 1 && db.topics[0].name === "ニキビ（尋常性ざ瘡）", "intake_topics に疾患が作成された");
+  assert(db.topics.length === 1 && db.topics[0].name === "尋常性ざ瘡", "intake_topics に疾患が名寄せ済みキー(尋常性ざ瘡)で作成された");
   assert(db.topics[0].record_count === 2 && db.topics[0].period_from && db.topics[0].period_to, "topicに期間・記録件数が保存された");
   assert(db.items.length === 4 && db.items.every((i) => i.status === "draft"), "intake_items に4件が draft で登録された");
 
@@ -238,7 +239,7 @@ async function part2() {
 
   // ---- 閲覧タブ: カテゴリ順・頻度・却下非表示・コピー ----
   await page.getByRole("button", { name: "👀 閲覧" }).click();
-  await page.getByRole("button", { name: /ニキビ（尋常性ざ瘡）/ }).click();
+  await page.getByRole("button", { name: /尋常性ざ瘡/ }).click();
   await waitText("■ 🕒 発症・経過");
   await waitText("■ 💊 薬剤・アレルギー");
   const bodyText = await page.locator("body").innerText();
@@ -255,7 +256,7 @@ async function part2() {
   ]);
   await popup.waitForLoadState("domcontentloaded");
   const printText = await popup.locator("body").innerText();
-  assert(printText.includes("事前問診チェックリスト") && printText.includes("ニキビ（尋常性ざ瘡）"), "印刷用出力に疾患名つきチェックリストが出る");
+  assert(printText.includes("事前問診チェックリスト") && printText.includes("尋常性ざ瘡"), "印刷用出力に疾患名つきチェックリストが出る");
   assert(printText.includes("この問診は診察の補助です"), "印刷用出力にも固定文言が入る");
   assert(printText.includes("☐"), "印刷用出力はチェックボックス形式");
   await popup.close();

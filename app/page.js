@@ -6,7 +6,8 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
-import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, extractDiseaseHeadings, findIntakeTopicMatch, planIntakeMerge } from "./lib/intake-knowledge";
+import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, findIntakeTopicMatch, planIntakeMerge } from "./lib/intake-knowledge";
+import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings } from "./lib/disease-canonical";
 import dynamic from "next/dynamic";
 
 // === カウンセリング評価レーダーチャート（SSR無効でロード） ===
@@ -770,6 +771,12 @@ const[intakeRunning,setIntakeRunning]=useState(false);
 const[intakeProg,setIntakeProg]=useState(null);
 const[intakeEditId,setIntakeEditId]=useState(null);
 const[intakeEditQ,setIntakeEditQ]=useState("");
+const[intakeMinCount,setIntakeMinCount]=useState(3);
+const[intakeAliases,setIntakeAliases]=useState([]);
+const[intakeMergeFrom,setIntakeMergeFrom]=useState("");
+const[intakeMergeTo,setIntakeMergeTo]=useState("");
+const[intakeAliasFrom,setIntakeAliasFrom]=useState("");
+const[intakeAliasTo,setIntakeAliasTo]=useState("");
 // 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
 const[hoverPreview,setHoverPreview]=useState(true);
 const[canHover,setCanHover]=useState(false);
@@ -3776,7 +3783,8 @@ const explainSetStatus=async(ids,status,contentOverride)=>{
 // ===== 事前問診（説明ナレッジと同じ3段構成・同じ承認パスワードゲートを流用） =====
 const isMissingIntakeTable=(e)=>e&&(e.code==="42P01"||/does not exist|schema cache/i.test(e.message||""));
 const INTAKE_TABLE_HINT="⚠ 事前問診のテーブル未作成です。supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行してください";
-const loadIntake=async()=>{if(!supabase)return;setIntakeLd(true);try{const[t,i]=await Promise.all([supabase.from("intake_topics").select("*").order("created_at",{ascending:true}),supabase.from("intake_items").select("*").order("created_at",{ascending:false})]);if(t.error)throw t.error;if(i.error)throw i.error;setIntakeTopics(t.data||[]);setIntakeItems(i.data||[])}catch(e){console.error("intake load error:",e);sSt(isMissingIntakeTable(e)?INTAKE_TABLE_HINT:"事前問診読込エラー: "+(e.message||e))}finally{setIntakeLd(false)}};
+const loadIntakeAliases=async()=>{if(!supabase)return;try{const{data,error}=await supabase.from("disease_aliases").select("*").order("alias",{ascending:true});if(error)throw error;setIntakeAliases(data||[])}catch(e){if(!isMissingIntakeTable(e))console.error("aliases load error:",e);setIntakeAliases([])}};
+const loadIntake=async()=>{if(!supabase)return;setIntakeLd(true);try{const[t,i]=await Promise.all([supabase.from("intake_topics").select("*").order("created_at",{ascending:true}),supabase.from("intake_items").select("*").order("created_at",{ascending:false})]);if(t.error)throw t.error;if(i.error)throw i.error;setIntakeTopics(t.data||[]);setIntakeItems(i.data||[]);loadIntakeAliases()}catch(e){console.error("intake load error:",e);sSt(isMissingIntakeTable(e)?INTAKE_TABLE_HINT:"事前問診読込エラー: "+(e.message||e))}finally{setIntakeLd(false)}};
 const runIntakeExtract=async()=>{
   if(intakeRunning)return;
   setIntakeRunning(true);setIntakeProg(null);btnFbSet("intakeExtract","run","抽出中…");
@@ -3789,13 +3797,19 @@ const runIntakeExtract=async()=>{
       const{data,error}=await supabase.from("records").select("input_text,output_text,created_at").gte("created_at",fromDate.toISOString()).order("created_at",{ascending:false}).range(pg*1000,pg*1000+999);
       if(error)throw error;recs.push(...(data||[]));if(!data||data.length<1000)break;
     }
-    // 要約の「# 疾患名」見出しで疾患ごとにグループ化（見出しの無い記録は対象外）
-    const groups={};
-    for(const r of recs){for(const name of extractDiseaseHeadings(r.output_text)){(groups[name]=groups[name]||[]).push(r)}}
+    // エイリアス辞書（disease_aliases。テーブル未作成でも空のまま続行）
+    const aliasMap={};
+    try{const{data:al,error:alErr}=await supabase.from("disease_aliases").select("alias,canonical");if(!alErr&&al)al.forEach(a=>{aliasMap[a.alias]=a.canonical})}catch{}
+    // 要約の「# 疾患名」見出しをカノニカルキー（評価文切落し・括弧内主キー・部位語除去・エイリアス適用）でグループ化。
+    // プレースホルダ（疾患名/記載なし等）は疾患として扱わず「未分類」として件数のみ集計する
+    const groups={};let unclassified=0;
+    for(const r of recs){const parsed=parseDiseaseHeadings(r.output_text,aliasMap);unclassified+=parsed.unclassified;for(const name of parsed.names){(groups[name]=groups[name]||[]).push(r)}}
     let names=Object.keys(groups);
     const filter=intakeFilter.trim();
     if(filter)names=names.filter(n=>n.includes(filter));
-    if(names.length===0){sSt("対象疾患が見つかりません（要約に「# 疾患名」見出しのある記録が対象）");btnFbSet("intakeExtract","err","⚠ 対象疾患なし");return}
+    // 最低出現件数のしきい値（既定3・1に下げれば全件）: 出現1件の見出しが7割を占め名寄せ労力に見合わないため
+    names=names.filter(n=>groups[n].length>=intakeMinCount);
+    if(names.length===0){sSt("対象疾患が見つかりません（要約に「# 疾患名」見出しがあり、最低出現件数を満たす記録が対象）");btnFbSet("intakeExtract","err","⚠ 対象疾患なし");return}
     names.sort((a,b)=>groups[b].length-groups[a].length);
     // 既存topics/itemsを取得してマージ計画に使う
     const[t0,i0]=await Promise.all([supabase.from("intake_topics").select("*"),supabase.from("intake_items").select("id,topic_id,category,question,seen_count,status")]);
@@ -3827,7 +3841,7 @@ const runIntakeExtract=async()=>{
       }catch(err){console.error("intake extract error("+name+"):",err);failed++}
       setIntakeProg({done:ix+1,total:names.length,current:name});
     }
-    const okMsg=`✓ ${names.length}疾患処理・${added}件追加・${bumped}件カウント更新`+(failed?`・⚠${failed}疾患失敗`:"");
+    const okMsg=`✓ ${names.length}疾患処理・${added}件追加・${bumped}件カウント更新`+(failed?`・⚠${failed}疾患失敗`:"")+(unclassified?`（未分類見出し${unclassified}件は対象外）`:"");
     sSt("事前問診: "+okMsg);btnFbSet("intakeExtract",failed===names.length?"err":"ok",failed===names.length?"⚠ 全疾患で失敗":okMsg);
     loadIntake();
   }catch(e){
@@ -3847,6 +3861,31 @@ const intakeSetStatus=async(ids,status,questionOverride)=>{
     setIntakeEditId(null);setIntakeEditQ("");
     sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:`✗ ${ids.length}件を却下しました`);
   }catch(e){console.error("intake status error:",e);sSt("更新エラー: "+(e.message||e))}
+};
+// 疾患トピックの統合（items付け替え→統合元名をエイリアス登録→統合元topic削除。以後の抽出は自動で統合先に寄る）
+const intakeMergeTopics=async()=>{
+  if(!intakeMergeFrom||!intakeMergeTo||intakeMergeFrom===intakeMergeTo){sSt("⚠ 統合元と統合先に別のトピックを選んでください");return}
+  if(!explainAuth())return;
+  try{
+    const from=intakeTopics.find(t=>t.id===intakeMergeFrom),to=intakeTopics.find(t=>t.id===intakeMergeTo);
+    if(!from||!to)return;
+    const up=await supabase.from("intake_items").update({topic_id:to.id}).eq("topic_id",from.id);if(up.error)throw up.error;
+    try{const al=await supabase.from("disease_aliases").upsert({alias:from.name,canonical:to.name},{onConflict:"alias"});if(al.error)throw al.error}catch(e){console.error("alias upsert error:",e);sSt("⚠ エイリアス登録に失敗（disease_aliases未作成？）統合自体は続行します")}
+    const del=await supabase.from("intake_topics").delete().eq("id",from.id);if(del.error)throw del.error;
+    sSt(`✓ 「${from.name}」を「${to.name}」に統合しました`);
+    setIntakeMergeFrom("");setIntakeMergeTo("");
+    loadIntake();
+  }catch(e){console.error("intake merge error:",e);sSt("統合エラー: "+(e.message||e))}
+};
+const intakeAddAlias=async()=>{
+  const a=intakeAliasFrom.trim(),c=intakeAliasTo.trim();
+  if(!a||!c||a===c){sSt("⚠ エイリアス（寄せる側）と統合先を入力してください");return}
+  if(!explainAuth())return;
+  try{const ins=await supabase.from("disease_aliases").upsert({alias:a,canonical:c},{onConflict:"alias"});if(ins.error)throw ins.error;setIntakeAliasFrom("");setIntakeAliasTo("");sSt(`✓ エイリアス「${a} → ${c}」を登録しました（次回抽出から適用）`);loadIntakeAliases()}catch(e){console.error("alias add error:",e);sSt(isMissingIntakeTable(e)?"⚠ disease_aliasesテーブル未作成です。supabase/migrations/add_disease_aliases.sql をSQL Editorで実行してください":"エイリアス登録エラー: "+(e.message||e))}
+};
+const intakeDelAlias=async(id)=>{
+  if(!explainAuth())return;
+  try{const del=await supabase.from("disease_aliases").delete().eq("id",id);if(del.error)throw del.error;loadIntakeAliases();sSt("✓ エイリアスを削除しました")}catch(e){console.error("alias del error:",e);sSt("エイリアス削除エラー: "+(e.message||e))}
 };
 // 印刷用出力（紙で使う運用を想定）: 別ウィンドウに問診リストを書き出して印刷ダイアログを開く
 const printIntake=(entry)=>{
@@ -3984,8 +4023,8 @@ finally{setUsageGuideLd(false)}
 };
 const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(summaryModel==="claude"?"Claude Sonnet 4.6 で要約中...":summaryModel==="gemini-pro"?"Gemini 2.5 Pro で要約中...":"Gemini 3.6 Flash で要約中...");try{
 const FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント\n\n【入力の扱い】書き起こしには音声認識の誤変換や、診療と無関係な文（広告文・キャッチコピー・製品コード/型番の羅列・意味不明な繰り返し）が混入することがある。診療会話として文脈が通らないそれらの断片はカルテに反映せず無視する";
-// 薬剤名ルールは診察SOAP/処置系のみ（カウンセリング・議事録には入れない）
-const enhancedPrompt=ct.prompt+FORBIDDEN_RULES+(ct.id==="counseling-std"?"":DRUG_NAME_PROMPT_RULES);
+// 薬剤名ルール・疾患見出し書式ルールは診察SOAP/処置系のみ（カウンセリング・議事録には入れない）
+const enhancedPrompt=ct.prompt+FORBIDDEN_RULES+(ct.id==="counseling-std"?"":DRUG_NAME_PROMPT_RULES+DISEASE_HEADING_PROMPT_RULES);
 // 薬剤名ハルシネーションガード: 書き起こしに音源のない薬剤名の直前に⚠を付ける（削除はしない・fail-open）。
 // 表示・保存・コピーの全経路に乗せるため、要約完了時点（保存前）で一括適用する。
 const applyDrugGuard=(summary)=>{try{const g=markUngroundedDrugs(summary,iR.current||"");if(g.flagged.length)console.info("薬剤ガード未照合:",g.flagged);return g}catch(e){console.error("drug-guard呼び出し失敗(fail-open):",e);return{text:summary,flagged:[]}}};
@@ -5288,12 +5327,45 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 {[30,90,180].map(d=><button key={d} onClick={()=>setIntakeDays(d)} style={{padding:"4px 12px",borderRadius:8,border:intakeDays===d?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:intakeDays===d?C.pLL:C.w,fontSize:12,fontWeight:intakeDays===d?700:500,color:intakeDays===d?C.pDD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>過去{d}日</button>)}
 <input value={intakeFilter} onChange={e=>setIntakeFilter(e.target.value)} placeholder="疾患名で絞る（空欄=全疾患）" style={{flex:1,minWidth:180,padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none"}}/>
 </div>
+<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+<span style={{fontSize:12,color:C.g500}} title="この件数未満しか出現しない疾患は抽出対象にしない（出現1件の見出しが7割を占めるため）">最低出現件数:</span>
+{[1,3,5].map(n=><button key={n} onClick={()=>setIntakeMinCount(n)} style={{padding:"4px 12px",borderRadius:8,border:intakeMinCount===n?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:intakeMinCount===n?C.pLL:C.w,fontSize:12,fontWeight:intakeMinCount===n?700:500,color:intakeMinCount===n?C.pDD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{n===1?"1（全件）":`${n}件以上`}</button>)}
+</div>
 <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
 <button onClick={runIntakeExtract} disabled={intakeRunning} style={{padding:"8px 18px",borderRadius:10,border:"none",background:intakeRunning?C.g200:"#6d28d9",color:intakeRunning?C.g500:C.w,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:intakeRunning?"wait":"pointer"}}>{intakeRunning?"⏳ 抽出中...":"📥 抽出を実行"}</button>
 <BtnFb k="intakeExtract"/>
 {intakeProg&&<span style={{fontSize:12,color:C.g500,fontWeight:600}}>{intakeProg.done}/{intakeProg.total}疾患 完了{intakeRunning?`（処理中: ${intakeProg.current}）`:""}</span>}
 </div>
-<p style={{fontSize:11,color:C.g400,marginTop:6,marginBottom:0}}>要約に「# 疾患名」見出しのある記録が対象。疾患ごとに最新30記録まで処理し、再実行すると同内容は頻度(×N)が育ちます。</p>
+<p style={{fontSize:11,color:C.g400,marginTop:6,marginBottom:0}}>要約に「# 疾患名」見出しのある記録が対象。見出しは自動で名寄せ（評価文除去・「通称（正式名）」の正式名採用・部位語の統合）されます。疾患ごとに最新30記録まで処理し、再実行すると同内容は頻度(×N)が育ちます。</p>
+</div>
+{/* 疾患の統合・エイリアス辞書（カノニカルキーで寄りきらないものを院長が手で統合する） */}
+<div style={{...card,marginBottom:14}}>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:8}}>🔗 疾患の統合・エイリアス辞書</div>
+<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+<select value={intakeMergeFrom} onChange={e=>setIntakeMergeFrom(e.target.value)} style={{flex:1,minWidth:150,padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",background:C.w}}>
+<option value="">統合元（消える側）を選択</option>
+{intakeTopics.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+</select>
+<span style={{fontSize:12,color:C.g400}}>→</span>
+<select value={intakeMergeTo} onChange={e=>setIntakeMergeTo(e.target.value)} style={{flex:1,minWidth:150,padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",background:C.w}}>
+<option value="">統合先（残る側）を選択</option>
+{intakeTopics.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+</select>
+<button onClick={intakeMergeTopics} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#6d28d9",color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>🔗 統合</button>
+</div>
+<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+<input value={intakeAliasFrom} onChange={e=>setIntakeAliasFrom(e.target.value)} placeholder="寄せる見出し（例: 胼胝腫）" style={{flex:1,minWidth:150,padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none"}}/>
+<span style={{fontSize:12,color:C.g400}}>→</span>
+<input value={intakeAliasTo} onChange={e=>setIntakeAliasTo(e.target.value)} placeholder="統合先（例: 胼胝）" style={{flex:1,minWidth:150,padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none"}}/>
+<button onClick={intakeAddAlias} style={{padding:"6px 14px",borderRadius:8,border:"none",background:C.p,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>追加</button>
+</div>
+{intakeAliases.length>0&&<div style={{maxHeight:150,overflowY:"auto",border:`1px solid ${C.g100}`,borderRadius:8,padding:"4px 8px",marginBottom:6}}>
+{intakeAliases.map(a=>(<div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:12,color:C.g700}}>{a.alias} <span style={{color:C.g400}}>→</span> <b>{a.canonical}</b></span>
+<button onClick={()=>intakeDelAlias(a.id)} style={{padding:"1px 8px",borderRadius:6,border:"1px solid #fecaca",background:C.w,fontSize:10,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✕</button>
+</div>))}
+</div>}
+<p style={{fontSize:11,color:C.g400,margin:0}}>統合はトピックの問診項目を付け替え、統合元の名前を自動でエイリアス登録します。エイリアスは次回抽出のグループ化から適用（テーブル未作成の場合は supabase/migrations/add_disease_aliases.sql をSQL Editorで実行）。</p>
 </div>
 {draftTopics.length===0&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行）</span></div>}
 {draftTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
