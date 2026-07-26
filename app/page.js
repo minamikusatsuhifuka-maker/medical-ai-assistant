@@ -671,6 +671,128 @@ function MinutesFormatted({text}){
   return <div style={{whiteSpace:"normal"}}>{out}</div>;
 }
 
+// === 汎用ヘルプモーダル ===
+// タイトルと本文を渡すだけで開ける説明モーダル。本文は軽量記法（#/##/### 見出し・|表|・**太字**・──区切り線・空行）対応。
+// 他機能への追加手順: ①ボタンで setHelpModal({title:"...",body:"..."}) を呼ぶ
+//                     ②そのページのJSX末尾に {helpModal&&<HelpModal title={helpModal.title} body={helpModal.body} onClose={()=>setHelpModal(null)}/>} を置く
+function helpBold(s){
+  const parts=String(s).split(/\*\*(.+?)\*\*/g);
+  return parts.map((p,i)=>i%2===1?<strong key={i} style={{fontWeight:700,color:"#1c1917"}}>{p}</strong>:p);
+}
+function HelpModal({title,body,onClose}){
+  const lines=String(body||"").split("\n");
+  const out=[];let i=0,k=0;
+  while(i<lines.length){
+    const t=lines[i];const tr=t.trim();
+    if(tr.startsWith("|")){
+      const rows=[];
+      while(i<lines.length&&lines[i].trim().startsWith("|")){rows.push(lines[i].trim());i++}
+      const cells=rows.map(r=>r.replace(/^\|/,"").replace(/\|$/,"").split("|").map(c=>c.trim())).filter(cs=>!cs.every(c=>/^-{2,}$/.test(c)));
+      out.push(<table key={k++} style={{borderCollapse:"collapse",width:"100%",margin:"6px 0 10px",fontSize:12.5}}><tbody>{cells.map((cs,ri)=>(<tr key={ri}>{cs.map((c,ci)=><td key={ci} style={{border:"1px solid #d6d3d1",padding:"5px 10px",fontWeight:ri===0?700:400,background:ri===0?"#f5f5f4":"#fff",lineHeight:1.6}}>{helpBold(c)}</td>)}</tr>))}</tbody></table>);
+      continue;
+    }
+    i++;
+    if(tr===""){out.push(<div key={k++} style={{height:"0.55em"}}/>);continue}
+    if(/^─{4,}/.test(tr)){out.push(<div key={k++} style={{borderTop:"1px solid #e7e5e4",margin:"10px 0"}}/>);continue}
+    if(tr.startsWith("### ")){out.push(<div key={k++} style={{fontSize:13,fontWeight:700,color:"#4c1d95",margin:"12px 0 4px"}}>{tr.slice(4)}</div>);continue}
+    if(tr.startsWith("## ")){out.push(<div key={k++} style={{fontSize:14.5,fontWeight:700,color:"#2a5018",margin:"14px 0 6px"}}>{tr.slice(3)}</div>);continue}
+    if(tr.startsWith("# ")){out.push(<div key={k++} style={{fontSize:16,fontWeight:700,color:"#1c1917",margin:"0 0 8px"}}>{tr.slice(2)}</div>);continue}
+    out.push(<div key={k++} style={{fontSize:12.5,color:"#44403c",lineHeight:1.85,whiteSpace:"pre-wrap"}}>{helpBold(t)}</div>);
+  }
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+    <div style={{background:"#fff",borderRadius:16,padding:20,maxWidth:560,width:"100%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#2a5018"}}>{title}</div>
+        <button onClick={onClose} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #e7e5e4",background:"#fafaf9",fontSize:12,color:"#78716c",fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>✕ 閉じる</button>
+      </div>
+      {out}
+    </div>
+  </div>);
+}
+// エイリアス辞書のヘルプ本文。登録行数・承認済み件数は画面の実データを動的に埋め込む（未読込時は執筆時点の固定値）
+const HELP_ALIAS_DICT=(aliasCount,approvedCount)=>{
+  const rows=aliasCount>0?`${aliasCount}行`:"64行";
+  const appr=approvedCount>0?`${approvedCount}件`:"570件以上";
+  return{title:"❓ エイリアス辞書の使い方",body:`# 疾患の統合・エイリアス辞書とは
+
+要約の疾患名は診察ごとにAIが書くため、同じ病気でも書き方がばらつきます。
+「粉瘤」「表皮嚢腫」のように別の名前で記録されると、事前問診では
+別々の疾患として集計されてしまいます。
+
+この辞書は「この書き方は、この疾患として扱う」という対応表です。
+現在${rows}が登録されています。
+
+──────────────────────────────
+
+## 入口は3つ。用途が違います
+
+### ① 上段のプルダウン「統合元 → 統合先 → 🔗統合」
+
+**すでに一覧に同じ疾患が2つ並んでいるとき**に使います。
+
+例: チップに「顔面湿疹」と「顔の湿疹」が両方ある
+→ 統合元に「顔の湿疹」、統合先に「顔面湿疹」を選んで統合
+
+問診項目が統合先に付け替わり、統合元のトピックは消えます。
+同時に「顔の湿疹 → 顔面湿疹」が辞書に自動登録されるので、
+次回以降も自動で寄ります。
+
+### ② 中段の「寄せる見出し → 統合先 → 追加」
+
+**まだ一覧に出ていない表記を、先回りで登録**します。
+
+例: 今後「いんきんたむし」と書かれたら「股部白癬」に寄せたい
+→ 寄せる見出しに「いんきんたむし」、統合先に「股部白癬」
+
+次回の抽出時のグループ化から効きます。既存の一覧は変わりません。
+病名の表記そのものを変えたいときも、ここに登録します。
+
+### ③ 一覧の ✏編集 / ✕削除
+
+${rows}あるので、**検索ボックスに疾患名を入れて**絞り込んでください。
+
+・✏編集 … 寄せ先が違っていたときに直す
+・✕削除 … 統合をやめる。以後その表記は独立した疾患になります
+
+──────────────────────────────
+
+## 「⇢ 既存トピックにも反映」ボタン
+
+辞書を追加・編集しても、**すでにある承認済み疾患の名前は自動では変わりません。**
+
+これは意図的な仕様です。自動で走ると、辞書を1行いじった瞬間に
+承認済み${appr}の紐付けが動いてしまうためです。
+
+名前を実際に変えたいときだけ、このボタンを押してください。
+対象の一覧が確認画面に出るので、内容を見てから実行できます。
+
+──────────────────────────────
+
+## 使いどころ早見表
+
+| 状況 | 使うもの |
+|---|---|
+| 一覧に同じ疾患が2つ並んでいる | ① 統合 |
+| 病名の表記を変えたい | ② 追加 →「既存トピックにも反映」 |
+| 今後出そうな表記ゆれを先回りで登録 | ② 追加 |
+| 寄せ先を間違えた | ③ 編集 |
+| やっぱり分けておきたい | ③ 削除 |
+
+──────────────────────────────
+
+## 注意
+
+・辞書の変更は**次回の抽出から**グループ化に反映されます。
+・統合しないと決めている疾患があります(足白癬・爪白癬・股部白癬、
+  酒さと酒さ様皮膚炎など)。治療が異なるため、まとめないでください。
+・部位のまとめ方(頭部/顔面/手/体部/陰部・臀部)や括弧の処理は
+  この辞書ではなく仕組み側で決まっています。変更が必要なときは
+  開発側の対応が必要です。
+
+普段は触る必要がありません。
+疾患チップを見て「これとこれは同じでは」と気づいたときだけ開けば十分です。`};
+};
+
 // === MAIN COMPONENT ===
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
@@ -785,6 +907,8 @@ const[intakeAliasEditAlias,setIntakeAliasEditAlias]=useState("");
 const[intakeAliasEditCanonical,setIntakeAliasEditCanonical]=useState("");
 const[intakeOpenTopics,setIntakeOpenTopics]=useState(new Set());
 const[intakeClosedDrafts,setIntakeClosedDrafts]=useState(new Set());
+// 汎用ヘルプモーダル（{title,body}を入れると開く。部品はモジュール上部のHelpModal。パスワードゲート不要の読み物）
+const[helpModal,setHelpModal]=useState(null);
 // 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
 const[hoverPreview,setHoverPreview]=useState(true);
 const[canHover,setCanHover]=useState(false);
@@ -5513,7 +5637,10 @@ return(<div style={{marginTop:18}}>
 </div>
 {/* 疾患の統合・エイリアス辞書（カノニカルキーで寄りきらないものを院長が手で統合する） */}
 <div style={{...card,marginBottom:14}}>
-<div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:8}}>🔗 疾患の統合・エイリアス辞書</div>
+<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+<div style={{fontSize:13,fontWeight:700,color:C.pDD}}>🔗 疾患の統合・エイリアス辞書</div>
+<button onClick={()=>setHelpModal(HELP_ALIAS_DICT(intakeAliases.length,intakeItems.filter(i=>i.status==="approved").length))} style={{padding:"3px 10px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:11,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>❓ 使い方</button>
+</div>
 <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
 <select value={intakeMergeFrom} onChange={e=>setIntakeMergeFrom(e.target.value)} style={{flex:1,minWidth:150,padding:"6px 8px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",background:C.w}}>
 <option value="">統合元（消える側）を選択</option>
@@ -5606,6 +5733,7 @@ return(<div style={{...card}}>
 </div>);
 })()}
 </div>}
+{helpModal&&<HelpModal title={helpModal.title} body={helpModal.body} onClose={()=>setHelpModal(null)}/>}
 </div>);
 }
 
