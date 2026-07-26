@@ -88,19 +88,42 @@ async function part1() {
   // 個人情報の機械チェック（説明ナレッジのscrubPIIを流用）
   const s1 = lib.scrubPII("山田さんはいつから症状がありますか？");
   assert(!s1.includes("山田") && s1.includes("患者さん"), "scrubPII流用: 敬称付き氏名を一般化");
+
+  // ===== intake-quality-fix: 固定基本問診セット =====
+  assert(Array.isArray(lib.INTAKE_FIXED_QUESTIONS) && lib.INTAKE_FIXED_QUESTIONS.length === 4, "固定基本問診セットは4項目");
+  assert(lib.INTAKE_FIXED_QUESTIONS.some((q) => q.question.includes("妊娠")), "固定セットに妊娠・授乳の確認が含まれる（投与可否判断に必須）");
+  assert(lib.INTAKE_VISIT_TYPES.join(",") === "初診,再診,共通", "visit_type の3値が定義されている");
+
+  // ===== intake-dedup-fix: planIntakeMergeV2（LLM同義判定の解決） =====
+  const exV2 = [
+    { id: "A1", category: "発症・経過", question: "症状はいつ頃からどのように始まりましたか？", seen_count: 2, status: "approved" },
+    { id: "D1", category: "症状の性状", question: "かゆみはありますか？", seen_count: 1, status: "draft" },
+    { id: "R1", category: "その他", question: "市販薬を使っていますか？", seen_count: 3, status: "rejected" },
+  ];
+  const v1 = lib.planIntakeMergeV2([{ existing: 1 }, { existing: 2 }], exV2);
+  assert(v1.newItems.length === 0 && v1.increments.includes("A1") && v1.increments.includes("D1"), "V2: {existing:n} は新規insertせず seen_count 加算対象になる（approved含む）");
+  const v2 = lib.planIntakeMergeV2([{ existing: 3 }], exV2);
+  assert(v2.newItems.length === 0 && v2.increments.length === 0 && v2.rejectedSkips === 1, "V2: rejected は draft 復活させず seen_count も加算しない");
+  const v3 = lib.planIntakeMergeV2([{ category: "発症・経過", question: "症状はいつ頃からどのように始まりましたか", intent: "", visit_type: "初診" }], exV2);
+  assert(v3.newItems.length === 0 && v3.increments.includes("A1"), "V2: LLMが同義を見逃してもbigram保険で既存へ寄る");
+  const v4 = lib.planIntakeMergeV2([{ category: "既往・治療歴", question: "ご家族に同じ症状の方はいますか？", intent: "家族歴", visit_type: "怪しい値" }], exV2);
+  assert(v4.newItems.length === 1 && v4.newItems[0].visit_type === "共通", "V2: 新規は登録され、不正な visit_type は共通に正規化");
+  assert(lib.planIntakeMergeV2([{ existing: 99 }, { existing: 0 }], exV2).increments.length === 0, "V2: 範囲外の existing 番号は無視（fail-open）");
   console.log("── Part1 OK\n");
 }
 
 // ========== Part2: 実ブラウザ一連フロー ==========
 const MOCK_ITEMS = [
-  { category: "発症・経過", question: "いつ頃から症状がありますか？", intent: "発症時期の確認" },
-  { category: "症状の性状", question: "かゆみや痛みはありますか？", intent: "自覚症状の確認" },
-  { category: "悪化因子・生活環境", question: "汗をかいた後に悪化しますか？", intent: "悪化因子の確認" },
-  { category: "薬剤・アレルギー", question: "薬や化粧品でかぶれたことはありますか？", intent: "アレルギー歴の確認" },
+  { category: "発症・経過", question: "いつ頃から症状がありますか？", intent: "発症時期の確認", visit_type: "初診" },
+  { category: "症状の性状", question: "かゆみや痛みはありますか？", intent: "自覚症状の確認", visit_type: "共通" },
+  { category: "悪化因子・生活環境", question: "汗をかいた後に悪化しますか？", intent: "悪化因子の確認", visit_type: "共通" },
+  { category: "薬剤・アレルギー", question: "処方されたお薬で刺激を感じることはありますか？", intent: "副作用の確認", visit_type: "再診" },
 ];
+const NEW5 = { category: "既往・治療歴", question: "これまでに医療機関で治療を受けたことはありますか？", intent: "治療歴の確認", visit_type: "初診" };
+const NEW6 = { category: "その他", question: "ご家族に同じ症状の方はいますか？", intent: "家族歴の確認", visit_type: "初診" };
 
 async function part2() {
-  console.log("── Part2: 実ブラウザ一連フロー（抽出→承認→閲覧→印刷）");
+  console.log("── Part2: 実ブラウザ一連フロー（LLM同義判定dedup→承認→全消去→閲覧→印刷）");
   const browser = await pw.chromium.launch({
     headless: true,
     args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
@@ -116,14 +139,14 @@ async function part2() {
     else await d.accept();
   });
 
-  // in-memory supabase RESTモック
+  // in-memory supabase RESTモック（visit_typeカラムあり想定）
   let idc = 0;
   const genId = (p) => `${p}-${String(++idc).padStart(3, "0")}`;
   const db = { topics: [], items: [] };
   const now = new Date().toISOString();
   const records = [
-    { id: "rec-1", created_at: now, input_text: "いつからニキビ出てますか? 洗顔は1日何回してますか?", output_text: "# ニキビ（尋常性ざ瘡）\nS）再診\nP）ベピオ継続" },
-    { id: "rec-2", created_at: now, input_text: "かゆみはありますか? 市販の薬は使いました?", output_text: "# ニキビ（尋常性ざ瘡）\nS）新患\nP）ディフェリン新規" },
+    { id: "rec-1", created_at: now, input_text: "いつからニキビ出てますか?", output_text: "# ニキビ（尋常性ざ瘡）\nS）再診\nP）ベピオ継続" },
+    { id: "rec-2", created_at: now, input_text: "かゆみはありますか?", output_text: "# ニキビ（尋常性ざ瘡）\nS）新患\nP）ディフェリン新規" },
   ];
   await ctx.route(/\/rest\/v1\//, async (route) => {
     const req = route.request();
@@ -135,7 +158,7 @@ async function part2() {
     const applyFilters = (rows) => {
       let out = rows;
       for (const [k, v] of url.searchParams.entries()) {
-        if (["select", "order", "limit", "offset"].includes(k)) continue;
+        if (["select", "order", "limit", "offset", "on_conflict"].includes(k)) continue;
         const eq = /^eq\.(.*)$/.exec(v);
         if (eq) out = out.filter((r) => String(r[k]) === eq[1]);
       }
@@ -143,43 +166,40 @@ async function part2() {
     };
     try {
       if (table === "records" && method === "GET") return json(records);
-      if (table === "intake_topics") {
-        if (method === "GET") return json(applyFilters(db.topics));
+      const store = table === "intake_topics" ? db.topics : table === "intake_items" ? db.items : null;
+      if (store) {
+        if (method === "HEAD") { const n = applyFilters(store).length; return route.fulfill({ status: 200, headers: { "content-range": n ? `0-${n - 1}/${n}` : "*/0" }, body: "" }); }
+        if (method === "GET") return json(applyFilters(store));
         if (method === "POST") {
           const b = req.postDataJSON();
-          const row = { id: genId("topic"), created_at: now, ...b };
-          db.topics.push(row);
-          return json(accept.includes("vnd.pgrst.object") ? row : [row], 201);
-        }
-        if (method === "PATCH") { applyFilters(db.topics).forEach((r) => Object.assign(r, req.postDataJSON())); return route.fulfill({ status: 204, body: "" }); }
-      }
-      if (table === "intake_items") {
-        if (method === "HEAD") { const n = applyFilters(db.items).length; return route.fulfill({ status: 200, headers: { "content-range": n ? `0-${n - 1}/${n}` : "*/0" }, body: "" }); }
-        if (method === "GET") return json(applyFilters(db.items));
-        if (method === "POST") {
-          const b = req.postDataJSON();
-          const rows = (Array.isArray(b) ? b : [b]).map((r) => ({ id: genId("item"), created_at: now, updated_at: now, ...r }));
-          db.items.push(...rows);
+          const rows = (Array.isArray(b) ? b : [b]).map((r) => ({ id: genId(table), created_at: now, updated_at: now, ...r }));
+          store.push(...rows);
           return json(accept.includes("vnd.pgrst.object") ? rows[0] : rows, 201);
         }
-        if (method === "PATCH") { applyFilters(db.items).forEach((r) => Object.assign(r, req.postDataJSON())); return route.fulfill({ status: 204, body: "" }); }
+        if (method === "PATCH") { applyFilters(store).forEach((r) => Object.assign(r, req.postDataJSON())); return route.fulfill({ status: 204, body: "" }); }
+        if (method === "DELETE") { const del = applyFilters(store); del.forEach((r) => store.splice(store.indexOf(r), 1)); return route.fulfill({ status: 204, body: "" }); }
       }
       if (method === "HEAD") return route.fulfill({ status: 200, headers: { "content-range": "*/0" }, body: "" });
       if (method === "GET") return json([]);
       return route.fulfill({ status: 204, body: "" });
-    } catch (e) {
-      console.error("mock route error:", e);
-      return json({ message: String(e) }, 500);
-    }
+    } catch (e) { console.error("mock route error:", e); return json({ message: String(e) }, 500); }
   });
   await ctx.route(/\/storage\/v1\//, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+
+  // 抽出APIモック: existing が渡されたら {existing:番号} を返す（LLM同義判定の再現）
   let extractCalls = 0;
+  const apiExisting = [];
   await ctx.route("**/api/intake-extract", async (route) => {
     extractCalls++;
     const b = route.request().postDataJSON();
-    if (!b.disease || !Array.isArray(b.records)) return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "bad request" }) });
-    await new Promise((r) => setTimeout(r, 300));
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: MOCK_ITEMS, model: "mock" }) });
+    apiExisting.push((b.existing || []).length);
+    await new Promise((r) => setTimeout(r, 200));
+    let items;
+    if (extractCalls === 1) items = MOCK_ITEMS;                                                        // 初回: 新規4件
+    else if (extractCalls === 2) items = [...b.existing.map((_, i) => ({ existing: i + 1 })), NEW5];   // 2回目: 全て同義+新規1件
+    else if (extractCalls === 3) items = b.existing.map((_, i) => ({ existing: i + 1 }));              // 3回目: 全て同義（新規ゼロ）
+    else items = [...b.existing.map((_, i) => ({ existing: i + 1 })), NEW6];                           // 4回目: 全消去テスト用に新規1件
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items, model: "mock" }) });
   });
 
   const clickUntil = async (btnLocator, markerLocator) => {
@@ -190,75 +210,91 @@ async function part2() {
     throw new Error("クリックが反映されません（hydration未完了？）");
   };
   const waitText = (t, timeout = 10000) => page.getByText(t, { exact: false }).first().waitFor({ state: "visible", timeout });
+  const runExtract = async (expectMsg) => { await page.getByRole("button", { name: "📥 抽出を実行" }).click(); await waitText(expectMsg); };
 
-  // ---- メイン → ⋯その他 → 🩺事前問診 ----
+  // ---- 事前問診ページへ ----
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.locator('textarea[placeholder*="録音ボタン"]').first().waitFor({ timeout: 20000 });
   await clickUntil(page.getByRole("button", { name: /⋯ その他/ }), page.getByRole("button", { name: /🩺 事前問診/ }));
   await page.getByRole("button", { name: /🩺 事前問診/ }).click();
   await waitText("この問診は診察の補助です");
-  console.log("  ✓ 事前問診ページ表示・固定文言（診察の補助）あり");
-
-  // ---- 承認タブ: 期間指定 → 抽出 ----
   await page.getByRole("button", { name: /✅ 承認（院長）/ }).click();
   await waitText("📥 診察履歴から問診項目を抽出");
   await page.getByRole("button", { name: "過去30日" }).click();
   await page.getByRole("button", { name: "1（全件）" }).click(); // モックは2記録のため既定の最低出現3では対象外
-  await page.getByRole("button", { name: "📥 抽出を実行" }).click();
-  await waitText("1/1疾患 完了");
-  await waitText(/1疾患処理・4件追加/);
-  console.log("  ✓ 期間指定(過去30日)→抽出実行→進捗表示→✓4件追加");
-  assert(extractCalls === 1, "抽出APIは疾患単位で1回だけ呼ばれた（2記録を1疾患に集約）");
-  assert(db.topics.length === 1 && db.topics[0].name === "尋常性ざ瘡", "intake_topics に疾患が名寄せ済みキー(尋常性ざ瘡)で作成された");
-  assert(db.topics[0].record_count === 2 && db.topics[0].period_from && db.topics[0].period_to, "topicに期間・記録件数が保存された");
-  assert(db.items.length === 4 && db.items.every((i) => i.status === "draft"), "intake_items に4件が draft で登録された");
 
-  // ---- 2回目抽出: 重複せず seen_count 加算 ----
-  await page.getByRole("button", { name: "📥 抽出を実行" }).click();
-  await waitText(/1疾患処理・0件追加・4件カウント更新/);
-  assert(db.items.length === 4 && db.items.every((i) => i.seen_count === 2), "再実行で重複せず seen_count が育つ");
-  console.log("  ✓ 抽出2回目: 0件追加・4件カウント更新(dedup)");
+  // ---- 1回目: 新規4件（visit_type保存） ----
+  await runExtract(/1疾患処理・4件追加/);
+  assert(db.topics.length === 1 && db.topics[0].name === "尋常性ざ瘡", "intake_topics に名寄せ済みキーで作成");
+  assert(db.items.length === 4 && db.items.every((i) => i.status === "draft"), "1回目: 4件が draft で登録");
+  assert(db.items[0].visit_type === "初診" && db.items[3].visit_type === "再診", "visit_type が保存される（初診/再診）");
+  assert(apiExisting[0] === 0, "1回目のAPIには既存項目が渡らない");
 
-  // ---- 承認（初回のみパスワードprompt）→ 編集して承認 → 却下 ----
-  await waitText("下書き 4件");
+  // ---- 2回目: 同義4件は加算のみ+新規1件（増殖しない） ----
+  await runExtract(/1疾患処理・1件追加・4件カウント更新/);
+  assert(apiExisting[1] === 4, "2回目のAPIに既存4項目が番号つきで渡る");
+  assert(db.items.length === 5, "2回目: 同義4件は insert されず件数は5（増殖しない）");
+  assert(db.items.slice(0, 4).every((i) => i.seen_count === 2), "同義4件は seen_count +1 のみ");
+
+  // ---- 承認フェーズ: NEW5を却下・1件編集承認・残り3件一括承認 ----
+  await waitText("下書き 5件");
+  const rejCard = page.locator("div").filter({ hasText: /^🕒?.*これまでに医療機関で治療を受けたことはありますか/ });
+  // NEW5（治療歴）の却下: 該当項目の却下ボタンを質問文から辿る
+  const items5 = page.getByText("これまでに医療機関で治療を受けたことはありますか？");
+  await items5.first().waitFor();
+  await page.locator("div", { has: items5 }).locator("button", { hasText: "✗ 却下" }).last().click();
+  await waitText("✗ 1件を却下しました");
   await page.getByRole("button", { name: "✏ 編集して承認" }).first().click();
-  const ta = page.locator("textarea").last();
-  await ta.fill("いつ頃から症状が出ていますか？（編集済み）");
+  await page.locator("textarea").last().fill("いつ頃から症状が出ていますか？（編集済み）");
   await page.getByRole("button", { name: "💾 この内容で承認" }).click();
   await waitText("✓ 1件を承認しました");
-  assert(dialogs.filter((d) => d.type === "prompt").length === 1, "承認操作の初回に管理パスワードpromptが1回出た");
-  assert(db.items.some((i) => i.status === "approved" && i.question.includes("（編集済み）")), "編集した問診文で承認された");
-  await page.getByRole("button", { name: "✗ 却下" }).first().click();
-  await waitText("✗ 1件を却下しました");
-  assert(db.items.filter((i) => i.status === "rejected").length === 1, "1件が rejected になった");
-  await page.getByRole("button", { name: /✓ この疾患を一括承認（2件）/ }).click();
+  assert(dialogs.filter((d) => d.type === "prompt").length === 1, "承認系の初回に管理パスワードpromptが1回");
+  await page.getByRole("button", { name: /✓ この疾患を一括承認（3件）/ }).click();
   await waitText("未承認の下書きはありません");
-  assert(dialogs.filter((d) => d.type === "prompt").length === 1, "2回目以降の承認でpromptは再要求されない");
-  assert(db.topics[0].status === "approved", "承認済み項目が生まれた疾患topicは approved になる");
-  console.log("  ✓ 承認タブ: 編集して承認/却下/一括承認が動作");
+  assert(db.items.filter((i) => i.status === "approved").length === 4 && db.items.filter((i) => i.status === "rejected").length === 1, "approved4件/rejected1件になった");
+  const approvedSnapshot = db.items.filter((i) => i.status === "approved").map((i) => ({ id: i.id, question: i.question, status: i.status }));
 
-  // ---- 閲覧タブ: カテゴリ順・頻度・却下非表示・コピー ----
+  // ---- 3回目: 全て同義 → 件数不変・approvedはseenのみ・rejectedは復活も加算もなし ----
+  const rejBefore = db.items.find((i) => i.status === "rejected").seen_count;
+  await runExtract(/1疾患処理・0件追加・4件カウント更新/);
+  assert(db.items.length === 5, "3回目: 項目数が増えない（合格条件）");
+  assert(db.items.filter((i) => i.status === "draft").length === 0, "rejected が draft に復活しない");
+  assert(db.items.find((i) => i.status === "rejected").seen_count === rejBefore, "rejected は seen_count も加算されない");
+  for (const snap of approvedSnapshot) {
+    const cur = db.items.find((i) => i.id === snap.id);
+    assert(cur.status === "approved" && cur.question === snap.question, `approved項目の status/question が書き換わらない（${snap.question.slice(0, 12)}…）`);
+  }
+  assert(db.items.filter((i) => i.status === "approved").every((i) => i.seen_count === 3), "approved は seen_count のみ +1");
+
+  // ---- 4回目: 新規1件（全消去テスト用） → 下書きを全消去 ----
+  await runExtract(/1疾患処理・1件追加/);
+  assert(db.items.filter((i) => i.status === "draft").length === 1, "4回目: 新規1件が draft で追加");
+  await page.getByRole("button", { name: "🗑 下書きを全消去" }).click();
+  await waitText(/下書き1件を削除しました/);
+  assert(dialogs.some((d) => d.type === "confirm" && d.msg.includes("1件")), "全消去に件数明示の確認ダイアログが出る");
+  assert(db.items.filter((i) => i.status === "draft").length === 0, "draft のみ削除された");
+  assert(db.items.filter((i) => i.status === "approved").length === 4 && db.items.filter((i) => i.status === "rejected").length === 1, "全消去で approved/rejected は消えない");
+
+  // ---- 閲覧タブ: 固定基本問診・visit_typeバッジ・初診/再診切替・印刷 ----
   await page.getByRole("button", { name: "👀 閲覧" }).click();
   await page.getByRole("button", { name: /尋常性ざ瘡/ }).click();
-  await waitText("■ 🕒 発症・経過");
-  await waitText("■ 💊 薬剤・アレルギー");
-  const bodyText = await page.locator("body").innerText();
-  const rejected = db.items.find((i) => i.status === "rejected");
-  assert(!bodyText.includes(rejected.question), "却下した項目は閲覧タブに表示されない");
-  assert((await page.getByText("×2").count()) >= 2, "頻度バッジ ×2 が表示される");
-  assert((await page.getByRole("button", { name: "📋 コピー" }).count()) === 1, "📋コピーあり");
-  console.log("  ✓ 閲覧タブ: カテゴリ別表示/頻度/却下非表示");
-
-  // ---- 印刷用出力（別ウィンドウ） ----
+  await waitText("基本問診（全疾患共通・毎回確認）");
+  await waitText("妊娠中・授乳中ですか");
+  console.log("  ✓ 閲覧タブ: 固定基本問診セット（妊娠授乳含む4項目）が冒頭に出る");
+  const allText = await page.locator("body").innerText();
+  assert(allText.includes("初診") && allText.includes("再診"), "visit_type バッジが表示される");
+  await page.getByRole("button", { name: "初診用", exact: true }).click();
+  await page.waitForTimeout(300);
+  const shodanText = await page.locator("body").innerText();
+  assert(shodanText.includes("いつ頃から症状が出ていますか") && !shodanText.includes("処方されたお薬で刺激"), "初診用フィルタ: 初診+共通のみ表示（再診項目が消える）");
+  await page.getByRole("button", { name: "すべて", exact: true }).click();
   const [popup] = await Promise.all([
     ctx.waitForEvent("page", { timeout: 10000 }),
     page.getByRole("button", { name: "🖨 印刷" }).click(),
   ]);
   await popup.waitForLoadState("domcontentloaded");
   const printText = await popup.locator("body").innerText();
-  assert(printText.includes("事前問診チェックリスト") && printText.includes("尋常性ざ瘡"), "印刷用出力に疾患名つきチェックリストが出る");
-  assert(printText.includes("この問診は診察の補助です"), "印刷用出力にも固定文言が入る");
-  assert(printText.includes("☐"), "印刷用出力はチェックボックス形式");
+  assert(printText.includes("基本問診（全疾患共通・毎回確認）") && printText.includes("妊娠中・授乳中"), "印刷にも固定基本問診セットが冒頭に入る");
   await popup.close();
 
   assert(pageErrors.length === 0, "pageerror ゼロ" + (pageErrors.length ? ": " + pageErrors.join(" | ") : ""));

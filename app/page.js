@@ -6,7 +6,7 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
-import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, findIntakeTopicMatch, planIntakeMerge } from "./lib/intake-knowledge";
+import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
 import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings, isNonDiseaseKey } from "./lib/disease-canonical";
 import dynamic from "next/dynamic";
 
@@ -777,6 +777,7 @@ const[intakeMergeFrom,setIntakeMergeFrom]=useState("");
 const[intakeMergeTo,setIntakeMergeTo]=useState("");
 const[intakeAliasFrom,setIntakeAliasFrom]=useState("");
 const[intakeAliasTo,setIntakeAliasTo]=useState("");
+const[intakeVisitFilter,setIntakeVisitFilter]=useState("all");
 // 履歴一覧の📝書起/📋要約 ホバープレビュー（クリックの既存モーダルは維持・ホバーは追加機能）
 const[hoverPreview,setHoverPreview]=useState(true);
 const[canHover,setCanHover]=useState(false);
@@ -3814,6 +3815,10 @@ const runIntakeExtract=async()=>{
     names=names.filter(n=>groups[n].length>=intakeMinCount);
     if(names.length===0){sSt("対象疾患が見つかりません（要約に「# 疾患名」見出しがあり、最低出現件数を満たす記録が対象）");btnFbSet("intakeExtract","err","⚠ 対象疾患なし");return}
     names.sort((a,b)=>groups[b].length-groups[a].length);
+    // visit_type カラムの存在チェック（add_intake_visit_type.sql 未実行の環境では visit_type なしで保存するフォールバック）
+    let hasVisitType=true;
+    try{const vt=await supabase.from("intake_items").select("visit_type").limit(1);if(vt.error)hasVisitType=false}catch{hasVisitType=false}
+    if(!hasVisitType)console.info("intake: visit_typeカラム未作成のため区分なしで保存します（add_intake_visit_type.sql をSQL Editorで実行すると有効化）");
     // 既存topics/itemsを取得してマージ計画に使う
     const[t0,i0]=await Promise.all([supabase.from("intake_topics").select("*"),supabase.from("intake_items").select("id,topic_id,category,question,seen_count,status")]);
     if(t0.error)throw t0.error;if(i0.error)throw i0.error;
@@ -3823,20 +3828,25 @@ const runIntakeExtract=async()=>{
       const name=names[ix];
       setIntakeProg({done:ix,total:names.length,current:name});
       try{
-        // 疾患ごとに最大30記録（新しい順）をサンプリング。全件処理はしない（追加実行でseen_countが育つ設計）
-        const sample=groups[name].slice(0,30).map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));
-        const res=await fetch("/api/intake-extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({disease:name,records:sample})});
+        // 疾患ごとに最大30記録をサンプリング。新しい順の偏りを避けるため対象期間内で均等間隔に拾う
+        //（直近30件だとほぼ再診で埋まり、初診特有の問診=発症時期等が抽出されないため。ランダムでなく均等=再実行の再現性）
+        const all=groups[name];
+        const sample=(all.length<=30?all:Array.from({length:30},(_,i)=>all[Math.floor(i*all.length/30)]))
+          .map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));
+        // 既存項目（この疾患・全status）を番号つきでAPIに渡し、LLM側で同義判定させる（再抽出での増殖防止）
+        let topic=findIntakeTopicMatch(name,topics);
+        const existingList=topic?items.filter(x=>x.topic_id===topic.id):[];
+        const res=await fetch("/api/intake-extract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({disease:name,records:sample,existing:existingList.map(e=>({category:e.category,question:e.question}))})});
         const d=await res.json().catch(()=>({}));
         if(!res.ok||d.error)throw new Error(d.error||("サーバーエラー("+res.status+")"));
         // topic を作成 or 期間・件数を更新
-        let topic=findIntakeTopicMatch(name,topics);
         const periodPatch={period_from:fromDate.toISOString().slice(0,10),period_to:new Date().toISOString().slice(0,10),record_count:sample.length};
         if(!topic){const ins=await supabase.from("intake_topics").insert({name,...periodPatch,status:"draft"}).select("*").single();if(ins.error)throw ins.error;topic=ins.data;topics.push(topic)}
         else{const up=await supabase.from("intake_topics").update(periodPatch).eq("id",topic.id);if(up.error)throw up.error}
-        // 重複は集約して seen_count 加算（頻度1でも捨てない）
-        const plan=planIntakeMerge(d.items||[],items.filter(x=>x.topic_id===topic.id));
+        // 同義はseen_count加算のみ（approvedもstatus/question不変・rejectedは復活させず加算もしない）、新規だけdraftで追加
+        const plan=planIntakeMergeV2(d.items||[],existingList);
         if(plan.newItems.length>0){
-          const rows=plan.newItems.map(n=>({topic_id:topic.id,category:n.category,question:n.question,intent:n.intent||null,status:"draft",seen_count:1}));
+          const rows=plan.newItems.map(n=>({topic_id:topic.id,category:n.category,question:n.question,intent:n.intent||null,status:"draft",seen_count:1,...(hasVisitType?{visit_type:n.visit_type||"共通"}:{})}));
           const ins2=await supabase.from("intake_items").insert(rows).select("id,topic_id,category,question,seen_count,status");
           if(ins2.error)throw ins2.error;items.push(...(ins2.data||[]));added+=plan.newItems.length;
         }
@@ -3865,6 +3875,17 @@ const intakeSetStatus=async(ids,status,questionOverride)=>{
     setIntakeEditId(null);setIntakeEditQ("");
     sSt(status==="approved"?`✓ ${ids.length}件を承認しました`:`✗ ${ids.length}件を却下しました`);
   }catch(e){console.error("intake status error:",e);sSt("更新エラー: "+(e.message||e))}
+};
+// その疾患の draft のみ一括削除（approved/rejectedは消さない・確認ダイアログ・管理パスワードゲート）
+const intakeClearDrafts=async(topic,count)=>{
+  if(!explainAuth())return;
+  if(!window.confirm(`「${topic.name}」の下書き${count}件をすべて削除します。\n承認済み・却下済みの項目は消えません。よろしいですか？`))return;
+  try{
+    const del=await supabase.from("intake_items").delete().eq("topic_id",topic.id).eq("status","draft");
+    if(del.error)throw del.error;
+    setIntakeItems(prev=>prev.filter(it=>!(it.topic_id===topic.id&&it.status==="draft")));
+    sSt(`✓ 「${topic.name}」の下書き${count}件を削除しました`);
+  }catch(e){console.error("intake clear drafts error:",e);sSt("下書き削除エラー: "+(e.message||e))}
 };
 // 疾患トピックの統合（items付け替え→統合元名をエイリアス登録→統合元topic削除。以後の抽出は自動で統合先に寄る）
 const intakeMergeTopics=async()=>{
@@ -3897,13 +3918,17 @@ const printIntake=(entry)=>{
     const esc=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let html=`<html><head><title>事前問診 ${esc(entry.t.name)}</title><style>body{font-family:'Hiragino Sans','Yu Gothic',sans-serif;padding:24px;color:#222}h1{font-size:18px;border-bottom:2px solid #555;padding-bottom:6px}h2{font-size:14px;background:#f0f0f0;padding:4px 8px;margin:14px 0 6px}li{font-size:13px;line-height:1.9;margin-bottom:4px}.note{font-size:11px;color:#666;border:1px solid #ccc;padding:6px 10px;margin-bottom:12px}.intent{color:#888;font-size:11px}</style></head><body>`;
     html+=`<h1>🩺 事前問診チェックリスト: ${esc(entry.t.name)}</h1><p class="note">${esc(INTAKE_DISCLAIMER)}</p>`;
-    INTAKE_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return;html+=`<h2>${c.icon} ${esc(c.id)}</h2><ul>`;its.forEach(i=>{html+=`<li>☐ ${esc(i.question)}${i.intent?` <span class="intent">（${esc(i.intent)}）</span>`:""}</li>`});html+="</ul>"});
+    // 全疾患共通の固定基本問診セット（冒頭・毎回確認）
+    html+=`<h2>📌 基本問診（全疾患共通・毎回確認）</h2><ul>`;
+    INTAKE_FIXED_QUESTIONS.forEach(q=>{html+=`<li>☐ ${esc(q.question)}${q.intent?` <span class="intent">（${esc(q.intent)}）</span>`:""}</li>`});
+    html+="</ul>";
+    INTAKE_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return;html+=`<h2>${c.icon} ${esc(c.id)}</h2><ul>`;its.forEach(i=>{const vt=i.visit_type&&i.visit_type!=="共通"?` <span class="intent">[${esc(i.visit_type)}]</span>`:"";html+=`<li>☐ ${esc(i.question)}${vt}${i.intent?` <span class="intent">（${esc(i.intent)}）</span>`:""}</li>`});html+="</ul>"});
     html+=`<p class="note">出力日: ${new Date().toLocaleDateString("ja-JP")}</p></body></html>`;
     const w=window.open("","_blank");if(!w){sSt("⚠ ポップアップがブロックされました");return}
     w.document.write(html);w.document.close();setTimeout(()=>{try{w.print()}catch{}},300);
   }catch(e){console.error("intake print error:",e);sSt("印刷エラー: "+(e.message||e))}
 };
-const buildIntakeCopyText=(entry)=>{let s=`【事前問診: ${entry.t.name}】\n※${INTAKE_DISCLAIMER}\n`;INTAKE_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return;s+=`\n■ ${c.id}\n`;its.forEach(i=>{s+=`□ ${i.question}\n`})});return s};
+const buildIntakeCopyText=(entry)=>{let s=`【事前問診: ${entry.t.name}】\n※${INTAKE_DISCLAIMER}\n\n■ 基本問診（全疾患共通・毎回確認）\n`;INTAKE_FIXED_QUESTIONS.forEach(q=>{s+=`□ ${q.question}\n`});INTAKE_CATEGORIES.forEach(c=>{const its=entry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return;s+=`\n■ ${c.id}\n`;its.forEach(i=>{s+=`□ ${i.question}${i.visit_type&&i.visit_type!=="共通"?`〔${i.visit_type}〕`:""}\n`})});return s};
 
 const BULK_MODES=[{id:"treatment",label:"🏥 疾患別治療説明・プランまとめ"},{id:"patient",label:"👤 患者説明文の自動生成"},{id:"protocol",label:"📋 治療プロトコル抽出"},{id:"faq",label:"❓ よくある質問FAQ生成"},{id:"training",label:"📚 スタッフ向け研修資料生成"}];
 const runBulkAnalyze=async(mode)=>{const selected=filteredHist.filter(r=>selectedHistIds.has(r.id));if(!selected.length)return;setBulkMenu(false);setBulkLd(true);const modeLabel=BULK_MODES.find(m=>m.id===mode)?.label||mode;sSt(`⏳ 分析中... (${selected.length}件)`);try{const records=selected.map(r=>({input_text:r.input_text||"",output_text:r.output_text||""}));const r=await fetch("/api/bulk-analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records,mode})});if(!r.ok){sSt("分析エラー: サーバーエラー("+r.status+")");return}const d=await r.json();if(d.error){sSt("分析エラー: "+d.error);return}setBulkResult({title:modeLabel,content:d.result||""});sSt("分析完了")}catch(e){sSt("分析エラー: "+e.message)}finally{setBulkLd(false)}};
@@ -5375,10 +5400,13 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 {draftTopics.map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
 <div style={{fontSize:14,fontWeight:700,color:C.pDD}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>下書き {x.items.length}件（{x.t.record_count||0}記録から抽出）</span></div>
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
 <button onClick={()=>intakeSetStatus(x.items.map(i=>i.id),"approved")} style={{padding:"5px 14px",borderRadius:10,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ この疾患を一括承認（{x.items.length}件）</button>
+<button onClick={()=>intakeClearDrafts(x.t,x.items.length)} title="この疾患の下書きだけを削除して抽出をやり直す（承認済み・却下済みは消えない）" style={{padding:"5px 14px",borderRadius:10,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 下書きを全消去</button>
 </div>
-{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fdfcff"}}>
-<div style={{fontSize:11,fontWeight:700,color:"#6d28d9",marginBottom:6}}>{c.icon} {c.id}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+</div>
+{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fdfcff"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#6d28d9",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
 {isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #c4b5fd`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
 {i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -5399,22 +5427,36 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
 {viewTopics.map(x=>(<button key={x.t.id} onClick={()=>setIntakeSel(intakeSel===x.t.id?null:x.t.id)} style={{padding:"8px 14px",borderRadius:12,border:intakeSel===x.t.id?`2px solid ${C.rG}`:`1.5px solid ${C.g200}`,background:intakeSel===x.t.id?"#dcfce7":C.w,fontSize:13,fontWeight:intakeSel===x.t.id?700:600,color:intakeSel===x.t.id?"#166534":C.g700,fontFamily:"inherit",cursor:"pointer"}}>{x.t.name}<span style={{marginLeft:6,fontSize:11,color:C.g400}}>{x.items.length}問</span></button>))}
 </div>
-{selEntry&&<div style={{...card}}>
+{selEntry&&(()=>{
+// 初診用/再診用の切替（共通はどちらにも表示。visit_type未設定=カラム未作成データは共通扱い）
+const visitMatch=(i)=>{const v=i.visit_type||"共通";return intakeVisitFilter==="all"||v==="共通"||v===intakeVisitFilter};
+const filteredEntry={t:selEntry.t,items:selEntry.items.filter(visitMatch)};
+return(<div style={{...card}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
-<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>{selEntry.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>{selEntry.items.length}問</span></div>
-<div style={{display:"flex",gap:6}}>
-<button onClick={()=>{navigator.clipboard.writeText(buildIntakeCopyText(selEntry));sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
-<button onClick={()=>printIntake(selEntry)} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:12,fontWeight:600,color:"#1d4ed8",fontFamily:"inherit",cursor:"pointer"}}>🖨 印刷</button>
+<div style={{fontSize:15,fontWeight:700,color:C.pDD}}>{selEntry.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>{filteredEntry.items.length}問</span></div>
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{[["all","すべて"],["初診","初診用"],["再診","再診用"]].map(([v,label])=><button key={v} onClick={()=>setIntakeVisitFilter(v)} style={{padding:"4px 12px",borderRadius:10,border:intakeVisitFilter===v?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:intakeVisitFilter===v?C.pLL:C.w,fontSize:12,fontWeight:intakeVisitFilter===v?700:500,color:intakeVisitFilter===v?C.pDD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{label}</button>)}
+<button onClick={()=>{navigator.clipboard.writeText(buildIntakeCopyText(filteredEntry));sSt("📋 コピーしました")}} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
+<button onClick={()=>printIntake(filteredEntry)} style={{padding:"4px 12px",borderRadius:10,border:"1px solid #93c5fd",background:"#eff6ff",fontSize:12,fontWeight:600,color:"#1d4ed8",fontFamily:"inherit",cursor:"pointer"}}>🖨 印刷</button>
 </div>
 </div>
-{INTAKE_CATEGORIES.map(c=>{const its=selEntry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return null;return(<div key={c.id} style={{marginBottom:14}}>
-<div style={{fontSize:13,fontWeight:700,color:"#2a5018",padding:"6px 10px",background:"rgba(160,220,100,0.15)",borderRadius:8,marginBottom:6}}>■ {c.icon} {c.id}</div>
-{its.map(i=>(<div key={i.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 10px",borderBottom:`1px solid ${C.g100}`}}>
-<span style={{fontSize:13,color:C.g700,lineHeight:1.7,flex:1,whiteSpace:"pre-wrap"}}>□ {i.question}{i.intent&&<span style={{marginLeft:8,fontSize:11,color:C.g400}}>（{i.intent}）</span>}</span>
-{(i.seen_count||1)>1&&<span title="別の診察でも同じ質問が抽出された回数（頻出度）" style={{padding:"1px 7px",borderRadius:8,background:"#fef3c7",color:"#92400e",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>×{i.seen_count}</span>}
+{/* 全疾患共通の固定基本問診セット（抽出とは独立・妊娠授乳の確認は投与可否に直結するため必須） */}
+<div style={{marginBottom:14}}>
+<div style={{fontSize:13,fontWeight:700,color:"#92400e",padding:"6px 10px",background:"#fffbeb",borderRadius:8,marginBottom:6}}>■ 📌 基本問診（全疾患共通・毎回確認）</div>
+{INTAKE_FIXED_QUESTIONS.map((q,qi)=>(<div key={qi} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 10px",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:13,color:C.g700,lineHeight:1.7,flex:1,whiteSpace:"pre-wrap"}}>□ {q.question}{q.intent&&<span style={{marginLeft:8,fontSize:11,color:C.g400}}>（{q.intent}）</span>}</span>
 </div>))}
+</div>
+{INTAKE_CATEGORIES.map(c=>{const its=filteredEntry.items.filter(i=>i.category===c.id).sort((a,b)=>(b.seen_count||1)-(a.seen_count||1));if(!its.length)return null;return(<div key={c.id} style={{marginBottom:14}}>
+<div style={{fontSize:13,fontWeight:700,color:"#2a5018",padding:"6px 10px",background:"rgba(160,220,100,0.15)",borderRadius:8,marginBottom:6}}>■ {c.icon} {c.id}</div>
+{its.map(i=>{const vt=i.visit_type;return(<div key={i.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 10px",borderBottom:`1px solid ${C.g100}`}}>
+<span style={{fontSize:13,color:C.g700,lineHeight:1.7,flex:1,whiteSpace:"pre-wrap"}}>□ {i.question}{i.intent&&<span style={{marginLeft:8,fontSize:11,color:C.g400}}>（{i.intent}）</span>}</span>
+{vt&&vt!=="共通"&&<span style={{padding:"1px 7px",borderRadius:8,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>{vt}</span>}
+{(i.seen_count||1)>1&&<span title="別の診察でも同じ質問が抽出された回数（頻出度）" style={{padding:"1px 7px",borderRadius:8,background:"#fef3c7",color:"#92400e",fontSize:10,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>×{i.seen_count}</span>}
 </div>)})}
-</div>}
+</div>)})}
+</div>);
+})()}
 </div>}
 </div>);
 }
