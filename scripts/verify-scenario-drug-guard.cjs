@@ -122,6 +122,20 @@ async function part1() {
   // マスタに載っていても音源がなければ flagged（ルール3の機械ガード側）
   const gm3 = lib.markUngroundedDrugs("P)ロキソニン錠を処方", "かゆみ止めの塗り薬だけ出しておきますね");
   assert(gm3.flagged.includes("ロキソニン") || gm3.flagged.includes("ロキソニン錠"), "マスタ収載でも書き起こしに音源がなければ⚠（一覧からの補完を検出）");
+
+  // ===== 第5条: 処方状態(新規/継続/中止/残薬あり/状態不明)の明示 =====
+  assert(lib.DRUG_NAME_PROMPT_RULES.includes("残薬あり:") && lib.DRUG_NAME_PROMPT_RULES.includes("(状態不明)") && lib.DRUG_NAME_PROMPT_RULES.includes("省略してはならない"), "第5条: 状態併記と省略禁止がプロンプトに定義されている");
+  assert(lib.DRUG_NAME_PROMPT_RULES.includes("上書きするものではない"), "第5条: 第3条(補完禁止)を上書きしない注記がある");
+  // 状態表記つき要約でガードが誤作動しない（状態語は漢字のためカタカナ候補抽出の対象外）
+  const STATUS_SUMMARY = "P)ベピオウォッシュゲル5%(継続)、ゼビアックスローション2%(新規)、ディフェリンゲル0.1%(残薬あり)、リンデロン-VG軟膏0.12%(中止)、プロペト(状態不明)";
+  const STATUS_TRANSCRIPT = REAL_TRANSCRIPT + "\nベピオも続けて、リンデロンはもうやめましょう。プロペトの話も出ましたね。";
+  const gs = lib.markUngroundedDrugs(STATUS_SUMMARY, STATUS_TRANSCRIPT);
+  assert(gs.flagged.length === 0, "状態表記(継続/新規/中止/残薬あり/状態不明)つき要約でも照合が誤作動しない");
+  const statusCands = lib.extractDrugCandidates(STATUS_SUMMARY);
+  assert(!statusCands.some((c) => /新規|継続|中止|残薬|状態不明/.test(c)), "状態語そのものは薬剤名候補として抽出されない(除外リスト追加は不要)");
+  // 状態語がついても音源なし薬剤の検出(ルール3ガード)は壊れない
+  const gs2 = lib.markUngroundedDrugs("P)クリンダマイシンゲル(新規)", REAL_TRANSCRIPT);
+  assert(gs2.flagged.includes("クリンダマイシンゲル"), "状態表記つきでも音源のない薬剤は引き続き⚠");
   console.log("── Part1 OK\n");
 }
 
@@ -246,42 +260,43 @@ async function part3() {
 
   try {
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    // 会話上ディフェリンは「余っているので今日は出さない」文脈のため、要約がディフェリンに言及するかは
-    // 要約判断で揺れる。言及が出るまで最大3回再要約する（作成recordは全てfinallyで削除）。
-    let summary = "";
+    // 第5条検証: 3回連続で再要約し、毎回「会話に出た薬剤が状態つきでP欄に残る」ことを確認する
+    // （第5条以前は、処方しないディフェリンがP欄から省かれる回があった）。
+    const STATUS_RE = "[（(](新規|継続|中止|残薬あり|状態不明)[）)]";
+    const pLines = [];
     for (let attempt = 1; attempt <= 3; attempt++) {
-      if (attempt > 1) { await page.reload({ waitUntil: "domcontentloaded" }); console.log(`  （ディフェリン言及なし → 再要約 ${attempt}/3）`); }
+      if (attempt > 1) await page.reload({ waitUntil: "domcontentloaded" });
       await fillTranscript(page, REAL_TRANSCRIPT);
       await page.getByRole("button", { name: "⚡ 要約" }).click();
       await page.getByText(/要約完了/).first().waitFor({ timeout: 120000 });
       await page.waitForTimeout(800); // ガード適用後の最終sOut反映を待つ
 
       // 結果欄（書き起こし欄以外のtextareaで要約が入っているもの）から実機要約を取得
-      summary = await page.evaluate((inputText) => {
+      const summary = await page.evaluate((inputText) => {
         const tas = [...document.querySelectorAll("textarea")];
         const vals = tas.filter((t) => !(t.placeholder || "").includes("録音ボタン")).map((t) => t.value);
         return vals.find((v) => v && v.trim() && v !== inputText) || "";
       }, REAL_TRANSCRIPT);
       if (!summary) throw new Error("結果欄の要約テキストを取得できませんでした");
-      console.log("  ── 実機要約（結果欄全文）──\n" + summary.split("\n").map((l) => "  | " + l).join("\n"));
+      console.log(`  ── 実機要約 ${attempt}/3（結果欄全文）──\n` + summary.split("\n").map((l) => "  | " + l).join("\n"));
+      const pSection = (summary.match(/P[）)]([\s\S]*)$/) || [null, ""])[1];
+      pLines.push((summary.match(/^P[）)].*$/m) || ["(P欄なし)"])[0]);
 
       // 毎回必須の判定: 音源のない薬剤名が「素で」出ていないこと（ガードを掛け直して確認）
       const recheck = lib.markUngroundedDrugs(summary, REAL_TRANSCRIPT);
       const naked = recheck.flagged.filter((w) => !summary.includes("⚠" + w));
-      assert(naked.length === 0, "P欄に音源のない薬剤名が⚠なしで出ていない" + (naked.length ? "（残存: " + naked.join(",") + "）" : ""));
-      assert(!/クリンダマイシン/.test(summary.replace(/⚠クリンダマイシン/g, "")), "音源のないクリンダマイシンが素で出ていない");
+      assert(naked.length === 0, `(${attempt}/3) P欄に音源のない薬剤名が⚠なしで出ていない` + (naked.length ? "（残存: " + naked.join(",") + "）" : ""));
+      assert(!/クリンダマイシン/.test(summary.replace(/⚠クリンダマイシン/g, "")), `(${attempt}/3) 音源のないクリンダマイシンが素で出ていない`);
       // 段階2: マスタ一致の薬剤は「(推定)」なしの正式名称で断定表記される
-      assert(/ゼビアックス/.test(summary), "ゼビアックス(ローション)が正式名称で出ている");
-      assert(!/ゼビアックス[^\n）)]{0,10}推定|推定[:：]?\s*ゼビアックス/.test(summary), "ゼビアックスに（推定）表記が付かない(マスタ一致は断定)");
-      if (/ディフェリンゲル(?![ァ-ヶー])/.test(summary)) break; // 正式名称（ゲール等の崩れ形でなく）で出るまで再試行
+      assert(/ゼビアックス/.test(summary) && !/ゼビアックス[^\n）)]{0,10}推定|推定[:：]?\s*ゼビアックス/.test(summary), `(${attempt}/3) ゼビアックスローションが（推定）なしの正式名称で出ている`);
+      // 第5条: 処方しないディフェリンも状態つきでP欄に必ず残る
+      assert(/ディフェリンゲル/.test(pSection), `(${attempt}/3) ディフェリンゲルがP欄に出ている（処方しなくても省略されない）`);
+      assert(new RegExp("ディフェリンゲル[^\\n（()）]{0,10}[（(]残薬あり[）)]").test(pSection), `(${attempt}/3) ディフェリンゲルの状態が(残薬あり)`);
+      assert(new RegExp("ベピオウォッシュゲル[^\\n（()）]{0,10}" + STATUS_RE).test(pSection), `(${attempt}/3) ベピオウォッシュゲルに状態が併記されている`);
+      assert(new RegExp("ゼビアックス[^\\n（()）]{0,16}" + STATUS_RE).test(pSection), `(${attempt}/3) ゼビアックスローションに状態が併記されている`);
     }
-    if (/ディフェリンゲル(?![ァ-ヶー])/.test(summary)) {
-      assert(!/ディフェリン[^\n）)]{0,10}推定|推定[:：]?\s*ディフェリン/.test(summary), "ディフェリンゲルが（推定）表記なしの正式名称で出ている");
-    } else if (/ディフェリン|リフェリン/.test(summary)) {
-      console.log("  ⚠ WARN: ディフェリンの言及はあるが正式名称に正規化されず（原文寄り表記）。ガード照合上は音源ありで問題なし");
-    } else {
-      console.log("  ⚠ SKIP: 要約がディフェリンに言及せず（会話上「今日は出さない」薬のため省略は要約判断。マスタ断定はゼビアックスで確認済み）");
-    }
+    console.log("  ── 3回分のP欄 ──");
+    pLines.forEach((l, i) => console.log(`  ${i + 1}回目: ${l}`));
     assert(pageErrors.length === 0, "pageerror ゼロ");
   } finally {
     await browser.close();
