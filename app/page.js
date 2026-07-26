@@ -5417,6 +5417,81 @@ return(<div style={{maxWidth:860,margin:"0 auto",padding:mob?"10px 8px":"20px 16
 {intakeQ&&<span style={{fontSize:12,fontWeight:700,color:intakeHitCount?C.pD:"#dc2626",whiteSpace:"nowrap"}}>{intakeHitCount}件ヒット</span>}
 {intakeQ&&<button onClick={()=>setIntakeAdminSearch("")} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>クリア</button>}
 </div>
+{/* 承認済み一覧: 承認後に間違いを直す導線（却下・編集）。下書きと同じ作法・同じパスワードゲート。
+    既定は疾患チップのみ表示（572件を全描画すると重いため、畳み中の項目はレンダリングしない） */}
+{(()=>{
+const apprCount=intakeItems.filter(i=>i.status==="approved").length;
+if(!apprSec.length)return null;
+return(<div style={{marginTop:18}}>
+<div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8}}>✅ 承認済み（{apprCount}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>疾患名をクリックで展開。間違って承認した項目は却下・編集できます</span></div>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{apprSec.map(x=>intakeChip("a",x,"#16a34a"))}</div>
+{apprSec.filter(x=>intakeIsOpen("a",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>承認済み {x.vis.length}件</span></div>
+{x.vis.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #bbf7d0",background:"#f7fdf7"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#166534",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+{isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #86efac`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
+{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{isEdit?(<>
+<button onClick={()=>{if(intakeEditQ.trim())intakeSetStatus([i.id],"approved",intakeEditQ.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存（承認済みのまま）</button>
+<button onClick={()=>{setIntakeEditId(null);setIntakeEditQ("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</>):(<>
+<button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #86efac",background:"#f0fdf4",fontSize:12,fontWeight:600,color:"#166534",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集</button>
+<button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
+</>)}
+</div>
+</div>)})}
+</div>))}
+</div>);
+})()}
+{draftSec.length>0&&<div style={{marginTop:18}}>
+<div style={{fontSize:14,fontWeight:700,color:"#6d28d9",marginBottom:8}}>📝 下書き（{draftItems.length}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>承認待ちの項目です</span></div>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{draftSec.map(x=>intakeChip("d",x,"#6d28d9"))}</div>
+{draftTopics.filter(x=>intakeIsOpen("d",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>下書き {x.items.length}件（{x.t.record_count||0}記録から抽出）</span></div>
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+<button onClick={()=>intakeSetStatus(x.items.map(i=>i.id),"approved")} style={{padding:"5px 14px",borderRadius:10,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ この疾患を一括承認（{x.items.length}件）</button>
+<button onClick={()=>intakeClearDrafts(x.t,x.items.length)} title="この疾患の下書きだけを削除して抽出をやり直す（承認済み・却下済みは消えない）" style={{padding:"5px 14px",borderRadius:10,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 下書きを全消去</button>
+</div>
+</div>
+{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fdfcff"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#6d28d9",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+{isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #c4b5fd`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
+{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+{isEdit?(<>
+<button onClick={()=>{if(intakeEditQ.trim())intakeSetStatus([i.id],"approved",intakeEditQ.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 この内容で承認</button>
+<button onClick={()=>{setIntakeEditId(null);setIntakeEditQ("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
+</>):(<>
+<button onClick={()=>intakeSetStatus([i.id],"approved")} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 承認</button>
+<button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集して承認</button>
+<button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
+</>)}
+</div>
+</div>)})}
+</div>))}
+</div>}
+{/* 却下済み一覧: rejectedは再抽出で復活しない仕様のため、誤操作の回復手段として「下書きに戻す」を用意（同じパスワードゲート）。既定は疾患チップのみ */}
+{(()=>{
+const rejCount=intakeItems.filter(i=>i.status==="rejected").length;
+if(!rejSec.length)return null;
+return(<div style={{marginTop:18}}>
+<div style={{fontSize:14,fontWeight:700,color:"#dc2626",marginBottom:8}}>✗ 却下済み（{rejCount}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>疾患名をクリックで展開。却下は再抽出で復活しません。誤操作はここから下書きに戻せます</span></div>
+<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{rejSec.map(x=>intakeChip("r",x,"#dc2626"))}</div>
+{rejSec.filter(x=>intakeIsOpen("r",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
+<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下済み {x.vis.length}件</span></div>
+{x.vis.map(i=>{const c=intakeCatOf(i.category);const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #fecaca",background:"#fffafa"}}>
+<div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
+<div style={{fontSize:13,color:C.g500,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap",textDecoration:"line-through"}}>{i.question}</div>
+{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
+<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+<button onClick={()=>intakeSetStatus([i.id],"draft")} style={{padding:"4px 14px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>↩ 下書きに戻す</button>
+</div>
+</div>)})}
+</div>))}
+</div>);
+})()}
 {/* 抽出パネル: 過去の診察から疾患ごとに医師の質問を抽出（期間・疾患フィルタ指定） */}
 <div style={{...card,marginBottom:14}}>
 <div style={{fontSize:13,fontWeight:700,color:C.pDD,marginBottom:8}}>📥 診察履歴から問診項目を抽出</div>
@@ -5494,79 +5569,6 @@ return(<div style={{marginBottom:6}}>
 })()}
 <p style={{fontSize:11,color:C.g400,margin:0}}>統合はトピックの問診項目を付け替え、統合元の名前を自動でエイリアス登録します。エイリアスは次回抽出のグループ化から適用。編集後に既存のトピック名も変えたい場合は「⇢ 既存トピックにも反映」を押してください（テーブル未作成の場合は supabase/migrations/add_disease_aliases.sql をSQL Editorで実行）。</p>
 </div>
-{draftTopics.length===0&&!intakeQ&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:24}}>未承認の下書きはありません ✓<br/><span style={{fontSize:11,color:C.g400}}>（テーブル未作成の場合は supabase/migrations/add_intake_knowledge.sql をSQL Editorで実行）</span></div>}
-{draftSec.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{draftSec.map(x=>intakeChip("d",x,"#6d28d9"))}</div>}
-{draftTopics.filter(x=>intakeIsOpen("d",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-<div style={{fontSize:14,fontWeight:700,color:C.pDD}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>下書き {x.items.length}件（{x.t.record_count||0}記録から抽出）</span></div>
-<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-<button onClick={()=>intakeSetStatus(x.items.map(i=>i.id),"approved")} style={{padding:"5px 14px",borderRadius:10,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ この疾患を一括承認（{x.items.length}件）</button>
-<button onClick={()=>intakeClearDrafts(x.t,x.items.length)} title="この疾患の下書きだけを削除して抽出をやり直す（承認済み・却下済みは消えない）" style={{padding:"5px 14px",borderRadius:10,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>🗑 下書きを全消去</button>
-</div>
-</div>
-{x.items.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fdfcff"}}>
-<div style={{fontSize:11,fontWeight:700,color:"#6d28d9",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
-{isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #c4b5fd`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
-{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
-<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-{isEdit?(<>
-<button onClick={()=>{if(intakeEditQ.trim())intakeSetStatus([i.id],"approved",intakeEditQ.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 この内容で承認</button>
-<button onClick={()=>{setIntakeEditId(null);setIntakeEditQ("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
-</>):(<>
-<button onClick={()=>intakeSetStatus([i.id],"approved")} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>✓ 承認</button>
-<button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集して承認</button>
-<button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
-</>)}
-</div>
-</div>)})}
-</div>))}
-{/* 承認済み一覧: 承認後に間違いを直す導線（却下・編集）。下書きと同じ作法・同じパスワードゲート。
-    既定は疾患チップのみ表示（572件を全描画すると重いため、畳み中の項目はレンダリングしない） */}
-{(()=>{
-const apprCount=intakeItems.filter(i=>i.status==="approved").length;
-if(!apprSec.length)return null;
-return(<div style={{marginTop:18}}>
-<div style={{fontSize:14,fontWeight:700,color:"#166534",marginBottom:8}}>✅ 承認済み（{apprCount}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>疾患名をクリックで展開。間違って承認した項目は却下・編集できます</span></div>
-<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{apprSec.map(x=>intakeChip("a",x,"#16a34a"))}</div>
-{apprSec.filter(x=>intakeIsOpen("a",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
-<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>承認済み {x.vis.length}件</span></div>
-{x.vis.map(i=>{const c=intakeCatOf(i.category);const isEdit=intakeEditId===i.id;const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #bbf7d0",background:"#f7fdf7"}}>
-<div style={{fontSize:11,fontWeight:700,color:"#166534",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
-{isEdit?<textarea value={intakeEditQ} onChange={e=>setIntakeEditQ(e.target.value)} rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid #86efac`,fontSize:13,fontFamily:"inherit",lineHeight:1.6,outline:"none",boxSizing:"border-box",marginBottom:8}}/>:<div style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap"}}>{i.question}</div>}
-{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
-<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-{isEdit?(<>
-<button onClick={()=>{if(intakeEditQ.trim())intakeSetStatus([i.id],"approved",intakeEditQ.trim())}} style={{padding:"4px 14px",borderRadius:8,border:"none",background:C.rG,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>💾 保存（承認済みのまま）</button>
-<button onClick={()=>{setIntakeEditId(null);setIntakeEditQ("")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:12,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>キャンセル</button>
-</>):(<>
-<button onClick={()=>{if(!explainAuth())return;setIntakeEditId(i.id);setIntakeEditQ(i.question)}} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #86efac",background:"#f0fdf4",fontSize:12,fontWeight:600,color:"#166534",fontFamily:"inherit",cursor:"pointer"}}>✏ 編集</button>
-<button onClick={()=>intakeSetStatus([i.id],"rejected")} style={{padding:"4px 12px",borderRadius:8,border:"1px solid #fecaca",background:"#fff1f2",fontSize:12,fontWeight:600,color:"#dc2626",fontFamily:"inherit",cursor:"pointer"}}>✗ 却下</button>
-</>)}
-</div>
-</div>)})}
-</div>))}
-</div>);
-})()}
-{/* 却下済み一覧: rejectedは再抽出で復活しない仕様のため、誤操作の回復手段として「下書きに戻す」を用意（同じパスワードゲート）。既定は疾患チップのみ */}
-{(()=>{
-const rejCount=intakeItems.filter(i=>i.status==="rejected").length;
-if(!rejSec.length)return null;
-return(<div style={{marginTop:18}}>
-<div style={{fontSize:14,fontWeight:700,color:"#dc2626",marginBottom:8}}>✗ 却下済み（{rejCount}件）<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>疾患名をクリックで展開。却下は再抽出で復活しません。誤操作はここから下書きに戻せます</span></div>
-<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>{rejSec.map(x=>intakeChip("r",x,"#dc2626"))}</div>
-{rejSec.filter(x=>intakeIsOpen("r",x.t.id)).map(x=>(<div key={x.t.id} style={{...card,marginBottom:12}}>
-<div style={{fontSize:14,fontWeight:700,color:C.pDD,marginBottom:8}}>{x.t.name}<span style={{marginLeft:8,fontSize:11,fontWeight:500,color:C.g400}}>却下済み {x.vis.length}件</span></div>
-{x.vis.map(i=>{const c=intakeCatOf(i.category);const vt=i.visit_type;return(<div key={i.id} style={{marginBottom:8,padding:12,borderRadius:10,border:"1px solid #fecaca",background:"#fffafa"}}>
-<div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:6}}>{c.icon} {c.id}{vt&&vt!=="共通"&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:7,background:vt==="初診"?"#dbeafe":"#ede9fe",color:vt==="初診"?"#1d4ed8":"#6d28d9",fontSize:10,fontWeight:700}}>{vt}</span>}{(i.seen_count||1)>1&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:7,background:"#fef3c7",color:"#92400e",fontSize:10}}>×{i.seen_count}</span>}</div>
-<div style={{fontSize:13,color:C.g500,lineHeight:1.7,marginBottom:4,whiteSpace:"pre-wrap",textDecoration:"line-through"}}>{i.question}</div>
-{i.intent&&<div style={{fontSize:11,color:C.g400,marginBottom:8}}>🎯 {i.intent}</div>}
-<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-<button onClick={()=>intakeSetStatus([i.id],"draft")} style={{padding:"4px 14px",borderRadius:8,border:"1px solid #c4b5fd",background:"#f5f3ff",fontSize:12,fontWeight:600,color:"#6d28d9",fontFamily:"inherit",cursor:"pointer"}}>↩ 下書きに戻す</button>
-</div>
-</div>)})}
-</div>))}
-</div>);
-})()}
 </div>}
 {intakeTab==="view"&&<div>
 {viewTopics.length===0&&!intakeLd&&<div style={{...card,textAlign:"center",color:C.g500,fontSize:13,padding:30}}>承認済みの問診項目がまだありません。<br/><span style={{fontSize:11,color:C.g400}}>承認（院長）タブで抽出→承認すると、ここに表示されます。</span></div>}

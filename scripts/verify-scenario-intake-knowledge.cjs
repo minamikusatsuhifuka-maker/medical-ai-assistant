@@ -228,6 +228,14 @@ async function part2() {
   await waitText("この問診は診察の補助です");
   await page.getByRole("button", { name: /✅ 承認（院長）/ }).click();
   await waitText("📥 診察履歴から問診項目を抽出");
+  // 並び順: 検索 → （承認済み/下書き/却下済み）→ 抽出パネル → 統合UI（Y座標で比較。placeholderはinnerTextに出ないため）
+  {
+    const yOf = async (loc) => (await loc.boundingBox())?.y ?? -1;
+    const ySearch = await yOf(page.getByPlaceholder("🔍 疾患名・問診文で検索（下書き/承認済み/却下済みを横断）"));
+    const yExtract = await yOf(page.getByText("📥 診察履歴から問診項目を抽出").first());
+    const yMerge = await yOf(page.getByText("🔗 疾患の統合・エイリアス辞書").first());
+    assert(ySearch >= 0 && ySearch < yExtract && yExtract < yMerge, "並び順: 検索が最上部・抽出パネルと統合UIが最下部");
+  }
   await page.getByRole("button", { name: "過去30日" }).click();
   await page.getByRole("button", { name: "1（全件）" }).click(); // モックは2記録のため既定の最低出現3では対象外
 
@@ -258,7 +266,8 @@ async function part2() {
   await waitText("✓ 1件を承認しました");
   assert(dialogs.filter((d) => d.type === "prompt").length === 1, "承認系の初回に管理パスワードpromptが1回");
   await page.getByRole("button", { name: /✓ この疾患を一括承認（3件）/ }).click();
-  await waitText("未承認の下書きはありません");
+  await page.waitForTimeout(600);
+  assert((await page.getByText(/📝 下書き（\d+件）/).count()) === 0, "下書き0件になると見出しごと非表示になる");
   assert(db.items.filter((i) => i.status === "approved").length === 4 && db.items.filter((i) => i.status === "rejected").length === 1, "approved4件/rejected1件になった");
   const approvedSnapshot = db.items.filter((i) => i.status === "approved").map((i) => ({ id: i.id, question: i.question, status: i.status }));
 
