@@ -1223,6 +1223,7 @@ const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAu
 const[mp3Converting,setMp3Converting]=useState({}); // {[path]: "loading"|"converting"|"done"|null}
 const[mp3AutoStatus,setMp3AutoStatus]=useState({}); // 自動mp3変換の進行状況 {[webmPath]: "converting"|"done"|"failed"}
 const[mp3Available,setMp3Available]=useState(()=>new Set()); // Storage上に存在する .mp3 のフルパス（一覧のmp3優先表示に使用）
+const[audioSizes,setAudioSizes]=useState({}); // Storage上のファイルサイズ {[フルパス]: バイト数}。list APIのmetadata.sizeから取得（追加リクエストなし）
 const mp3QueueRef=useRef(Promise.resolve()); // ffmpeg.wasmは同時実行不可のため変換を直列化
 const[apiUsageMonth,setApiUsageMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`});
 const[apiUsageSummary,setApiUsageSummary]=useState(null),[apiUsageMonthly,setApiUsageMonthly]=useState([]),[apiUsageTop10,setApiUsageTop10]=useState([]),[apiUsageLoading,setApiUsageLoading]=useState(false);
@@ -2105,6 +2106,10 @@ return(data||[]).filter(f=>f.id).map(f=>({pfx,f}));
 const mp3Set=new Set();
 lists.flat().forEach(({pfx,f})=>{if(/\.mp3$/i.test(f.name))mp3Set.add(pfx+"/"+f.name)});
 setMp3Available(prev=>{const n=new Set(prev);mp3Set.forEach(p=>n.add(p));return n});
+// ファイルサイズ（webm/mp3とも）を list の metadata から拾う。取れないファイルは記録せず「-」表示になる
+const sizeMap={};
+lists.flat().forEach(({pfx,f})=>{const sz=f&&f.metadata&&f.metadata.size;if(typeof sz==="number"&&isFinite(sz))sizeMap[pfx+"/"+f.name]=sz});
+setAudioSizes(prev=>({...prev,...sizeMap}));
 orphans=lists.flat().filter(({pfx,f})=>!/\.mp3$/i.test(f.name)&&!linked.has(pfx+"/"+f.name)).map(({pfx,f})=>{
 const path=pfx+"/"+f.name;
 const pm=f.name.match(/_part\d+(?:-\d+s)?_(.+)\.webm$/);
@@ -2184,6 +2189,14 @@ document.body.removeChild(a);
 
 // webmパス→mp3パス（同じディレクトリ・拡張子のみ変更。webm原本は残す）
 const mp3PathOf=(p)=>(p||"").replace(/\.webm$/i,".mp3");
+// === 録音音声管理のファイルサイズ表示（サイズ不明は "-"。エラーにしない）===
+const fmtBytes=(b)=>{if(typeof b!=="number"||!isFinite(b)||b<0)return"-";if(b>=1073741824)return(b/1073741824).toFixed(1)+" GB";if(b>=1048576)return(b/1048576).toFixed(1)+" MB";if(b>=1024)return Math.round(b/1024)+" KB";return b+" B"};
+// 1パートがStorage上で実際に占める容量（mp3変換済みならwebm原本と合算）。全て不明なら null
+const partBytes=(p)=>{try{const m=mp3PathOf(p);const vals=[audioSizes[p],(m!==p&&mp3Available.has(m))?audioSizes[m]:undefined].filter(v=>typeof v==="number"&&isFinite(v));return vals.length?vals.reduce((x,y)=>x+y,0):null}catch{return null}};
+// セッション（part1〜N）の合計。1つでも判明していればその合計を返す
+const sessionBytes=(paths)=>{try{let sum=0,known=false;(paths||[]).forEach(p=>{const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}});return known?sum:null}catch{return null}};
+// 一覧全体の合計（同じパスは二重に数えない）
+const audioTotalBytes=(()=>{try{const seen=new Set();let sum=0,known=false;(audioList||[]).forEach(it=>(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean).forEach(p=>{if(seen.has(p))return;seen.add(p);const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}}));return known?sum:null}catch{return null}})();
 const uploadMp3ToStorage=async(mp3Path,mp3Blob)=>{
   let{error}=await supabase.storage.from("audio").upload(mp3Path,mp3Blob,{contentType:"audio/mpeg"});
   if(error&&/mime type/i.test(error.message||"")){
@@ -7276,6 +7289,7 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>🎙 録音音声管理</h3>
 <div style={{display:"flex",gap:8,alignItems:"center"}}>
 {audioListMsg&&<span style={{fontSize:11,color:audioListMsg.startsWith("✓")?C.rG:C.err,fontWeight:600}}>{audioListMsg}</span>}
+{audioList.length>0&&<span title="mp3とwebm原本を合わせたStorage上の合計容量" style={{fontSize:11,fontWeight:700,color:C.pD,padding:"2px 8px",borderRadius:6,background:C.pLL,whiteSpace:"nowrap"}}>合計 {fmtBytes(audioTotalBytes)}</span>}
 <button onClick={fetchAudioList} disabled={audioListLoading} style={{padding:"6px 14px",borderRadius:10,border:"none",background:audioListLoading?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:audioListLoading?"wait":"pointer"}}>{audioListLoading?"⏳ 取得中...":"🔄 一覧を取得"}</button>
 </div>
 </div>
@@ -7302,12 +7316,14 @@ const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患�
 const k=audioKey(item);
 const checked=selectedAudios.has(k);
 const hasAudio=paths.length>0;
+const sBytes=sessionBytes(paths);
 return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid #dc2626`:`1px solid ${C.g200}`,background:checked?"#fef2f2":C.w,display:"flex",flexDirection:"column",gap:6}}>
 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
 <input type="checkbox" checked={checked} disabled={!hasAudio||audioDeleting} onChange={()=>toggleAudioSelected(item)} style={{width:16,height:16,cursor:hasAudio&&!audioDeleting?"pointer":"not-allowed",accentColor:"#dc2626",flexShrink:0}}/>
 <span style={{padding:"2px 8px",borderRadius:6,background:typeBg,color:typeColor,fontSize:11,fontWeight:700}}>{typeLabel}</span>
 <span style={{fontSize:11,color:C.g500,fontWeight:600}}>{dateLabel}</span>
 <span style={{fontSize:11,color:C.g400}}>{item.type==="storage"?((item.audio_path.match(/_part(\d+)/)||[])[1]?`part${item.audio_path.match(/_part(\d+)/)[1]}`:"単体"):`part${paths.length===1?"1のみ":`1〜${paths.length}`}`}</span>
+{hasAudio&&<span title="このセッションがStorage上で占める容量（mp3＋webm原本）" style={{fontSize:10,fontWeight:700,color:C.g600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",whiteSpace:"nowrap"}}>計 {fmtBytes(sBytes)}</span>}
 </div>
 <div style={{fontSize:12,color:C.g700,fontWeight:500}}>{subtitle}</div>
 {paths.map((p,idx)=>{
@@ -7321,6 +7337,7 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 :auto==="converting"?(<span style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:5,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}>⏳ mp3変換中</span>)
 :auto==="failed"?(<span style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:5,background:"#fef2f2",color:"#b91c1c",whiteSpace:"nowrap"}}>⚠ mp3変換失敗（手動で再試行可）</span>)
 :(<span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",color:C.g500,whiteSpace:"nowrap"}}>webm</span>)}
+<span title="Storage上のファイルサイズ" style={{fontSize:10,fontWeight:600,color:C.g500,whiteSpace:"nowrap"}}>{hasMp3?`mp3 ${fmtBytes(audioSizes[mp3p])}（原本webm ${fmtBytes(audioSizes[p])}）`:fmtBytes(audioSizes[p])}</span>
 {audioSignedUrls[ep]?(<audio controls preload="none" src={audioSignedUrls[ep]} style={{height:32,flex:"1 1 240px",minWidth:200}}/>):(<button onClick={()=>loadAudioSignedUrl(ep)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",flex:"1 1 200px"}}>▶ 再生URL取得</button>)}
 <button onClick={()=>downloadAudio(ep)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.pLL,color:C.pD,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⬇ DL{hasMp3?"(mp3)":""}</button>
 {!hasMp3&&<button onClick={()=>convertAndStoreMp3(p)} disabled={!!mp3Converting[p]||auto==="converting"} title="mp3に変換してStorageに保存（以後の再生・DLはmp3になります）" style={{padding:"4px 10px",borderRadius:6,border:"none",background:(mp3Converting[p]||auto==="converting")?C.g200:"#fef3c7",color:(mp3Converting[p]||auto==="converting")?C.g500:"#92400e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(mp3Converting[p]||auto==="converting")?"wait":"pointer"}}>{mp3Converting[p]==="loading"?"⏳ 初期化中...":mp3Converting[p]==="converting"?"⏳ 変換中...":"♻ mp3変換"}</button>}
