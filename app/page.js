@@ -2099,7 +2099,8 @@ try{const{data:smn}=await supabase.from("counseling_analyses").select("audio_pat
 const{data:roomDirs}=await supabase.storage.from("audio").list("audio",{limit:50});
 const prefixes=(roomDirs||[]).filter(d=>!d.id).map(d=>"audio/"+d.name).concat(["seminar-audio","minutes-audio"]);
 const lists=await Promise.all(prefixes.map(async pfx=>{
-const{data}=await supabase.storage.from("audio").list(pfx,{limit:200,sortBy:{column:"created_at",order:"desc"}});
+// limitはプレフィックス単位の1リクエストのまま。200だと件数の多いルーム(r7が230件)で古いファイルが漏れ、サイズが「-」になっていた
+const{data}=await supabase.storage.from("audio").list(pfx,{limit:1000,sortBy:{column:"created_at",order:"desc"}});
 return(data||[]).filter(f=>f.id).map(f=>({pfx,f}));
 }));
 // .mp3 は一覧アイテムにせず「mp3あり」判定用のセットに集約（webm行の再生・DLをmp3優先に切替える）
