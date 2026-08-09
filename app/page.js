@@ -2043,8 +2043,20 @@ setInsightResult(data.result||"");
 }catch(e){setInsightResult("エラー: "+e.message)}finally{setInsightLoading(false)}
 };
 const audioSaveRef=useRef(false),audioPartCounter=useRef(1),audioChunkTimer=useRef(null),audioPathsRef=useRef([]),minAudioPathsRef=useRef([]),lastRecordIdRef=useRef(null),audioPartStartTime=useRef(0),mR_save=useRef(null);
+// 議事録: 1回の録音の音声を複数レコードに二重紐付けしないための所有者id。
+// minAudioPathsRef は録音開始と「次へ」でしか空にならないため、同じセッションで2回保存すると別レコードに同じパスが書かれていた。
+const minAudioOwnerRef=useRef(null);
+const canAttachMinAudio=(id)=>!minAudioOwnerRef.current||minAudioOwnerRef.current===id;
+const claimMinAudio=(id)=>{if(id)minAudioOwnerRef.current=id};
+// 保存経路で使う音声パス。既に別レコードが所有している場合は null（＝紐付けない）
+const minAudioPathFor=(id)=>{if(!minAudioPathsRef.current.length)return null;if(!canAttachMinAudio(id))return null;return minAudioPathsRef.current.join(",")};
+// 診察も同じ構造（同一患者で2回要約すると2レコードに同じ音声が紐付いていた）。先に紐付いたレコードを所有者として固定する
+const examAudioOwnerRef=useRef(null);
+const canAttachExamAudio=(id)=>!examAudioOwnerRef.current||examAudioOwnerRef.current===id;
+const claimExamAudio=(id)=>{if(id)examAudioOwnerRef.current=id};
+const examAudioPathFor=(id)=>{if(!audioPathsRef.current.length)return null;if(!canAttachExamAudio(id))return null;return audioPathsRef.current.join(",")};
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
-const saveAudio=async(blob,partN,durationSec)=>{if(!supabase||!blob||blob.size<1000)return null;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const secStr=durationSec&&durationSec>0?`-${Math.round(durationSec)}s`:"";const partSeg=`_part${partN||1}${secStr}`;const path=`audio/${rid}/${ts}${partSeg}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error){console.error("Audio save error:",error);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(error.message||"不明なエラー")});return null}console.log("Audio saved:",path);setAudioSaveNote({t:"ok",m:`✓ 音声保存済み part${partN||1}`});audioPathsRef.current.push(path);queueAutoMp3(path,blob);if(lastRecordIdRef.current){try{await supabase.from("records").update({audio_path:audioPathsRef.current.join(",")}).eq("id",lastRecordIdRef.current)}catch(e){console.error("audio_path update error:",e)}}return path}catch(e){console.error("Audio save error:",e);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(e.message||"不明なエラー")});return null}};
+const saveAudio=async(blob,partN,durationSec)=>{if(!supabase||!blob||blob.size<1000)return null;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const secStr=durationSec&&durationSec>0?`-${Math.round(durationSec)}s`:"";const partSeg=`_part${partN||1}${secStr}`;const path=`audio/${rid}/${ts}${partSeg}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error){console.error("Audio save error:",error);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(error.message||"不明なエラー")});return null}console.log("Audio saved:",path);setAudioSaveNote({t:"ok",m:`✓ 音声保存済み part${partN||1}`});audioPathsRef.current.push(path);queueAutoMp3(path,blob);if(lastRecordIdRef.current&&canAttachExamAudio(lastRecordIdRef.current)){try{await supabase.from("records").update({audio_path:audioPathsRef.current.join(",")}).eq("id",lastRecordIdRef.current);claimExamAudio(lastRecordIdRef.current)}catch(e){console.error("audio_path update error:",e)}}return path}catch(e){console.error("Audio save error:",e);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(e.message||"不明なエラー")});return null}};
 const saveMinAudio=async(blob,minuteTitle)=>{
 if(!supabase||!blob||blob.size<1000)return null;
 try{
@@ -2061,9 +2073,10 @@ console.log("Minutes audio saved:",path);
 sSt("🎙️ 音声を保存しました");
 minAudioPathsRef.current.push(path);
 queueAutoMp3(path,blob);
-if(minDraftIdRef.current){
+if(minDraftIdRef.current&&canAttachMinAudio(minDraftIdRef.current)){
 try{
 await supabase.from("minutes").update({audio_path:minAudioPathsRef.current.join(",")}).eq("id",minDraftIdRef.current);
+claimMinAudio(minDraftIdRef.current);
 }catch(e){console.error("minutes audio_path update error:",e)}
 }
 return path;
@@ -2072,10 +2085,14 @@ console.error("Minutes audio save error:",e);
 return null;
 }
 };
-const getAudioSignedUrl=async(path)=>{
+// download にファイル名を渡すと Content-Disposition: attachment が付く。
+// バケットの許可MIMEの都合でmp3も Content-Type: audio/webm で配信されるため、これを付けないとmp3が .webm という名前で保存されてしまう。
+// 再生用（audio要素）には付けない（attachment だと再生できない）。
+const getAudioSignedUrl=async(path,downloadName)=>{
 if(!supabase||!path)return null;
 try{
-const{data,error}=await supabase.storage.from("audio").createSignedUrl(path,3600);
+const opts=downloadName?{download:downloadName}:undefined;
+const{data,error}=await supabase.storage.from("audio").createSignedUrl(path,3600,opts);
 if(error){console.error("signedUrl error:",error,path);return null}
 return data?.signedUrl||null;
 }catch(e){console.error("signedUrl error:",e);return null}
@@ -2178,11 +2195,14 @@ if(url)setAudioSignedUrls(prev=>({...prev,[path]:url}));
 return url;
 };
 const downloadAudio=async(path)=>{
-const url=await loadAudioSignedUrl(path);
+// DL用は毎回「ファイル名指定つき」の署名URLを作る（再生用のキャッシュは流用しない）。
+// a.download はクロスオリジンURLでは無視されるため、サーバー側の Content-Disposition で名前を決めさせる。
+const fileName=path.split("/").pop()||"audio.webm";
+const url=await getAudioSignedUrl(path,fileName);
 if(!url){alert("音声ファイルが取得できませんでした");return}
 const a=document.createElement("a");
 a.href=url;
-a.download=path.split("/").pop()||"audio.webm";
+a.download=fileName;
 document.body.appendChild(a);
 a.click();
 document.body.removeChild(a);
@@ -2196,6 +2216,8 @@ const fmtBytes=(b)=>{if(typeof b!=="number"||!isFinite(b)||b<0)return"-";if(b>=1
 const partBytes=(p)=>{try{const m=mp3PathOf(p);const vals=[audioSizes[p],(m!==p&&mp3Available.has(m))?audioSizes[m]:undefined].filter(v=>typeof v==="number"&&isFinite(v));return vals.length?vals.reduce((x,y)=>x+y,0):null}catch{return null}};
 // セッション（part1〜N）の合計。1つでも判明していればその合計を返す
 const sessionBytes=(paths)=>{try{let sum=0,known=false;(paths||[]).forEach(p=>{const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}});return known?sum:null}catch{return null}};
+// 同じ音声パスが複数レコードに紐付いている場合、2件目以降を「重複」として印を付ける（合計の二重計上も防ぐ）
+const audioDupKeys=(()=>{try{const seen=new Set();const dup=new Set();(audioList||[]).forEach(it=>{const ps=(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean);if(!ps.length)return;if(ps.every(p=>seen.has(p)))dup.add(audioKey(it));ps.forEach(p=>seen.add(p))});return dup}catch{return new Set()}})();
 // 一覧全体の合計（同じパスは二重に数えない）
 const audioTotalBytes=(()=>{try{const seen=new Set();let sum=0,known=false;(audioList||[]).forEach(it=>(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean).forEach(p=>{if(seen.has(p))return;seen.add(p);const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}}));return known?sum:null}catch{return null}})();
 const uploadMp3ToStorage=async(mp3Path,mp3Blob)=>{
@@ -2215,7 +2237,7 @@ const queueAutoMp3=(webmPath,webmBlob)=>{
   mp3QueueRef.current=mp3QueueRef.current.then(async()=>{
     try{
       const{convertWebmToMp3}=await import("./Mp3Converter");
-      const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"128k"});
+      const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"64k"});
       const mp3Path=mp3PathOf(webmPath);
       await uploadMp3ToStorage(mp3Path,mp3Blob);
       setMp3Available(prev=>{const n=new Set(prev);n.add(mp3Path);return n});
@@ -2240,7 +2262,7 @@ const convertAndStoreMp3=async(path)=>{
     const webmBlob=await res.blob();
     setMp3Converting(prev=>({...prev,[path]:"converting"}));
     const{convertWebmToMp3}=await import("./Mp3Converter");
-    const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"128k"});
+    const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"64k"});
     const mp3Path=mp3PathOf(path);
     await uploadMp3ToStorage(mp3Path,mp3Blob);
     setMp3Available(prev=>{const n=new Set(prev);n.add(mp3Path);return n});
@@ -2285,16 +2307,16 @@ const toJSTDate=(dateStr)=>{if(!dateStr)return"";const d=new Date(dateStr);const
 const ct=T.find(t=>t.id===tid)||T[0],cr=R.find(r=>r.id===rid);
 
 // Supabase
-const saveRecordRef=useRef(false);const saveRecord=async(input,output)=>{if(!supabase)return null;if(saveRecordRef.current){console.log("saveRecord: 重複呼び出しをスキップ");return null;}saveRecordRef.current=true;setTimeout(()=>{saveRecordRef.current=false},3000);try{const audioPath=audioPathsRef.current.length>0?audioPathsRef.current.join(","):null;const{data}=await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:input,output_text:output,patient_name:pNameRef.current,patient_id:pIdRef.current,audio_path:audioPath}).select("id").single();if(data?.id){setLastRecordId(data.id);lastRecordIdRef.current=data.id;}lastSavedExamInpRef.current=input||"";if(rid==="r7"){await supabase.from("counseling_records").insert({patient_name:pNameRef.current,patient_id:pIdRef.current,transcription:input,summary:output,room:"r7"})}return data?.id||null}catch(e){console.error("Save error:",e);return null}};
+const saveRecordRef=useRef(false);const saveRecord=async(input,output)=>{if(!supabase)return null;if(saveRecordRef.current){console.log("saveRecord: 重複呼び出しをスキップ");return null;}saveRecordRef.current=true;setTimeout(()=>{saveRecordRef.current=false},3000);try{const audioPath=examAudioPathFor(null);const{data}=await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:input,output_text:output,patient_name:pNameRef.current,patient_id:pIdRef.current,audio_path:audioPath}).select("id").single();if(data?.id){setLastRecordId(data.id);lastRecordIdRef.current=data.id;if(audioPath)claimExamAudio(data.id);}lastSavedExamInpRef.current=input||"";if(rid==="r7"){await supabase.from("counseling_records").insert({patient_name:pNameRef.current,patient_id:pIdRef.current,transcription:input,summary:output,room:"r7"})}return data?.id||null}catch(e){console.error("Save error:",e);return null}};
 // 書き起こしのみ保存（要約未実行）: 「次へ」時の自動救済・💾停止して保存で共用。recordsの既存カラムのみ使用（未定義カラムにinsertしない）
 const EXAM_INPUT_ONLY_MARK="（書き起こしのみ・要約未実行）";
 const saveExamInputOnly=async()=>{
   if(!supabase||!(iR.current||"").trim())return false;
   try{
-    const audioPath=audioPathsRef.current.length>0?audioPathsRef.current.join(","):null;
+    const audioPath=examAudioPathFor(null);
     const{data,error}=await supabase.from("records").insert({room:rid,template:tid,ai_model:md,input_text:iR.current,output_text:EXAM_INPUT_ONLY_MARK,patient_name:pNameRef.current,patient_id:pIdRef.current,audio_path:audioPath}).select("id").single();
     if(error)throw error;
-    if(data?.id){setLastRecordId(data.id);lastRecordIdRef.current=data.id}
+    if(data?.id){setLastRecordId(data.id);lastRecordIdRef.current=data.id;if(audioPath)claimExamAudio(data.id)}
     lastSavedExamInpRef.current=iR.current||"";
     try{loadHist()}catch{}
     return true;
@@ -2358,7 +2380,7 @@ document.addEventListener("visibilitychange",onVis);
 window.addEventListener("pagehide",flush);
 return()=>{document.removeEventListener("visibilitychange",onVis);window.removeEventListener("pagehide",flush)}
 },[]);
-const minGo=async()=>{minAudioPathsRef.current=[];const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
+const minGo=async()=>{minAudioPathsRef.current=[];minAudioOwnerRef.current=null;const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
 bumpDiag("rec");noteDiagMR(minMR.current,b.size);/* 議事録: 瞬間値のlvゲートは会議の遠い小さな声で誤爆するため使わず、チャンク全体のRMS判定(議事録用しきい値)に一本化する */bumpDiag("lv");if(await isSilentChunk(b,minSilenceThrRef.current))return;bumpDiag("sil");try{const f=new FormData();f.append("audio",b,"audio.webm");if(asrEngine==="both"){const f2=new FormData();f2.append("audio",b,"audio.webm");f2.append("compare","1");const callW=async()=>{const s=performance.now();try{bumpDiag("sent");const r=await fetch("/api/transcribe",{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Whisper ${r.status}`,ms:Math.round(performance.now()-s)};const d=await r.json();setDiagLastLen((d.text||"").length);return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Whisper 例外",ms:Math.round(performance.now()-s)}}};const callA=async()=>{const s=performance.now();try{const r=await fetch("/api/transcribe-avalon",{method:"POST",body:f2});const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Avalon ${r.status}（非JSON）`,ms:Math.round(performance.now()-s)};const d=await r.json();if(d.failed)return{failed:true,error:d.error||"Avalon 接続失敗",ms:Math.round(performance.now()-s)};return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Avalon 例外",ms:Math.round(performance.now()-s)}}};const[w,a]=await Promise.all([callW(),isIOSDevice?Promise.resolve({failed:true,error:"iOS（iPhone/iPad）は音声形式の制約でAvalon非対応のためWhisperのみ表示",ms:0,ios:true}):callA()]);if(!w.failed)fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes-ab",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(w.text||"").length}})}).catch(()=>{});if(w.failed){setAbWhisperMs(m=>m+w.ms)}else{const wn=filterTranscriptNoise((w.text||"").trim());if(wn)setAbWhisper(p=>foldAccum(p+(p?"\n":"")+wn));setAbWhisperMs(m=>m+w.ms)}if(a.failed){setAbAvalonError(a.error||"接続失敗");setAbAvalonIOS(!!a.ios);setAbAvalonMs(m=>m+a.ms)}else{setAbAvalonError("");setAbAvalonIOS(false);const an=filterTranscriptNoise((a.text||"").trim());if(an)setAbAvalon(p=>foldAccum(p+(p?"\n":"")+an));setAbAvalonMs(m=>m+a.ms)}return}const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch(e){bumpDiag("err");setDiagErr(String((e&&e.message)||e))}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
 // 30分ごとの自動下書き保存タイマー開始
@@ -2671,19 +2693,21 @@ const saveMinOutputOnly=async()=>{
   if(!minOut?.trim()||minOut.startsWith("エラー")){sSt("要約がありません");return;}
   try{
     const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録";
-    const minAudioPath=minAudioPathsRef.current.length>0?minAudioPathsRef.current.join(","):null;
     if(minDraftIdRef.current){
+      const minAudioPath=minAudioPathFor(minDraftIdRef.current);
       const updateData={title,input_text:minIR.current||"",output_text:minOut};
       if(minAudioPath)updateData.audio_path=minAudioPath;
       await supabase.from("minutes").update(updateData).eq("id",minDraftIdRef.current);
+      if(minAudioPath)claimMinAudio(minDraftIdRef.current);
     }else{
+      const minAudioPath=minAudioPathFor(null);
       const{data:inserted}=await supabase.from("minutes").insert({
         title,
         input_text:minIR.current||"",
         output_text:minOut,
         audio_path:minAudioPath
       }).select().single();
-      if(inserted)updateMinDraftId(inserted.id);
+      if(inserted){updateMinDraftId(inserted.id);if(minAudioPath)claimMinAudio(inserted.id)}
     }
     lastSavedMinInpRef.current=minIR.current||"";
     lastSavedMinOutRef.current=minOut;
@@ -2700,14 +2724,17 @@ const saveMinPartial=async()=>{
   try{
     const partialSummary="# ⚠️ 部分保存: 最終統合失敗のためチャンク要約を連結\n\n"+minChunkSummaries.join("\n\n---\n\n");
     const title=minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録（部分保存）";
-    const minAudioPath=minAudioPathsRef.current.length>0?minAudioPathsRef.current.join(","):null;
     if(minDraftId){
+      const minAudioPath=minAudioPathFor(minDraftId);
       const updateData={title,input_text:minIR.current,output_text:partialSummary};
       if(minAudioPath)updateData.audio_path=minAudioPath;
       await supabase.from("minutes").update(updateData).eq("id",minDraftId);
+      if(minAudioPath)claimMinAudio(minDraftId);
       updateMinDraftId(null);
     }else{
-      await supabase.from("minutes").insert({title,input_text:minIR.current,output_text:partialSummary,audio_path:minAudioPath});
+      const minAudioPath=minAudioPathFor(null);
+      const{data:ins}=await supabase.from("minutes").insert({title,input_text:minIR.current,output_text:partialSummary,audio_path:minAudioPath}).select("id").single();
+      if(ins&&minAudioPath)claimMinAudio(ins.id);
     }
     await loadMinHist();
     sSt("✓ チャンク要約で保存しました（"+minChunkSummaries.length+"チャンク分）");
@@ -2952,12 +2979,13 @@ const p=minPrompt.trim()||"以下の会議・ミーティングの書き起こ�
 const prompt=`${p}\n\n【書き起こし内容】\n${minIR.current}\n\n以下の構成で簡潔にまとめてください：\n1. 日時・参加者（わかる場合）\n2. 議題・アジェンダ\n3. 決定事項\n4. 各議題の要点\n5. アクションアイテム（担当者・期限）\n6. 次回予定`;
 setProg(50);
 try{const r=await fetch("/api/minutes-summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:minIR.current||"",prompt:minPrompt.trim()||"以下の会議・ミーティングの書き起こしから議事録を作成してください。",title:minTitle||"",model:minutesModel})});if(!r.ok){const errText=await r.text();setMinOut("エラー: HTTP "+r.status+" - "+(errText||"").substring(0,200));setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");btnFbSet("minSum","err","⚠ 失敗: HTTP "+r.status);return}const d=await r.json();if(d.error){setMinOut("エラー: "+d.error);setMinTruncated(false);setMinChunkSummaries([]);setMinFinalIntegrationFailed(false);setMinFinalIntegrationError("");btnFbSet("minSum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{btnFbSet("minSum",d.finalIntegrationFailed?"err":"ok",d.finalIntegrationFailed?"⚠ 失敗: 最終統合失敗（部分結果）":"✓ 議事録作成完了");setMinOut(d.summary);setMinTruncated(!!d.truncated);setMinChunkSummaries(Array.isArray(d.chunkSummaries)?d.chunkSummaries:[]);setMinFinalIntegrationFailed(!!d.finalIntegrationFailed);setMinFinalIntegrationError(d.finalIntegrationError||"");const chunkMsg=d.chunks&&d.chunks>1?`（${d.chunks}分割処理${d.midIntegrated?"・中間統合あり":""}）`:"";sSt((d.finalIntegrationFailed?"⚠️ 最終統合失敗（部分結果表示）":"議事録作成完了 ✓")+chunkMsg+(d.finalIntegrationFailed?"":" → 次へで新規打合せ"));setGeminiModel(d.model||"");setMinutesGenModel(d.model||minutesModel);if(supabase&&d.summary){try{let minData=null;
-const minAudioPath=minAudioPathsRef.current.length>0?minAudioPathsRef.current.join(","):null;
+const minAudioPath=minAudioPathFor(minDraftId||null);
 if(minDraftId){
 const updateData={title:minTitle||new Date().toLocaleDateString("ja-JP")+" "+new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})+"の議事録",input_text:minIR.current||"",output_text:d.summary};
 if(minAudioPath)updateData.audio_path=minAudioPath;
 const{data:updated}=await supabase.from("minutes").update(updateData).eq("id",minDraftId).select().single();
 minData=updated;
+if(minAudioPath)claimMinAudio(minDraftId);
 updateMinDraftId(null);
 }else{
 const{data:inserted}=await supabase.from("minutes").insert({
@@ -2967,6 +2995,7 @@ output_text:d.summary,
 audio_path:minAudioPath
 }).select().single();
 minData=inserted;
+if(inserted&&minAudioPath)claimMinAudio(inserted.id);
 }
 lastSavedMinInpRef.current=minIR.current||"";
 lastSavedMinOutRef.current=d.summary;
@@ -3002,6 +3031,7 @@ const performMinReset=()=>{
   updateMinDraftId(null);
   minAllAudioChunks.current=[];
   minAudioPathsRef.current=[];
+  minAudioOwnerRef.current=null;
   minStop();
   setMinOut("");
   setMinutesGenModel("");
@@ -4193,7 +4223,7 @@ useEffect(()=>{voiceCmdRef.current=voiceCmd},[voiceCmd]);
 const startVoiceCommand=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){sSt("音声コマンドはChrome専用です");return}const sr=new SR();sr.lang="ja-JP";sr.continuous=true;sr.interimResults=false;sr.onresult=(e)=>{const txt=e.results[e.results.length-1][0].transcript.trim();setVcStatus("🎤 「"+txt+"」");if(/次へ|次の患者|クリア/.test(txt)){clr();setVcStatus("✓ 次の患者へ")}else if(/要約|まとめ|カルテ/.test(txt)){sum();setVcStatus("✓ 要約開始")}else if(/録音|開始|スタート/.test(txt)){if(rs==="inactive")go();setVcStatus("✓ 録音開始")}else if(/停止|ストップ|終了/.test(txt)){if(rs!=="inactive")stop();setVcStatus("✓ 録音停止")}else if(/一時停止|ポーズ/.test(txt)){if(rs==="recording")pause();setVcStatus("✓ 一時停止")}else if(/再開|レジューム/.test(txt)){if(rs==="paused")resume();setVcStatus("✓ 再開")}else if(/コピー/.test(txt)){if(out)navigator.clipboard.writeText(out);setVcStatus("✓ コピー完了")}setTimeout(()=>setVcStatus(""),2000)};sr.onerror=(e)=>{if(e.error!=="no-speech"){setVcStatus("エラー: "+e.error)}};sr.onend=()=>{if(voiceCmdRef.current){try{sr.start()}catch{}}};vcRef.current=sr;try{sr.start();setVcStatus("待機中...")}catch(e){sSt("音声コマンド開始エラー: "+e.message)}};
 const stopVoiceCommand=()=>{if(vcRef.current){try{vcRef.current.stop()}catch{}}vcRef.current=null;setVcStatus("")};
 useEffect(()=>{if(voiceCmd){startVoiceCommand()}else{stopVoiceCommand()}return()=>{stopVoiceCommand()}},[voiceCmd]);
-const go=async()=>{autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;audioPathsRef.current=[];lastRecordIdRef.current=null;setAudioSaveNote(null);const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");audioPartCounter.current=1;audioPartStartTime.current=Date.now();mR_save.current=startSaveMR(s);const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(s);m2.start();mR.current=m2}},100)}},10000);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}audioChunkTimer.current=setInterval(()=>{if(!audioSaveRef.current||!mR_save.current)return;const elapsed=Date.now()-audioPartStartTime.current;if(elapsed>=1200000){if(mR_save.current.state!=="inactive")mR_save.current.stop();audioPartCounter.current++;audioPartStartTime.current=Date.now();if(msR.current)mR_save.current=startSaveMR(msR.current)}},30000)};
+const go=async()=>{autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;audioPathsRef.current=[];examAudioOwnerRef.current=null;lastRecordIdRef.current=null;setAudioSaveNote(null);const s=await sAM();if(!s)return;sRS("recording");sSt("録音中");audioPartCounter.current=1;audioPartStartTime.current=Date.now();mR_save.current=startSaveMR(s);const m=cMR(s);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(s);m2.start();mR.current=m2}},100)}},10000);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}audioChunkTimer.current=setInterval(()=>{if(!audioSaveRef.current||!mR_save.current)return;const elapsed=Date.now()-audioPartStartTime.current;if(elapsed>=1200000){if(mR_save.current.state!=="inactive")mR_save.current.stop();audioPartCounter.current++;audioPartStartTime.current=Date.now();if(msR.current)mR_save.current=startSaveMR(msR.current)}},30000)};
 const stop=()=>{if(cR.current)clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive");sSt("待機中")};
 const pause=()=>{if(cR.current)clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();if(mR_save.current&&mR_save.current.state==="recording")mR_save.current.pause();sRS("paused");sSt("一時停止")};
 const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");if(mR_save.current&&mR_save.current.state==="paused")mR_save.current.resume();else if(!mR_save.current)mR_save.current=startSaveMR(msR.current);const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(msR.current);m2.start();mR.current=m2}},100)}},10000)};
@@ -4300,7 +4330,7 @@ if(autoSaveFailed){
 }else{
   try{if(examSessionIdRef.current){deleteTranscriptSession(examSessionIdRef.current);examSessionIdRef.current=null}}catch{}
 }
-saveUndo();sInp("");sOut("");sSt(autoSaveFailed?(autoSaveTimedOut?"⚠️ 保存が応答しないため端末に退避しました（上の復元バナーから戻せます）":"⚠️ 保存に失敗したため端末に退避しました（上の復元バナーから戻せます）"):autoSavedInputOnly?"✅ 書き起こしのみで履歴に保存しました":"待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;lastSavedExamInpRef.current="";audioPathsRef.current=[];try{if(rid==="r7"){sTid("counseling-std")}else{const dt=localStorage.getItem("mk_defaultTpl");if(dt&&dt!=="counseling-std")sTid(dt);else if(tidRef.current==="counseling-std")sTid("soap-std")}}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}
+saveUndo();sInp("");sOut("");sSt(autoSaveFailed?(autoSaveTimedOut?"⚠️ 保存が応答しないため端末に退避しました（上の復元バナーから戻せます）":"⚠️ 保存に失敗したため端末に退避しました（上の復元バナーから戻せます）"):autoSavedInputOnly?"✅ 書き起こしのみで履歴に保存しました":"待機中");sEl(0);sPName("");sPId("");autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.current=false;setFeedback(null);setFeedbackNote("");setLastRecordId(null);lastRecordIdRef.current=null;lastSavedExamInpRef.current="";audioPathsRef.current=[];examAudioOwnerRef.current=null;try{if(rid==="r7"){sTid("counseling-std")}else{const dt=localStorage.getItem("mk_defaultTpl");if(dt&&dt!=="counseling-std")sTid(dt);else if(tidRef.current==="counseling-std")sTid("soap-std")}}catch{};const pd=pipRef.current;if(pd){try{const al=pd.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pi=pd.getElementById("pip-pid");if(pi)pi.value=""}catch{};setTimeout(pipBtnUpdate,300)}
 }finally{
   // どの経路を通っても「次へ」の run 状態を残さない（残ると disabled のままボタンが押せなくなる）
   if(examNextWatchdog.current){clearTimeout(examNextWatchdog.current);examNextWatchdog.current=null}
@@ -7317,19 +7347,22 @@ const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患�
 const k=audioKey(item);
 const checked=selectedAudios.has(k);
 const hasAudio=paths.length>0;
-const sBytes=sessionBytes(paths);
+const isDupAudio=audioDupKeys.has(k); // 他のレコードと同じ音声を指している（容量は先に出た側で計上済み）
+const sBytes=isDupAudio?null:sessionBytes(paths);
 return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid #dc2626`:`1px solid ${C.g200}`,background:checked?"#fef2f2":C.w,display:"flex",flexDirection:"column",gap:6}}>
 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
 <input type="checkbox" checked={checked} disabled={!hasAudio||audioDeleting} onChange={()=>toggleAudioSelected(item)} style={{width:16,height:16,cursor:hasAudio&&!audioDeleting?"pointer":"not-allowed",accentColor:"#dc2626",flexShrink:0}}/>
 <span style={{padding:"2px 8px",borderRadius:6,background:typeBg,color:typeColor,fontSize:11,fontWeight:700}}>{typeLabel}</span>
 <span style={{fontSize:11,color:C.g500,fontWeight:600}}>{dateLabel}</span>
 <span style={{fontSize:11,color:C.g400}}>{item.type==="storage"?((item.audio_path.match(/_part(\d+)/)||[])[1]?`part${item.audio_path.match(/_part(\d+)/)[1]}`:"単体"):`part${paths.length===1?"1のみ":`1〜${paths.length}`}`}</span>
-{hasAudio&&<span title="このセッションがStorage上で占める容量（mp3＋webm原本）" style={{fontSize:10,fontWeight:700,color:C.g600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",whiteSpace:"nowrap"}}>計 {fmtBytes(sBytes)}</span>}
+{hasAudio&&!isDupAudio&&<span title="このセッションがStorage上で占める容量（mp3＋webm原本）" style={{fontSize:10,fontWeight:700,color:C.g600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",whiteSpace:"nowrap"}}>計 {fmtBytes(sBytes)}</span>}
+{hasAudio&&isDupAudio&&<span title="他のレコードと同じ音声ファイルを指しています。容量は先に表示されている側で計上済みです（実体は1つ）" style={{fontSize:10,fontWeight:700,color:"#92400e",padding:"2px 6px",borderRadius:5,background:"#fef3c7",border:"1px solid #fcd34d",whiteSpace:"nowrap"}}>⚠ 他と同じ音声（重複）</span>}
 </div>
 <div style={{fontSize:12,color:C.g700,fontWeight:500}}>{subtitle}</div>
 {paths.map((p,idx)=>{
 const mp3p=mp3PathOf(p);
-const hasMp3=p!==mp3p&&mp3Available.has(mp3p);
+// mp3が実在すると確認できた時だけmp3を既定にする（一覧取得時のサイズが取れている＝実体あり）。表示とDLの実体を一致させる
+const hasMp3=p!==mp3p&&mp3Available.has(mp3p)&&typeof audioSizes[mp3p]==="number";
 const auto=mp3AutoStatus[p];
 const ep=hasMp3?mp3p:p; // 再生・DLはmp3があればmp3を既定にする（webm原本はサブのDLで取得可）
 return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:8,background:C.g50,flexWrap:"wrap"}}>
@@ -7340,7 +7373,7 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 :(<span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",color:C.g500,whiteSpace:"nowrap"}}>webm</span>)}
 <span title="Storage上のファイルサイズ" style={{fontSize:10,fontWeight:600,color:C.g500,whiteSpace:"nowrap"}}>{hasMp3?`mp3 ${fmtBytes(audioSizes[mp3p])}（原本webm ${fmtBytes(audioSizes[p])}）`:fmtBytes(audioSizes[p])}</span>
 {audioSignedUrls[ep]?(<audio controls preload="none" src={audioSignedUrls[ep]} style={{height:32,flex:"1 1 240px",minWidth:200}}/>):(<button onClick={()=>loadAudioSignedUrl(ep)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",flex:"1 1 200px"}}>▶ 再生URL取得</button>)}
-<button onClick={()=>downloadAudio(ep)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.pLL,color:C.pD,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⬇ DL{hasMp3?"(mp3)":""}</button>
+<button onClick={()=>downloadAudio(ep)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.pLL,color:C.pD,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⬇ DL({hasMp3?"mp3":"webm"})</button>
 {!hasMp3&&<button onClick={()=>convertAndStoreMp3(p)} disabled={!!mp3Converting[p]||auto==="converting"} title="mp3に変換してStorageに保存（以後の再生・DLはmp3になります）" style={{padding:"4px 10px",borderRadius:6,border:"none",background:(mp3Converting[p]||auto==="converting")?C.g200:"#fef3c7",color:(mp3Converting[p]||auto==="converting")?C.g500:"#92400e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(mp3Converting[p]||auto==="converting")?"wait":"pointer"}}>{mp3Converting[p]==="loading"?"⏳ 初期化中...":mp3Converting[p]==="converting"?"⏳ 変換中...":"♻ mp3変換"}</button>}
 {hasMp3&&<button onClick={()=>downloadAudio(p)} title="webm原本をダウンロード" style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,color:C.g500,fontSize:10,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>webm原本</button>}
 <span style={{fontSize:10,color:C.g400,wordBreak:"break-all",flex:"1 1 100%"}}>{p}</span>

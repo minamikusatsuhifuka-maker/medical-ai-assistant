@@ -28,13 +28,18 @@ export async function getFFmpeg(onLog) {
 }
 
 export async function convertWebmToMp3(webmBlob, opts = {}) {
-  const bitrate = opts.bitrate || "128k";
+  // 会話音声は 64kbps モノラルで十分（従来128k）。長時間の会議録音でファイルサイズが半分になる。
+  const bitrate = opts.bitrate || "64k";
+  const mono = opts.mono !== false;
   const ffmpeg = await getFFmpeg(opts.onLog);
   const ts = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
   const inputName = `in_${ts}.webm`;
   const outputName = `out_${ts}.mp3`;
   await ffmpeg.writeFile(inputName, await fetchFile(webmBlob));
-  await ffmpeg.exec(["-i", inputName, "-vn", "-c:a", "libmp3lame", "-b:a", bitrate, outputName]);
+  const args = ["-i", inputName, "-vn", "-c:a", "libmp3lame", "-b:a", bitrate];
+  if (mono) args.push("-ac", "1");
+  args.push(outputName);
+  await ffmpeg.exec(args);
   const data = await ffmpeg.readFile(outputName);
   try { await ffmpeg.deleteFile(inputName); } catch {}
   try { await ffmpeg.deleteFile(outputName); } catch {}
