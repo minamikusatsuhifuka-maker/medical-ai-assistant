@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, applyThinking } from "../../lib/gemini-models";
+import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, applyThinking } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -99,10 +99,15 @@ function buildGeminiModelList(model_preference) {
   if (model_preference === "gemini-3-6-flash") {
     return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
   }
+  // gemini-3-7-flash: 3.7 を明示指定（診察の既定は下記のとおり 3.6 なので、試すときはこちらを選ぶ）
+  if (model_preference === "gemini-3-7-flash") {
+    return GEMINI_MODELS;
+  }
   // gemini-3-5-flash-lite: Lite は複数疾患の分離に失敗するため撤去（2026-07-24 院長実ケースで確認）。
   // 旧クライアント（キャッシュ済みページ）から届いた場合も標準リストに丸める。
-  // デフォルト（gemini）: gemini-models.js の GEMINI_MODELS（2026-08 時点は 3.7 Flash 優先）
-  return GEMINI_MODELS;
+  // デフォルト（gemini）: EXAM_SUMMARY_MODELS。診察要約は診療の律速なので応答時間の安定を優先し、
+  // 3.7 のTTFTスパイクが解消するまで 3.6 を先頭に置く（理由と実測値は gemini-models.js を参照）。
+  return EXAM_SUMMARY_MODELS;
 }
 
 async function callGemini(text, prompt, model_preference) {

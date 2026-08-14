@@ -16,6 +16,14 @@ export const ACTIVE_MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.
 // 一部ルートが選好「gemini-3-pro」で使うプレビュー版。提供が流動的なので廃番警告は控えめに扱う（参考情報）。
 export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"];
 
+// 診察要約だけは「速さの安定」を最優先するため、当面 3.6 を先頭にする（他ルートは GEMINI_MODELS＝3.7 先頭）。
+// 2026-08-14 本番URL経由の実測（診察SOAP・ストリーミング・各8回）:
+//   3.7: TTFT 中央値 5855ms / 8回中6回が3秒超 / 最大 8345ms、完了 中央値 6419ms
+//   3.6: TTFT 中央値 1109ms / 3秒超 0回      / 最大 1533ms、完了 中央値 2432ms
+// 出力品質は 3.7 の方がやや良いが、要約は診療の律速なので待ち時間のブレを優先して回避する。
+// 3.7 の応答が安定したら、この定数を GEMINI_MODELS に戻すだけで切り替わる（院長判断待ち）。
+export const EXAM_SUMMARY_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+
 // ---- thinkingLevel の分岐（モデル世代ごとにサポート値が違う） ----
 // 実測（2026-08-14・本番APIキー）:
 //   gemini-3.7-flash + thinkingLevel:"minimal" → HTTP 400 INVALID_ARGUMENT

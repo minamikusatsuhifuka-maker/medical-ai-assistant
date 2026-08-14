@@ -1031,7 +1031,7 @@ const csModelLabel=(m)=>{
   if(s==="gemini-3-6-flash")return"Gemini 3.6 Flash";
   if(s==="gemini-3-5-flash-lite")return"Gemini 3.5 Flash-Lite";
   if(s==="gemini-3-5-flash")return"Gemini 3.5 Flash";
-  if(s==="gemini")return"Gemini 3.7 Flash";
+  if(s==="gemini")return"Gemini 3.6 Flash";
   // API応答の実モデル名（最新版優先）
   if(s.includes("claude"))return"Claude Sonnet 4.6";
   if(s.includes("3.1-pro")||s.includes("3-pro-preview")||s.includes("gemini-3-pro"))return"Gemini 3.1 Pro";
@@ -1051,8 +1051,8 @@ const csModelSubLabel=(m)=>{
   if(s==="gemini-3-pro"||s.includes("3.1-pro"))return"最新・最高精度 ⭐";
   if(s==="claude"||s.includes("claude"))return"日本語精度";
   if(s==="gemini-pro"||s.includes("2.5-pro"))return"バランス型";
-  if(s==="gemini-3-7-flash"||s==="gemini"||s.includes("3.7-flash"))return"最新・超高速 ✨";
-  if(s==="gemini-3-6-flash"||s.includes("3.6-flash"))return"安定・実績";
+  if(s==="gemini-3-7-flash"||s.includes("3.7-flash"))return"最新・記載が丁寧";
+  if(s==="gemini-3-6-flash"||s==="gemini"||s.includes("3.6-flash"))return"速く安定 ✨";
   if(s==="gemini-3-5-flash-lite"||s.includes("3.5-flash-lite"))return"最速・簡易";
   if(s==="gemini-3-5-flash"||s==="gemini"||s.includes("3.5-flash")||s.includes("3-5-flash"))return"高速・安定";
   if(s.includes("2.5-flash")||s.includes("2-5-flash"))return"高速";
@@ -4592,7 +4592,7 @@ if(page==="help")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"1
 <div style={{padding:16,borderRadius:14,background:`linear-gradient(135deg,${C.pLL},#f0fdf4)`,border:`2px solid ${C.pL}`,marginBottom:16}}>
 <p style={{fontSize:14,color:C.pDD,margin:0,lineHeight:1.7}}>
 <strong>南草津皮フ科 AIアシスタント</strong>は、診察録音・カルテ要約をはじめ、議事録・タスク管理・ロールプレイ研修・カウンセリング分析など、クリニック運営を幅広くサポートするAIアプリです。<br/>
-<span style={{fontSize:12,color:C.g500}}>Gemini 3.7 Flash / Pro + OpenAI Whisper で動作しています。</span>
+<span style={{fontSize:12,color:C.g500}}>Gemini 3.6 / 3.7 Flash + OpenAI Whisper で動作しています。</span>
 </p>
 </div>
 
@@ -4752,7 +4752,7 @@ if(page==="help")return(<div style={{maxWidth:800,margin:"0 auto",padding:mob?"1
 </div>
 
 <div style={{textAlign:"center",padding:"10px 0",fontSize:11,color:C.g400}}>
-南草津皮フ科 AIアシスタント — Gemini 3.7 Flash / Pro + OpenAI Whisper
+南草津皮フ科 AIアシスタント — Gemini 3.6 / 3.7 Flash + OpenAI Whisper
 </div>
 </div>);
 
@@ -4761,7 +4761,7 @@ if(page==="about")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",pa
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>ℹ️ 機能紹介</h2><button onClick={()=>{setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button></div>
 <div style={{fontSize:14,color:C.g700,lineHeight:2}}>
 <h3 style={{color:C.pD}}>🎙 リアルタイム音声書き起こし</h3><p>OpenAI Whisper APIによる高精度な日本語音声認識。5秒間隔で自動書き起こし。</p>
-<h3 style={{color:C.pD}}>🤖 AI要約</h3><p>Gemini 3.7 Flashでカルテ形式に自動要約。複数疾患の自動分離にも対応。</p>
+<h3 style={{color:C.pD}}>🤖 AI要約</h3><p>Gemini 3.6 Flashでカルテ形式に自動要約。複数疾患の自動分離にも対応。</p>
 <h3 style={{color:C.pD}}>📋 6種類のテンプレート</h3><p>ASOP・疾患名・美容・処置・経過・フリー。複数疾患の自動分離にも対応。</p>
 <h3 style={{color:C.pD}}>🗣 話者分離</h3><p>会話内容から医師と患者の発言を自動判別し、適切な項目に振り分けます。</p>
 <h3 style={{color:C.pD}}>📖 誤字脱字修正辞書</h3><p>皮膚科の薬剤名・施術名・疾患名を事前登録。書き起こし時に自動修正。</p>
@@ -7390,7 +7390,7 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🤖 要約AIモデル</h3>
 <p style={{fontSize:12,color:C.g400,marginBottom:10}}>要約に使用するAIモデルを選択できます。設定は自動保存されます。</p>
 <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-{[{v:"gemini",label:"Gemini 3.7 Flash ✨",desc:"最新・超高速・低価格"},{v:"gemini-3-6-flash",label:"Gemini 3.6 Flash",desc:"安定・実績（3.7が遅い時の退避先）"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"高精度・推論強化"},{v:"claude",label:"Claude Sonnet 4.6",desc:"高精度・日本語に強い"}].map(m=>(
+{[{v:"gemini",label:"Gemini 3.6 Flash ✨",desc:"応答が速く安定（推奨）"},{v:"gemini-3-7-flash",label:"Gemini 3.7 Flash",desc:"最新・記載はやや丁寧／待ち時間が不安定"},{v:"gemini-pro",label:"Gemini 2.5 Pro",desc:"高精度・推論強化"},{v:"claude",label:"Claude Sonnet 4.6",desc:"高精度・日本語に強い"}].map(m=>(
 <label key={m.v} onClick={()=>{setSummaryModel(m.v);try{localStorage.setItem("mk_summaryModel",m.v)}catch{}}} style={{flex:1,padding:"10px 14px",borderRadius:12,border:`2px solid ${summaryModel===m.v?C.p:C.g200}`,background:summaryModel===m.v?C.pLL:C.w,cursor:"pointer",transition:"all 0.15s"}}>
 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
 <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${summaryModel===m.v?C.pD:C.g300}`,display:"flex",alignItems:"center",justifyContent:"center"}}>{summaryModel===m.v&&<div style={{width:8,height:8,borderRadius:"50%",background:C.pD}}/>}</div>
@@ -7592,7 +7592,7 @@ return(<div style={{maxWidth:"100%",margin:"0 auto",padding:mob?"10px 8px":"20px
 {tooltip.visible&&<div style={{position:"fixed",left:tooltip.x,top:tooltip.y,transform:"translate(-50%, -100%)",background:"rgba(42,58,32,0.92)",color:"#e8f5d8",padding:"4px 10px",borderRadius:8,fontSize:12,fontWeight:600,fontFamily:"'Zen Maru Gothic', sans-serif",pointerEvents:"none",zIndex:99999,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>{tooltip.text}</div>}
 <header style={{background:theme.headerBg,backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderBottom:`1px solid ${theme.cardBorder}`,padding:mob?"12px 16px":"14px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:0}}>
 <div style={{display:"flex",alignItems:"center",gap:8}}>{logoUrl?<img src={logoUrl} alt="logo" style={{width:logoSize,height:logoSize,borderRadius:6,objectFit:"contain"}}/>:<span style={{fontSize:18}}>🩺</span>}<span style={{fontWeight:700,fontSize:mob?14:17,color:"#2a5018",letterSpacing:"0.5px"}}>南草津皮フ科AIカルテ要約</span></div>
-<div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||"Gemini 3.7 Flash"}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
+<div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#3a6820",fontWeight:600,background:"rgba(160,220,100,0.25)",padding:"2px 8px",borderRadius:8}}>{geminiModel||csModelLabel(summaryModel)}</span>{pc>0&&<span style={{fontSize:12,color:C.warn,fontWeight:600}}>⏳</span>}<span style={{fontSize:11,color:st.includes("✓")?"#3a6820":"#5a8838",fontWeight:st.includes("✓")?600:400}}>{st}</span>{voiceCmd&&<span style={{fontSize:11,color:C.pD,fontWeight:600,background:C.pLL,padding:"2px 8px",borderRadius:6}}>🎤 {vcStatus||"音声待機中"}</span>}</div></header>
 <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:mob?"nowrap":"wrap",overflowX:mob?"auto":"visible",WebkitOverflowScrolling:"touch",paddingBottom:mob?4:0}}>
 {(()=>{
 // よく使うものだけ常時表示、残りは「⋯その他」で展開（既定は折りたたみ）。設定(settings)は常時表示固定
