@@ -202,10 +202,14 @@ async function callModel(model, text, prompt, maxOutputTokens) {
   if (model === "gemini-3-5-flash") {
     return await callGeminiList(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"], text, prompt, maxOutputTokens);
   }
+  // 3.6 の明示指定は 3.7 に繰り上げない（UIで選べる比較用の選択肢として残すため）
   if (model === "gemini-3-6-flash") {
+    return await callGeminiList(["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"], text, prompt, maxOutputTokens);
+  }
+  if (model === "gemini-3-7-flash") {
     return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
   }
-  // デフォルト（gemini-flash 等の既存互換キー含む）: 3.6 Flash 優先（2026-07-21 GA）
+  // デフォルト（gemini-flash 等の既存互換キー含む）: gemini-models.js の GEMINI_MODELS（2026-08 時点は 3.7 Flash 優先）
   return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
 }
 
@@ -244,7 +248,7 @@ export async function POST(request) {
   const startTime = Date.now();
   try {
     const { text, prompt, model: reqModel } = await request.json();
-    const model = reqModel || "gemini-3-6-flash"; // デフォルトは Gemini 3.6 Flash（2026-07-21 GA）
+    const model = reqModel || "gemini-3-7-flash"; // デフォルトは Gemini 3.7 Flash（2026-08 移行）
     if (!text || !text.trim()) {
       return Response.json({ error: "テキストが必要です" }, { status: 400 });
     }

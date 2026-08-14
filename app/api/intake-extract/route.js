@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, extractGeminiText } from "../../lib/gemini-models";
+import { GEMINI_MODELS, extractGeminiText, applyThinking } from "../../lib/gemini-models";
 import { INTAKE_CATEGORY_IDS, scrubPII, fixNonWords } from "../../lib/intake-knowledge";
 
 export const maxDuration = 120;
@@ -89,9 +89,9 @@ async function callGemini(userText, systemPrompt) {
   for (const model of GEMINI_MODELS) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      // 抽出・整形タスクのため思考は最小化（Gemini 3.x は思考既定ONで枠固定JSON抽出が切れる。2.5系は thinkingLevel 非対応のため付けない）
-      const genConfig = { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" };
-      if (model.startsWith("gemini-3")) genConfig.thinkingConfig = { thinkingLevel: "minimal" };
+      // 抽出・整形タスクのため思考は最小化（Gemini 3.x は思考既定ONで枠固定JSON抽出が切れる）。
+      // 付与値のモデル別分岐（3.7以降は minimal が400・2.5系は非対応）は gemini-models.js に集約。
+      const genConfig = applyThinking({ temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }, model);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

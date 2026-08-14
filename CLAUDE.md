@@ -3,7 +3,7 @@
 ## プロジェクト概要
 - Next.js 14 / React 18 / Supabase / Vercel
 - メインファイル: app/page.js（単一ファイルで全UI・ロジック）
-- 要約API: Gemini 3.6 Flash（設定でClaude Sonnet 4.6切替可。診察のLiteトグルは複数疾患SOAPの分離に失敗するため撤去済み）
+- 要約API: Gemini 3.7 Flash（設定で 3.6 Flash / 2.5 Pro / Claude Sonnet 4.6 に切替可。診察のLiteトグルは複数疾患SOAPの分離に失敗するため撤去済み）
 - 書き起こしAPI: OpenAI Whisper
 
 ## 必須ルール（破るとアプリが壊れる）
@@ -29,9 +29,14 @@
 - 変更箇所は最小限にする
 
 ## APIファイル一覧
-- summarize/route.js: Gemini/Claude切替対応（gemini-3-5-flash-lite 指定は旧クライアント互換で標準3.6系リストに丸める）
+- summarize/route.js: Gemini/Claude切替対応（gemini-3-5-flash-lite 指定は旧クライアント互換で標準リストに丸める）
 - transcribe/route.js: Whisper（変更禁止）
-- その他Geminiルートは app/lib/gemini-models.js の GEMINI_MODELS（3.6 Flash第一候補）にフォールバック集約。モデル変更はこの1ファイルで行う
+- その他Geminiルートは app/lib/gemini-models.js の GEMINI_MODELS（3.7 Flash第一候補）にフォールバック集約。モデル変更はこの1ファイルで行う
+
+### thinkingLevel はモデル世代で値が違う（重要）
+- **Gemini 3.7 以降は `thinkingLevel:"minimal"` が使えない**（HTTP 400 INVALID_ARGUMENT）。3.7 は low / medium(既定) / high のみ
+- そのため `model.startsWith("gemini-3")` で一律 minimal を付けると 3.7 で全リクエストが落ちる
+- 分岐は `app/lib/gemini-models.js` の `thinkingLevelFor()` / `applyThinking()` に集約済み。genConfig を組む側で直接 thinkingConfig を書かない
 
 ## ビルド・デプロイ
 - 必ずnpm run buildで成功確認してからデプロイ

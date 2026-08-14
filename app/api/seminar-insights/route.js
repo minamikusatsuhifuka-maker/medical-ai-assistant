@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
+import { GEMINI_MODELS } from "../../lib/gemini-models";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -60,11 +61,11 @@ const INSIGHTS_PROMPT = `あなたは医療クリニックの経営コンサル�
 - マークダウンで構造化、前置きや注釈は書かない`;
 
 function buildGeminiModelList(model_preference) {
-  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"];
-  if (model_preference === "gemini-pro") return ["gemini-2.5-pro", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
+  if (model_preference === "gemini-pro") return ["gemini-2.5-pro", ...GEMINI_MODELS];
   if (model_preference === "gemini-3-5-flash") return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
-  // デフォルト: 3.6 Flash 優先（2026-07-21 GA）
-  return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+  // デフォルト: gemini-models.js の GEMINI_MODELS（2026-08 時点は 3.7 Flash 優先）
+  return GEMINI_MODELS;
 }
 
 async function callGemini(summary, model_preference) {

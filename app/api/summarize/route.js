@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
+import { GEMINI_MODELS, applyThinking } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -29,9 +30,9 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
       // Gemini 3.x は思考が既定ONで、ストリーミングでは思考完了まで出力が始まらず要約が遅くなる。
-      // 要約は抽出・整形タスクで深い推論は不要のため思考を最小化（2.5系は thinkingLevel 非対応のため付けない）。
-      const genConfig = { temperature: 0.3, maxOutputTokens: 8192 };
-      if (model.startsWith("gemini-3")) genConfig.thinkingConfig = { thinkingLevel: "minimal" };
+      // 要約は抽出・整形タスクで深い推論は不要のため思考を最小化する。
+      // 付与値のモデル別分岐（3.7以降は minimal が400・2.5系は非対応）は gemini-models.js に集約。
+      const genConfig = applyThinking({ temperature: 0.3, maxOutputTokens: 8192 }, model);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,22 +83,26 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
 
 // Gemini 非ストリーミング（従来のJSON応答）
 function buildGeminiModelList(model_preference) {
-  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→3.6/3.5 Flash→2.5 Pro→2.5 Flash）
+  // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→標準Flashリスト）
   if (model_preference === "gemini-3-pro") {
-    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash"];
+    return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
   }
   // gemini-pro: 既存の2.5 Pro優先（診察要約等）
   if (model_preference === "gemini-pro") {
-    return ["gemini-2.5-pro", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+    return ["gemini-2.5-pro", ...GEMINI_MODELS];
   }
   // gemini-3-5-flash: 明示的に Gemini 3.5 Flash を指定（要約テストラボ用・明示指定は不変）
   if (model_preference === "gemini-3-5-flash") {
     return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
   }
+  // gemini-3-6-flash: 明示的に 3.6 を指定した場合は 3.7 に繰り上げない（明示指定は不変）
+  if (model_preference === "gemini-3-6-flash") {
+    return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+  }
   // gemini-3-5-flash-lite: Lite は複数疾患の分離に失敗するため撤去（2026-07-24 院長実ケースで確認）。
   // 旧クライアント（キャッシュ済みページ）から届いた場合も標準リストに丸める。
-  // デフォルト（gemini）: 3.6 Flash 優先（2026-07-21 GA・3.5比で高性能・低トークン・低価格）
-  return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+  // デフォルト（gemini）: gemini-models.js の GEMINI_MODELS（2026-08 時点は 3.7 Flash 優先）
+  return GEMINI_MODELS;
 }
 
 async function callGemini(text, prompt, model_preference) {
@@ -108,9 +113,9 @@ async function callGemini(text, prompt, model_preference) {
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      // Gemini 3.x は思考が既定ONで要約が遅くなる。要約は抽出・整形タスクで深い推論は不要のため最小化（2.5系は thinkingLevel 非対応のため付けない）。
-      const genConfig = { temperature: 0.3, maxOutputTokens: 8192 };
-      if (model.startsWith("gemini-3")) genConfig.thinkingConfig = { thinkingLevel: "minimal" };
+      // Gemini 3.x は思考が既定ONで要約が遅くなる。要約は抽出・整形タスクで深い推論は不要のため最小化。
+      // 付与値のモデル別分岐は gemini-models.js に集約。
+      const genConfig = applyThinking({ temperature: 0.3, maxOutputTokens: 8192 }, model);
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

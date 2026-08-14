@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // 当アプリが把握済みのモデルと、チャット要約に無関係なモデル種別を新版候補から外す。
 const KNOWN_OR_IGNORE = [
   // 当アプリ使用中（ACTIVE/PREVIEW で別途照合するため新顔扱いしない）
-  "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro",
+  "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro",
   "gemini-3.1-pro-preview", "gemini-3-pro-preview",
   // ASR/Lite 等・把握済み
   "flash-lite",
