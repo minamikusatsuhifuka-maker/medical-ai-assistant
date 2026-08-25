@@ -2231,15 +2231,17 @@ const sessionBytes=(paths)=>{try{let sum=0,known=false;(paths||[]).forEach(p=>{c
 const audioDupKeys=(()=>{try{const seen=new Set();const dup=new Set();(audioList||[]).forEach(it=>{const ps=(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean);if(!ps.length)return;if(ps.every(p=>seen.has(p)))dup.add(audioKey(it));ps.forEach(p=>seen.add(p))});return dup}catch{return new Set()}})();
 // 一覧全体の合計（同じパスは二重に数えない）
 const audioTotalBytes=(()=>{try{const seen=new Set();let sum=0,known=false;(audioList||[]).forEach(it=>(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean).forEach(p=>{if(seen.has(p))return;seen.add(p);const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}}));return known?sum:null}catch{return null}})();
+// upsert:true が必須。これが無いと、既に切れたmp3が置いてあるパスへの手動再変換(♻)が
+// 「既存」として黙って握り潰され、壊れたmp3が残り続ける。
 const uploadMp3ToStorage=async(mp3Path,mp3Blob)=>{
-  let{error}=await supabase.storage.from("audio").upload(mp3Path,mp3Blob,{contentType:"audio/mpeg"});
+  let{error}=await supabase.storage.from("audio").upload(mp3Path,mp3Blob,{contentType:"audio/mpeg",upsert:true});
   if(error&&/mime type/i.test(error.message||"")){
     // バケット"audio"の許可MIMEがaudio/webmのみの場合のフォールバック。.mp3拡張子でDL/再生は正常動作（実測済み）。
     // supabase-jsはBlob自体のtypeを優先するためBlobを再ラップする。
     // Supabaseダッシュボードで audio バケットに audio/mpeg を許可すれば自動的に正式MIMEで保存されるようになる
-    ({error}=await supabase.storage.from("audio").upload(mp3Path,new Blob([mp3Blob],{type:"audio/webm"}),{contentType:"audio/webm"}));
+    ({error}=await supabase.storage.from("audio").upload(mp3Path,new Blob([mp3Blob],{type:"audio/webm"}),{contentType:"audio/webm",upsert:true}));
   }
-  if(error&&!/exists|duplicate/i.test(error.message||""))throw error; // 既存(再試行時)は成功扱い
+  if(error&&!/exists|duplicate/i.test(error.message||""))throw error;
 };
 // 音声アップロード完了後の自動mp3変換（録音コアには触れない後処理）。失敗してもwebm原本は残る
 const queueAutoMp3=(webmPath,webmBlob)=>{
