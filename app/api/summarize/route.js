@@ -87,7 +87,9 @@ function buildGeminiModelList(model_preference) {
   if (model_preference === "gemini-3-pro") {
     return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
   }
-  // gemini-pro: 既存の2.5 Pro優先（診察要約等）
+  // gemini-pro: 2.5 Pro優先。2026-08-25 に診察の「🤖 要約AIモデル」からは選べなくしたため、
+  // 現在は「要約テストラボ」からのみ届く。将来戻す可能性があるため経路は残置。
+  // ※ 2.5系はフォールバック鎖（GEMINI_MODELS / EXAM_SUMMARY_MODELS の末尾）には引き続き残す。
   if (model_preference === "gemini-pro") {
     return ["gemini-2.5-pro", ...GEMINI_MODELS];
   }
@@ -201,6 +203,9 @@ export async function POST(request) {
     const useClaude = model_preference === "claude" || mode === "claude";
 
     // Claude は常に非ストリーミング
+    // 2026-08-25: 診察の「🤖 要約AIモデル」からは Claude を選べなくしたため、この経路は
+    // 「要約テストラボ」(labModels に claude を含む)からのみ呼ばれる。診察要約からは到達しない。
+    // 将来また選択肢に戻す可能性があるため経路は残置。
     if (useClaude) {
       const r = await callClaude(text, finalPrompt);
       const usage = await logUsage({
