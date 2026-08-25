@@ -1178,7 +1178,12 @@ const[minSavingNext,setMinSavingNext]=useState(false);
 const[minAutoSaving,setMinAutoSaving]=useState(false);
 const minAutoSaveRef=useRef(null);
 const[minAudioSave,setMinAudioSave]=useState(false);
-const minAllAudioChunks=useRef([]);
+// 議事録の音声保存は「保存専用の連続録音MR」で行う。
+// 書き起こし用MRは10秒ごとに stop/start するため、そのチャンクを繋ぐと
+// 独立したwebmファイルの連結になり、ffmpegが先頭セグメントしか読めずmp3が数十秒で切れていた。
+const minMR_save=useRef(null);
+const minAudioSaveRef=useRef(false);minAudioSaveRef.current=minAudioSave;
+const minTitleRef=useRef("");minTitleRef.current=minTitle;
 // 議事録削除確認モーダル（null=非表示, {ids,count,hasAudio}=表示）
 const[minDeleteConfirm,setMinDeleteConfirm]=useState(null);
 const[minDeleting,setMinDeleting]=useState(false);
@@ -1213,7 +1218,10 @@ const smnMR=useRef(null);
 const smnSR=useRef(null);
 const smnTR=useRef(null);
 // R-3: 音声保存用
-const smnAllAudioChunksRef=useRef([]);
+// セミナーも議事録と同じ理由で保存専用の連続録音MRを使う（詳細は minMR_save のコメント参照）
+const smnMR_save=useRef(null);
+const smnAudioSaveRef=useRef(false);smnAudioSaveRef.current=smnAudioSave;
+const smnTitleRef=useRef("");smnTitleRef.current=smnTitle;
 const smnAudioPathRef=useRef(null);
 // restore中フラグ: 復元時の内容変更で smnSaved を false に戻さないため
 const smnRestoringRef=useRef(false);
@@ -2383,7 +2391,10 @@ document.addEventListener("visibilitychange",onVis);
 window.addEventListener("pagehide",flush);
 return()=>{document.removeEventListener("visibilitychange",onVis);window.removeEventListener("pagehide",flush)}
 },[]);
-const minGo=async()=>{minAudioPathsRef.current=[];minAudioOwnerRef.current=null;const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(minAudioSave)minAllAudioChunks.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
+// 保存用MR：タイムスライスなしで連続録音し、stop時に1本の完結webmとして saveMinAudio する
+// （書き起こし用MRの10秒チャンクを繋ぐと独立webmの連結になり、mp3変換が先頭だけで切れるため分離した）
+const startMinSaveMR=(s)=>{const ms=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});const chunks=[];ms.ondataavailable=(e)=>{if(e.data.size>0)chunks.push(e.data)};ms.onstop=()=>{if(minAudioSaveRef.current&&chunks.length>0){saveMinAudio(new Blob(chunks,{type:"audio/webm"}),minTitleRef.current)}};ms.start();return ms};
+const minGo=async()=>{minAudioPathsRef.current=[];minAudioOwnerRef.current=null;const s=await sAM();if(!s)return;minMR_save.current=startMinSaveMR(s);const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
 bumpDiag("rec");noteDiagMR(minMR.current,b.size);/* 議事録: 瞬間値のlvゲートは会議の遠い小さな声で誤爆するため使わず、チャンク全体のRMS判定(議事録用しきい値)に一本化する */bumpDiag("lv");if(await isSilentChunk(b,minSilenceThrRef.current))return;bumpDiag("sil");try{const f=new FormData();f.append("audio",b,"audio.webm");if(asrEngine==="both"){const f2=new FormData();f2.append("audio",b,"audio.webm");f2.append("compare","1");const callW=async()=>{const s=performance.now();try{bumpDiag("sent");const r=await fetch("/api/transcribe",{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Whisper ${r.status}`,ms:Math.round(performance.now()-s)};const d=await r.json();setDiagLastLen((d.text||"").length);return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Whisper 例外",ms:Math.round(performance.now()-s)}}};const callA=async()=>{const s=performance.now();try{const r=await fetch("/api/transcribe-avalon",{method:"POST",body:f2});const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Avalon ${r.status}（非JSON）`,ms:Math.round(performance.now()-s)};const d=await r.json();if(d.failed)return{failed:true,error:d.error||"Avalon 接続失敗",ms:Math.round(performance.now()-s)};return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Avalon 例外",ms:Math.round(performance.now()-s)}}};const[w,a]=await Promise.all([callW(),isIOSDevice?Promise.resolve({failed:true,error:"iOS（iPhone/iPad）は音声形式の制約でAvalon非対応のためWhisperのみ表示",ms:0,ios:true}):callA()]);if(!w.failed)fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes-ab",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(w.text||"").length}})}).catch(()=>{});if(w.failed){setAbWhisperMs(m=>m+w.ms)}else{const wn=filterTranscriptNoise((w.text||"").trim());if(wn)setAbWhisper(p=>foldAccum(p+(p?"\n":"")+wn));setAbWhisperMs(m=>m+w.ms)}if(a.failed){setAbAvalonError(a.error||"接続失敗");setAbAvalonIOS(!!a.ios);setAbAvalonMs(m=>m+a.ms)}else{setAbAvalonError("");setAbAvalonIOS(false);const an=filterTranscriptNoise((a.text||"").trim());if(an)setAbAvalon(p=>foldAccum(p+(p?"\n":"")+an));setAbAvalonMs(m=>m+a.ms)}return}const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch(e){bumpDiag("err");setDiagErr(String((e&&e.message)||e))}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
 // 30分ごとの自動下書き保存タイマー開始
@@ -2395,29 +2406,29 @@ const minStop=()=>{
 if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
 if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
 if(minMR.current&&minMR.current.state!=="inactive"){try{minMR.current.stop()}catch{}}
+// 保存専用MRを停止（onstop で1本の完結webmとして保存される）。ストリーム停止(xAM)より前に呼ぶ。
+if(minMR_save.current){if(minMR_save.current.state!=="inactive"){try{minMR_save.current.stop()}catch{}}minMR_save.current=null}
 setMinRS("inactive");minSR.current="inactive";xAM();
 // 録音停止時もドラフトを削除
 if(minDraftId&&supabase){
   supabase.from("minutes").delete().eq("id",minDraftId).then(()=>{}).catch(()=>{});
   updateMinDraftId(null);
 }
-// 音声保存ONの場合、停止時に保存
-if(minAudioSave&&minAllAudioChunks.current.length>0){
-const blob=new Blob(minAllAudioChunks.current,{type:"audio/webm"});
-minAllAudioChunks.current=[];
-saveMinAudio(blob,minTitle);
-}
+// 音声保存は上の minMR_save.stop() の onstop 側で行う
 };
 // Stage 2: 議事録 pause/resume （minGo本体は無改修。minTI から ti/ci を取り出して操作する純粋追加）
 const pauseMin=()=>{
   if(!minMR.current||minMR.current.state!=="recording")return;
   try{minMR.current.pause()}catch(e){console.warn("[pauseMin] MR pause error:",e);return}
+  if(minMR_save.current&&minMR_save.current.state==="recording"){try{minMR_save.current.pause()}catch{}}
   if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null;}
   setMinRS("paused");
 };
 const resumeMin=()=>{
   if(!minMR.current||minMR.current.state!=="paused")return;
   try{minMR.current.resume()}catch(e){console.warn("[resumeMin] MR resume error:",e);return}
+  if(minMR_save.current&&minMR_save.current.state==="paused"){try{minMR_save.current.resume()}catch{}}
+  else if(!minMR_save.current&&msR.current){minMR_save.current=startMinSaveMR(msR.current)}
   // minGo の ti/ci と完全に同じコードをコピー
   const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);
   const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);
@@ -2448,30 +2459,31 @@ const saveSmnAudio=async(blob,title)=>{
     return null;
   }
 };
-const smnGo=async()=>{smnAllAudioChunksRef.current=[];smnAudioPathRef.current=null;const s=await sAM();if(!s)return;const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});smnMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data);if(smnAudioSave)smnAllAudioChunksRef.current.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
+// 保存用MR：議事録 startMinSaveMR のセミナー版（連続録音→stop時に1本の完結webm）
+const startSmnSaveMR=(s)=>{const ms=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});const chunks=[];ms.ondataavailable=(e)=>{if(e.data.size>0)chunks.push(e.data)};ms.onstop=()=>{if(smnAudioSaveRef.current&&chunks.length>0){saveSmnAudio(new Blob(chunks,{type:"audio/webm"}),smnTitleRef.current)}};ms.start();return ms};
+const smnGo=async()=>{smnAudioPathRef.current=null;const s=await sAM();if(!s)return;smnMR_save.current=startSmnSaveMR(s);const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});smnMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // セミナーも無音スキップ（音声レベル参照）
 bumpDiag("rec");noteDiagMR(smnMR.current,b.size);/* セミナー: 議事録と同じく瞬間値のlvゲートは使わず、RMS判定(議事録用しきい値)に一本化する */bumpDiag("lv");if(await isSilentChunk(b,minSilenceThrRef.current))return;bumpDiag("sil");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-seminar",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setSmnTranscript(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch(e){bumpDiag("err");setDiagErr(String((e&&e.message)||e))}}};mr.start();setSmnRS("recording");setSmnEl(0);const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnSR.current!=="inactive"){smnMR.current.start()}},200)}},10000);smnTR.current={ti,ci};};
 const smnStop=()=>{
 if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null}
 if(smnMR.current&&smnMR.current.state!=="inactive"){try{smnMR.current.stop()}catch{}}
+// R-3: 音声保存ONなら保存専用MRの onstop で保存される。ストリーム停止(xAM)より前に呼ぶ。
+if(smnMR_save.current){if(smnMR_save.current.state!=="inactive"){try{smnMR_save.current.stop()}catch{}}smnMR_save.current=null}
 setSmnRS("inactive");smnSR.current="inactive";xAM();
-// R-3: 音声保存ONの場合、停止時に保存
-if(smnAudioSave&&smnAllAudioChunksRef.current.length>0){
-const blob=new Blob(smnAllAudioChunksRef.current,{type:"audio/webm"});
-smnAllAudioChunksRef.current=[];
-saveSmnAudio(blob,smnTitle);
-}
 };
 // Stage 3: セミナー pause/resume （議事録 pauseMin/resumeMin の完全コピー、変数名のみ smn* に置換）
 const pauseSmn=()=>{
   if(!smnMR.current||smnMR.current.state!=="recording")return;
   try{smnMR.current.pause()}catch(e){console.warn("[pauseSmn] MR pause error:",e);return}
+  if(smnMR_save.current&&smnMR_save.current.state==="recording"){try{smnMR_save.current.pause()}catch{}}
   if(smnTR.current){if(smnTR.current.ti)clearInterval(smnTR.current.ti);if(smnTR.current.ci)clearInterval(smnTR.current.ci);smnTR.current=null;}
   setSmnRS("paused");
 };
 const resumeSmn=()=>{
   if(!smnMR.current||smnMR.current.state!=="paused")return;
   try{smnMR.current.resume()}catch(e){console.warn("[resumeSmn] MR resume error:",e);return}
+  if(smnMR_save.current&&smnMR_save.current.state==="paused"){try{smnMR_save.current.resume()}catch{}}
+  else if(!smnMR_save.current&&msR.current){smnMR_save.current=startSmnSaveMR(msR.current)}
   // smnGo の ti/ci と完全に同じコードをコピー
   const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);
   const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnSR.current!=="inactive"){smnMR.current.start()}},200)}},10000);
@@ -2636,7 +2648,7 @@ const clearSmnAll=()=>{
   setSmnTitle("");setSmnTranscript("");setSmnSummary("");setSmnGensparkText("");setSmnInsights("");setSmnSummaryModelUsed("");
   setSmnSaved(false);
   // R-3: 音声状態もリセット
-  smnAudioPathRef.current=null;smnAllAudioChunksRef.current=[];
+  smnAudioPathRef.current=null;
 };
 const loadMinHist=async()=>{if(!supabase)return;try{const[{data},{count}]=await Promise.all([supabase.from("minutes").select("*").order("created_at",{ascending:false}).limit(500),supabase.from("minutes").select("*",{count:"exact",head:true})]);if(data)setMinHist(data);if(typeof count==="number")setMinHistTotal(count);console.log(`[minHist] fetched: ${data?.length||0}件 / total: ${count||0}件`)}catch(e){console.error("[minHist] load error:",e)}};
 // 議事録画面を開いた時に履歴を自動取得
@@ -2680,13 +2692,9 @@ const minStopAndSaveOnly=async()=>{
   if(minAutoSaveRef.current){clearInterval(minAutoSaveRef.current);minAutoSaveRef.current=null;}
   if(minTI.current){if(minTI.current.ti)clearInterval(minTI.current.ti);if(minTI.current.ci)clearInterval(minTI.current.ci);minTI.current=null}
   if(minMR.current&&minMR.current.state!=="inactive"){try{minMR.current.stop()}catch{}}
+  // 音声保存ONなら音声も保存（minStop と同じ：保存専用MRの onstop が担当）
+  if(minMR_save.current){if(minMR_save.current.state!=="inactive"){try{minMR_save.current.stop()}catch{}}minMR_save.current=null}
   setMinRS("inactive");minSR.current="inactive";xAM();
-  // 音声保存ONなら音声も保存（minStop と同じ）
-  if(minAudioSave&&minAllAudioChunks.current.length>0){
-    const blob=new Blob(minAllAudioChunks.current,{type:"audio/webm"});
-    minAllAudioChunks.current=[];
-    saveMinAudio(blob,minTitle);
-  }
   // --- 要約APIは呼ばない。書き起こしのみ保存（既存 saveMinInputOnly を流用：draftがあれば昇格・なければinsert） ---
   await saveMinInputOnly();
 };
@@ -3032,7 +3040,6 @@ const performMinReset=()=>{
     supabase.from("minutes").delete().eq("id",minDraftIdRef.current).then(()=>{}).catch(()=>{});
   }
   updateMinDraftId(null);
-  minAllAudioChunks.current=[];
   minAudioPathsRef.current=[];
   minAudioOwnerRef.current=null;
   minStop();
