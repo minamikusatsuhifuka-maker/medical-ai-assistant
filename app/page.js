@@ -1234,6 +1234,7 @@ const[selectedAudios,setSelectedAudios]=useState(new Set()),[audioDeleting,setAu
 const[mp3Converting,setMp3Converting]=useState({}); // {[path]: "loading"|"converting"|"done"|null}
 const[mp3AutoStatus,setMp3AutoStatus]=useState({}); // 自動mp3変換の進行状況 {[webmPath]: "converting"|"done"|"failed"}
 const[mp3Available,setMp3Available]=useState(()=>new Set()); // Storage上に存在する .mp3 のフルパス（一覧のmp3優先表示に使用）
+const[audioSanityWarn,setAudioSanityWarn]=useState({}); // 尺の異常を検出したwebmパス {[フルパス]: 警告文}
 const[audioSizes,setAudioSizes]=useState({}); // Storage上のファイルサイズ {[フルパス]: バイト数}。list APIのmetadata.sizeから取得（追加リクエストなし）
 const mp3QueueRef=useRef(Promise.resolve()); // ffmpeg.wasmは同時実行不可のため変換を直列化
 const[apiUsageMonth,setApiUsageMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`});
@@ -2067,8 +2068,8 @@ const canAttachExamAudio=(id)=>!examAudioOwnerRef.current||examAudioOwnerRef.cur
 const claimExamAudio=(id)=>{if(id)examAudioOwnerRef.current=id};
 const examAudioPathFor=(id)=>{if(!audioPathsRef.current.length)return null;if(!canAttachExamAudio(id))return null;return audioPathsRef.current.join(",")};
 useEffect(()=>{const effective=sessionAudioSave!==null?sessionAudioSave:audioSave;audioSaveRef.current=effective},[audioSave,sessionAudioSave]);
-const saveAudio=async(blob,partN,durationSec)=>{if(!supabase||!blob||blob.size<1000)return null;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const secStr=durationSec&&durationSec>0?`-${Math.round(durationSec)}s`:"";const partSeg=`_part${partN||1}${secStr}`;const path=`audio/${rid}/${ts}${partSeg}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error){console.error("Audio save error:",error);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(error.message||"不明なエラー")});return null}console.log("Audio saved:",path);setAudioSaveNote({t:"ok",m:`✓ 音声保存済み part${partN||1}`});audioPathsRef.current.push(path);queueAutoMp3(path,blob);if(lastRecordIdRef.current&&canAttachExamAudio(lastRecordIdRef.current)){try{await supabase.from("records").update({audio_path:audioPathsRef.current.join(",")}).eq("id",lastRecordIdRef.current);claimExamAudio(lastRecordIdRef.current)}catch(e){console.error("audio_path update error:",e)}}return path}catch(e){console.error("Audio save error:",e);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(e.message||"不明なエラー")});return null}};
-const saveMinAudio=async(blob,minuteTitle)=>{
+const saveAudio=async(blob,partN,durationSec)=>{if(!supabase||!blob||blob.size<1000)return null;try{const ts=new Date().toISOString().replace(/[:.]/g,"-");const secStr=durationSec&&durationSec>0?`-${Math.round(durationSec)}s`:"";const partSeg=`_part${partN||1}${secStr}`;const path=`audio/${rid}/${ts}${partSeg}_${pIdRef.current||"unknown"}.webm`;const{error}=await supabase.storage.from("audio").upload(path,blob,{contentType:"audio/webm"});if(error){console.error("Audio save error:",error);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(error.message||"不明なエラー")});return null}console.log("Audio saved:",path);setAudioSaveNote({t:"ok",m:`✓ 音声保存済み part${partN||1}`});audioPathsRef.current.push(path);queueAutoMp3(path,blob,durationSec);if(lastRecordIdRef.current&&canAttachExamAudio(lastRecordIdRef.current)){try{await supabase.from("records").update({audio_path:audioPathsRef.current.join(",")}).eq("id",lastRecordIdRef.current);claimExamAudio(lastRecordIdRef.current)}catch(e){console.error("audio_path update error:",e)}}return path}catch(e){console.error("Audio save error:",e);setAudioSaveNote({t:"err",m:"⚠ 音声保存に失敗しました: "+(e.message||"不明なエラー")});return null}};
+const saveMinAudio=async(blob,minuteTitle,expectedSec)=>{
 if(!supabase||!blob||blob.size<1000)return null;
 try{
 const ts=new Date().toISOString().replace(/[:.]/g,"-");
@@ -2083,7 +2084,7 @@ return null;
 console.log("Minutes audio saved:",path);
 sSt("🎙️ 音声を保存しました");
 minAudioPathsRef.current.push(path);
-queueAutoMp3(path,blob);
+queueAutoMp3(path,blob,expectedSec);
 if(minDraftIdRef.current&&canAttachMinAudio(minDraftIdRef.current)){
 try{
 await supabase.from("minutes").update({audio_path:minAudioPathsRef.current.join(",")}).eq("id",minDraftIdRef.current);
@@ -2243,19 +2244,45 @@ const uploadMp3ToStorage=async(mp3Path,mp3Blob)=>{
   }
   if(error&&!/exists|duplicate/i.test(error.message||""))throw error;
 };
+// 尺のサニティチェック用。メタデータだけ読んで秒数を返す（読めなければnull）
+const measureAudioSec=(blob)=>new Promise(res=>{
+  let done=false;
+  const fin=(v)=>{if(done)return;done=true;try{URL.revokeObjectURL(url)}catch{}res(v)};
+  const el=document.createElement("audio");
+  const url=URL.createObjectURL(blob);
+  el.preload="metadata";
+  el.onloadedmetadata=()=>fin(isFinite(el.duration)&&el.duration>0?el.duration:null);
+  el.onerror=()=>fin(null);
+  el.src=url;
+  setTimeout(()=>fin(null),15000);
+});
 // 音声アップロード完了後の自動mp3変換（録音コアには触れない後処理）。失敗してもwebm原本は残る
-const queueAutoMp3=(webmPath,webmBlob)=>{
+// expectedSec: 録音の実経過秒。これと出来上がったmp3の尺を突き合わせ、乖離があれば警告を残す
+// （2026-08-25の議事録で「17.5MBあるのに9秒」が無言で通ってしまったため追加）
+const queueAutoMp3=(webmPath,webmBlob,expectedSec)=>{
   if(!supabase||!webmPath||!webmBlob||!/\.webm$/i.test(webmPath))return;
   setMp3AutoStatus(prev=>({...prev,[webmPath]:"converting"}));
   mp3QueueRef.current=mp3QueueRef.current.then(async()=>{
     try{
       const{convertWebmToMp3}=await import("./Mp3Converter");
-      const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"64k"});
+      let segments=1;
+      const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"64k",onInfo:(i)=>{segments=i.segments}});
       const mp3Path=mp3PathOf(webmPath);
       await uploadMp3ToStorage(mp3Path,mp3Blob);
       setMp3Available(prev=>{const n=new Set(prev);n.add(mp3Path);return n});
       setMp3AutoStatus(prev=>({...prev,[webmPath]:"done"}));
       console.log("[mp3-auto] saved:",mp3Path);
+      // --- サニティチェック（無言で短い音声を通さない） ---
+      const warns=[];
+      if(segments>1)warns.push(`webm原本が${segments}個の断片の連結になっています`);
+      const mp3Sec=await measureAudioSec(mp3Blob);
+      if(mp3Sec&&expectedSec>0&&mp3Sec<expectedSec*0.7)warns.push(`mp3が${Math.round(mp3Sec)}秒しかありません（録音は約${Math.round(expectedSec)}秒）`);
+      if(warns.length){
+        const msg=warns.join(" / ");
+        setAudioSanityWarn(prev=>({...prev,[webmPath]:msg}));
+        console.warn("[audio-sanity]",webmPath,msg);
+        setAudioSaveNote({t:"err",m:"⚠ 保存した音声の尺が想定と違います: "+msg});
+      }
     }catch(e){
       console.error("[mp3-auto] convert error:",e);
       setMp3AutoStatus(prev=>({...prev,[webmPath]:"failed"}));
@@ -2275,12 +2302,17 @@ const convertAndStoreMp3=async(path)=>{
     const webmBlob=await res.blob();
     setMp3Converting(prev=>({...prev,[path]:"converting"}));
     const{convertWebmToMp3}=await import("./Mp3Converter");
-    const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"64k"});
+    let segments=1;
+    const mp3Blob=await convertWebmToMp3(webmBlob,{bitrate:"64k",onInfo:(i)=>{segments=i.segments}});
     const mp3Path=mp3PathOf(path);
     await uploadMp3ToStorage(mp3Path,mp3Blob);
     setMp3Available(prev=>{const n=new Set(prev);n.add(mp3Path);return n});
+    // 再取得を待たずに行の表示を更新する（サイズが入って初めてmp3扱いになるため）
+    setAudioSizes(prev=>({...prev,[mp3Path]:mp3Blob.size}));
     setMp3AutoStatus(prev=>{const n={...prev};delete n[path];return n}); // 失敗表示を解除
+    setAudioSanityWarn(prev=>{const n={...prev};delete n[path];return n}); // 尺の警告も解除（作り直したため）
     setMp3Converting(prev=>{const n={...prev};delete n[path];return n});
+    if(segments>1)console.log(`[mp3] 連結webm(${segments}断片)を結合して再変換しました:`,path);
   }catch(e){
     console.error("[mp3] convert error:",e);
     alert("mp3変換に失敗しました: "+e.message);
@@ -2395,7 +2427,7 @@ return()=>{document.removeEventListener("visibilitychange",onVis);window.removeE
 },[]);
 // 保存用MR：タイムスライスなしで連続録音し、stop時に1本の完結webmとして saveMinAudio する
 // （書き起こし用MRの10秒チャンクを繋ぐと独立webmの連結になり、mp3変換が先頭だけで切れるため分離した）
-const startMinSaveMR=(s)=>{const ms=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});const chunks=[];ms.ondataavailable=(e)=>{if(e.data.size>0)chunks.push(e.data)};ms.onstop=()=>{if(minAudioSaveRef.current&&chunks.length>0){saveMinAudio(new Blob(chunks,{type:"audio/webm"}),minTitleRef.current)}};ms.start();return ms};
+const startMinSaveMR=(s)=>{const ms=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});const chunks=[];const startTime=Date.now();ms.ondataavailable=(e)=>{if(e.data.size>0)chunks.push(e.data)};ms.onstop=()=>{if(minAudioSaveRef.current&&chunks.length>0){saveMinAudio(new Blob(chunks,{type:"audio/webm"}),minTitleRef.current,(Date.now()-startTime)/1000)}};ms.start();return ms};
 const minGo=async()=>{minAudioPathsRef.current=[];minAudioOwnerRef.current=null;const s=await sAM();if(!s)return;minMR_save.current=startMinSaveMR(s);const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});minMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // 議事録も無音スキップ（音声レベル参照）
 bumpDiag("rec");noteDiagMR(minMR.current,b.size);/* 議事録: 瞬間値のlvゲートは会議の遠い小さな声で誤爆するため使わず、チャンク全体のRMS判定(議事録用しきい値)に一本化する */bumpDiag("lv");if(await isSilentChunk(b,minSilenceThrRef.current))return;bumpDiag("sil");try{const f=new FormData();f.append("audio",b,"audio.webm");if(asrEngine==="both"){const f2=new FormData();f2.append("audio",b,"audio.webm");f2.append("compare","1");const callW=async()=>{const s=performance.now();try{bumpDiag("sent");const r=await fetch("/api/transcribe",{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Whisper ${r.status}`,ms:Math.round(performance.now()-s)};const d=await r.json();setDiagLastLen((d.text||"").length);return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Whisper 例外",ms:Math.round(performance.now()-s)}}};const callA=async()=>{const s=performance.now();try{const r=await fetch("/api/transcribe-avalon",{method:"POST",body:f2});const ct=r.headers.get("content-type")||"";if(!r.ok||!ct.includes("json"))return{failed:true,error:`Avalon ${r.status}（非JSON）`,ms:Math.round(performance.now()-s)};const d=await r.json();if(d.failed)return{failed:true,error:d.error||"Avalon 接続失敗",ms:Math.round(performance.now()-s)};return{text:d.text||"",ms:Math.round(performance.now()-s)}}catch(e){return{failed:true,error:"Avalon 例外",ms:Math.round(performance.now()-s)}}};const[w,a]=await Promise.all([callW(),isIOSDevice?Promise.resolve({failed:true,error:"iOS（iPhone/iPad）は音声形式の制約でAvalon非対応のためWhisperのみ表示",ms:0,ios:true}):callA()]);if(!w.failed)fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes-ab",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(w.text||"").length}})}).catch(()=>{});if(w.failed){setAbWhisperMs(m=>m+w.ms)}else{const wn=filterTranscriptNoise((w.text||"").trim());if(wn)setAbWhisper(p=>foldAccum(p+(p?"\n":"")+wn));setAbWhisperMs(m=>m+w.ms)}if(a.failed){setAbAvalonError(a.error||"接続失敗");setAbAvalonIOS(!!a.ios);setAbAvalonMs(m=>m+a.ms)}else{setAbAvalonError("");setAbAvalonIOS(false);const an=filterTranscriptNoise((a.text||"").trim());if(an)setAbAvalon(p=>foldAccum(p+(p?"\n":"")+an));setAbAvalonMs(m=>m+a.ms)}return}const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-minutes",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setMinInp(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch(e){bumpDiag("err");setDiagErr(String((e&&e.message)||e))}}};mr.start();setMinRS("recording");setMinEl(0);const ti=setInterval(()=>{setMinEl(t=>t+1)},1000);const ci=setInterval(()=>{if(minMR.current&&minMR.current.state==="recording"){minMR.current.stop();setTimeout(()=>{if(minMR.current&&minSR.current!=="inactive"){minMR.current.start()}},200)}},10000);minTI.current={ti,ci};
@@ -2439,7 +2471,7 @@ const resumeMin=()=>{
 };
 // === セミナー学習: 録音（議事録 minGo/minStop/pauseMin/resumeMin の完全コピー＋R-3音声保存3箇所追加） ===
 // R-3: セミナー音声保存（議事録 saveMinAudio の seminar-audio/ バケットパス版）
-const saveSmnAudio=async(blob,title)=>{
+const saveSmnAudio=async(blob,title,expectedSec)=>{
   if(!supabase||!blob||blob.size<1000)return null;
   try{
     const ts=new Date().toISOString().replace(/[:.]/g,"-");
@@ -2454,7 +2486,7 @@ const saveSmnAudio=async(blob,title)=>{
     console.log("Seminar audio saved:",path);
     smnAudioPathRef.current=path;
     sSt("🎙️ 音声を保存しました");
-    queueAutoMp3(path,blob);
+    queueAutoMp3(path,blob,expectedSec);
     return path;
   }catch(e){
     console.error("[saveSmnAudio] exception:",e);
@@ -2462,7 +2494,7 @@ const saveSmnAudio=async(blob,title)=>{
   }
 };
 // 保存用MR：議事録 startMinSaveMR のセミナー版（連続録音→stop時に1本の完結webm）
-const startSmnSaveMR=(s)=>{const ms=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});const chunks=[];ms.ondataavailable=(e)=>{if(e.data.size>0)chunks.push(e.data)};ms.onstop=()=>{if(smnAudioSaveRef.current&&chunks.length>0){saveSmnAudio(new Blob(chunks,{type:"audio/webm"}),smnTitleRef.current)}};ms.start();return ms};
+const startSmnSaveMR=(s)=>{const ms=new MediaRecorder(s,{mimeType:MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm"});const chunks=[];const startTime=Date.now();ms.ondataavailable=(e)=>{if(e.data.size>0)chunks.push(e.data)};ms.onstop=()=>{if(smnAudioSaveRef.current&&chunks.length>0){saveSmnAudio(new Blob(chunks,{type:"audio/webm"}),smnTitleRef.current,(Date.now()-startTime)/1000)}};ms.start();return ms};
 const smnGo=async()=>{smnAudioPathRef.current=null;const s=await sAM();if(!s)return;smnMR_save.current=startSmnSaveMR(s);const mr=new MediaRecorder(s,{mimeType:"audio/webm;codecs=opus"});smnMR.current=mr;let ch=[];mr.ondataavailable=e=>{if(e.data.size>0){ch.push(e.data)}};mr.onstop=async()=>{if(ch.length>0){const b=new Blob(ch,{type:"audio/webm"});ch=[];if(b.size<500)return;
 // セミナーも無音スキップ（音声レベル参照）
 bumpDiag("rec");noteDiagMR(smnMR.current,b.size);/* セミナー: 議事録と同じく瞬間値のlvゲートは使わず、RMS判定(議事録用しきい値)に一本化する */bumpDiag("lv");if(await isSilentChunk(b,minSilenceThrRef.current))return;bumpDiag("sil");try{const f=new FormData();f.append("audio",b,"audio.webm");const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-seminar",duration_seconds:10,request_meta:{blob_size:b.size,text_length:(d.text||"").length}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());if(noise){setSmnTranscript(p=>foldAccum(p+(p?"\n":"")+noise))}}}catch(e){bumpDiag("err");setDiagErr(String((e&&e.message)||e))}}};mr.start();setSmnRS("recording");setSmnEl(0);const ti=setInterval(()=>{setSmnEl(t=>t+1)},1000);const ci=setInterval(()=>{if(smnMR.current&&smnMR.current.state==="recording"){smnMR.current.stop();setTimeout(()=>{if(smnMR.current&&smnSR.current!=="inactive"){smnMR.current.start()}},200)}},10000);smnTR.current={ti,ci};};
@@ -7448,6 +7480,11 @@ const mp3p=mp3PathOf(p);
 // mp3が実在すると確認できた時だけmp3を既定にする（一覧取得時のサイズが取れている＝実体あり）。表示とDLの実体を一致させる
 const hasMp3=p!==mp3p&&mp3Available.has(mp3p)&&typeof audioSizes[mp3p]==="number";
 const auto=mp3AutoStatus[p];
+// 尺の異常検出。mp3は64kbps・webm原本は約130kbpsなので通常のサイズ比は0.4〜0.5になる。
+// 0.15未満は尺が欠けている（今回の 0.15MB / 17.5MB = 0.009 のようなケース）。
+// 一覧取得時のサイズだけで判定するので追加リクエストなしで既存ファイルにも効く。
+const mp3TooSmall=hasMp3&&typeof audioSizes[p]==="number"&&audioSizes[p]>0&&audioSizes[mp3p]<audioSizes[p]*0.15;
+const sanityWarn=audioSanityWarn[p]||(mp3TooSmall?`mp3(${fmtBytes(audioSizes[mp3p])})が原本webm(${fmtBytes(audioSizes[p])})に対して極端に小さく、尺が欠けている可能性があります。♻で再変換してください`:"");
 const ep=hasMp3?mp3p:p; // 再生・DLはmp3があればmp3を既定にする（webm原本はサブのDLで取得可）
 return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:8,background:C.g50,flexWrap:"wrap"}}>
 <span style={{fontSize:10,color:C.g400,fontWeight:700,minWidth:42}}>part{idx+1}</span>
@@ -7456,9 +7493,10 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 :auto==="failed"?(<span style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:5,background:"#fef2f2",color:"#b91c1c",whiteSpace:"nowrap"}}>⚠ mp3変換失敗（手動で再試行可）</span>)
 :(<span style={{fontSize:10,fontWeight:600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",color:C.g500,whiteSpace:"nowrap"}}>webm</span>)}
 <span title="Storage上のファイルサイズ" style={{fontSize:10,fontWeight:600,color:C.g500,whiteSpace:"nowrap"}}>{hasMp3?`mp3 ${fmtBytes(audioSizes[mp3p])}（原本webm ${fmtBytes(audioSizes[p])}）`:fmtBytes(audioSizes[p])}</span>
+{sanityWarn&&<span title={sanityWarn} style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:5,background:"#fef2f2",color:"#b91c1c",border:"1px solid #fca5a5",whiteSpace:"nowrap"}}>⚠ 尺が短い可能性</span>}
 {audioSignedUrls[ep]?(<audio controls preload="none" src={audioSignedUrls[ep]} style={{height:32,flex:"1 1 240px",minWidth:200}}/>):(<button onClick={()=>loadAudioSignedUrl(ep)} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",flex:"1 1 200px"}}>▶ 再生URL取得</button>)}
 <button onClick={()=>downloadAudio(ep)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.pLL,color:C.pD,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⬇ DL({hasMp3?"mp3":"webm"})</button>
-{!hasMp3&&<button onClick={()=>convertAndStoreMp3(p)} disabled={!!mp3Converting[p]||auto==="converting"} title="mp3に変換してStorageに保存（以後の再生・DLはmp3になります）" style={{padding:"4px 10px",borderRadius:6,border:"none",background:(mp3Converting[p]||auto==="converting")?C.g200:"#fef3c7",color:(mp3Converting[p]||auto==="converting")?C.g500:"#92400e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(mp3Converting[p]||auto==="converting")?"wait":"pointer"}}>{mp3Converting[p]==="loading"?"⏳ 初期化中...":mp3Converting[p]==="converting"?"⏳ 変換中...":"♻ mp3変換"}</button>}
+{(!hasMp3||!!sanityWarn)&&<button onClick={()=>convertAndStoreMp3(p)} disabled={!!mp3Converting[p]||auto==="converting"} title="mp3に変換してStorageに保存（以後の再生・DLはmp3になります）" style={{padding:"4px 10px",borderRadius:6,border:"none",background:(mp3Converting[p]||auto==="converting")?C.g200:"#fef3c7",color:(mp3Converting[p]||auto==="converting")?C.g500:"#92400e",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(mp3Converting[p]||auto==="converting")?"wait":"pointer"}}>{mp3Converting[p]==="loading"?"⏳ 初期化中...":mp3Converting[p]==="converting"?"⏳ 変換中...":"♻ mp3変換"}</button>}
 {hasMp3&&<button onClick={()=>downloadAudio(p)} title="webm原本をダウンロード" style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,color:C.g500,fontSize:10,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>webm原本</button>}
 <span style={{fontSize:10,color:C.g400,wordBreak:"break-all",flex:"1 1 100%"}}>{p}</span>
 </div>)})}

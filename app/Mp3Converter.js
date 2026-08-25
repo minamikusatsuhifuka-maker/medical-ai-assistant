@@ -77,6 +77,8 @@ export async function convertWebmToMp3(webmBlob, opts = {}) {
 
   const raw = await fetchFile(webmBlob);
   const offsets = findWebmSegmentOffsets(raw);
+  // 呼び出し側のサニティチェック用に構造を知らせる（連結webmだったかどうか）
+  if (opts.onInfo) { try { opts.onInfo({ segments: offsets.length }); } catch {} }
   const written = [];
   let args;
 
