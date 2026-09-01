@@ -282,6 +282,9 @@ URL.revokeObjectURL(url);
 };
 
 // === トップメニュー定義（表示/非表示のカスタマイズ対象。動作はmenuActionsで付与） ===
+// 録音音声管理のタイトル保存テーブル未作成の検出（手動SQL流儀: supabase/migrations/add_audio_titles.sql）
+const AUDIO_TITLES_MISSING_RE=/audio_titles/i;
+const AUDIO_TITLES_HINT="タイトル保存用テーブル audio_titles が未作成です。supabase/migrations/add_audio_titles.sql を Supabase の SQL Editor で実行してください（議事録のタイトルは影響なく保存できます）";
 const TOP_MENU=[{p:"hist",i:"📂",t:"履歴"},{p:"settings",i:"⚙️",t:"設定"},{p:"doc",i:"📄",t:"資料作成"},{p:"minutes",i:"📝",t:"議事録",mh:"tabs_minutes"},{p:"seminar",i:"🎓",t:"セミナー学習",mh:"tabs_seminar"},{p:"counsel",i:"🧠",t:"分析",mh:"tabs_analysis"},{p:"summary_lab",i:"📝",t:"要約ラボ",mh:"tabs_summary_lab"},{p:"caselib",i:"📚",t:"症例ライブラリ",mh:"tabs_caselibrary"},{p:"roleplay",i:"🎭",t:"ロールプレイ",mh:"tabs_roleplay"},{p:"sns",i:"📣",t:"SNS",mh:"tabs_sns"},{p:"satisfaction",i:"📊",t:"満足度分析"},{p:"shortcuts",i:"⌨️",t:"ショートカット"},{p:"tasks",i:"✅",t:"タスク",mh:"tabs_tasks"},{p:"knowledge",i:"📚",t:"育成・知識",mh:"tabs_knowledge"},{p:"explain",i:"📚",t:"説明ナレッジ"},{p:"intake",i:"🩺",t:"事前問診"},{p:"help",i:"❓",t:"ヘルプ"},{p:"manual",i:"📖",t:"マニュアル"}];
 // 未設定時の既定表示（設定は常時表示のため必ず含める）。院長が設定画面で自由に変更可
 const DEFAULT_TOP_MENU_VISIBLE=["hist","settings","minutes","tasks"];
@@ -1246,6 +1249,14 @@ const[mp3AutoStatus,setMp3AutoStatus]=useState({}); // 自動mp3変換の進行�
 const[mp3Available,setMp3Available]=useState(()=>new Set()); // Storage上に存在する .mp3 のフルパス（一覧のmp3優先表示に使用）
 const[audioSanityWarn,setAudioSanityWarn]=useState({}); // 尺の異常を検出したwebmパス {[フルパス]: 警告文}
 const[audioSizes,setAudioSizes]=useState({}); // Storage上のファイルサイズ {[フルパス]: バイト数}。list APIのmetadata.sizeから取得（追加リクエストなし）
+// === 録音音声管理の絞り込み（取得済みデータをクライアント側で絞る。リロードでリセット）===
+const[audioFilterType,setAudioFilterType]=useState("all"); // all|record|minute|seminar|storage
+const[audioFilterQ,setAudioFilterQ]=useState(""); // キーワード（タイトル・患者ID・部屋・パス・日付の部分一致）
+const[audioFilterPeriod,setAudioFilterPeriod]=useState("all"); // all|today|7|30
+// === 録音音声管理のタイトル編集 ===
+const[audioTitles,setAudioTitles]=useState({}); // audio_titles テーブル由来 {[item_key]: title}（議事録は minutes.title に直接保存するのでここには入らない）
+const[audioTitleEdit,setAudioTitleEdit]=useState(null); // 編集中 {k:audioKey, value}
+const[audioTitlesTableMissing,setAudioTitlesTableMissing]=useState(false); // audio_titles 未作成（手動SQL未実行）の検出
 const mp3QueueRef=useRef(Promise.resolve()); // ffmpeg.wasmは同時実行不可のため変換を直列化
 const[apiUsageMonth,setApiUsageMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`});
 const[apiUsageSummary,setApiUsageSummary]=useState(null),[apiUsageMonthly,setApiUsageMonthly]=useState([]),[apiUsageTop10,setApiUsageTop10]=useState([]),[apiUsageLoading,setApiUsageLoading]=useState(false);
@@ -2159,6 +2170,12 @@ return{type:"storage",id:path,created_at:f.created_at,room:pfx.startsWith("audio
 }catch(e){console.error("storage list error:",e)}
 const merged=[...recs,...mins,...orphans].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,150);
 setAudioList(merged);
+// 編集済みタイトル（診察・未紐付け音声用）。テーブル未作成でも一覧自体は表示する（fail-open）
+try{
+const{data:tt,error:te}=await supabase.from("audio_titles").select("item_key,title");
+if(te){setAudioTitlesTableMissing(AUDIO_TITLES_MISSING_RE.test(te.message||"")||te.code==="PGRST205");console.warn("audio_titles load:",te.message)}
+else{setAudioTitlesTableMissing(false);const m={};(tt||[]).forEach(r=>{if(r&&r.item_key&&r.title)m[r.item_key]=r.title});setAudioTitles(m)}
+}catch(e){console.error("audio_titles load error:",e)}
 setAudioListMsg(`✓ ${merged.length}件取得（診察${recs.length}件・議事録${mins.length}件・未紐付け${orphans.length}件）`);
 }catch(e){console.error("fetchAudioList error:",e);setAudioListMsg("取得エラー: "+e.message)}
 finally{setAudioListLoading(false)}
@@ -2169,8 +2186,10 @@ const toggleAudioSelected=(item)=>{
   const k=audioKey(item);
   setSelectedAudios(prev=>{const s=new Set(prev);if(s.has(k))s.delete(k);else s.add(k);return s});
 };
+// 全選択は「絞り込み後に表示されている行」だけを対象にする（絞り込み中に全件が選ばれて一括削除される事故の防止）。
+// 絞り込みなし＝従来どおり全件。
 const selectAllAudios=()=>{
-  const ks=audioList.filter(a=>a.audio_path).map(a=>audioKey(a));
+  const ks=audioListFiltered.filter(a=>a.audio_path).map(a=>audioKey(a));
   setSelectedAudios(new Set(ks));
 };
 const deselectAllAudios=()=>setSelectedAudios(new Set());
@@ -2241,7 +2260,62 @@ const sessionBytes=(paths)=>{try{let sum=0,known=false;(paths||[]).forEach(p=>{c
 // 同じ音声パスが複数レコードに紐付いている場合、2件目以降を「重複」として印を付ける（合計の二重計上も防ぐ）
 const audioDupKeys=(()=>{try{const seen=new Set();const dup=new Set();(audioList||[]).forEach(it=>{const ps=(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean);if(!ps.length)return;if(ps.every(p=>seen.has(p)))dup.add(audioKey(it));ps.forEach(p=>seen.add(p))});return dup}catch{return new Set()}})();
 // 一覧全体の合計（同じパスは二重に数えない）
-const audioTotalBytes=(()=>{try{const seen=new Set();let sum=0,known=false;(audioList||[]).forEach(it=>(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean).forEach(p=>{if(seen.has(p))return;seen.add(p);const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}}));return known?sum:null}catch{return null}})();
+const audioBytesOf=(items)=>{try{const seen=new Set();let sum=0,known=false;(items||[]).forEach(it=>(it.audio_path||"").split(",").map(s=>s.trim()).filter(Boolean).forEach(p=>{if(seen.has(p))return;seen.add(p);const v=partBytes(p);if(typeof v==="number"){sum+=v;known=true}}));return known?sum:null}catch{return null}};
+const audioTotalBytes=audioBytesOf(audioList);
+// === 録音音声管理: 種別・タイトル・絞り込み ===
+// 種別は4区分で排他（合計＝全件）。セミナーは seminar-audio/ 配下の未紐付け音声（紐付き済みのセミナー音声は元から一覧に出ない）
+const audioCatOf=(it)=>it.type==="record"?"record":it.type==="minute"?"minute":(it.audio_path||"").startsWith("seminar-audio/")?"seminar":"storage";
+// 編集タイトルの保存キー。議事録は minutes.title に直接保存するので null。診察は records にタイトル列が無いため "record:<id>"、未紐付けは音声パス
+const audioItemKey=(it)=>it.type==="minute"?null:it.type==="record"?"record:"+it.id:(it.audio_path||"");
+// 従来の自動生成タイトル（編集タイトルが無いときの表示）
+const audioAutoTitle=(it)=>it.type==="record"?`${it.room||"-"}${it.patient_id?" / 患者ID:"+it.patient_id:""}${it.patient_name?" / "+it.patient_name:""}`:it.type==="minute"?(it.title||"無題"):`${it.room||"-"}${it.patient_id?" / 患者ID:"+it.patient_id:""}（要約未実行・音声のみ）`;
+// 編集済みタイトルがあれば優先、無ければ自動生成
+const audioCustomTitle=(it)=>{const k=audioItemKey(it);return k&&audioTitles[k]?audioTitles[k]:null};
+const audioDisplayTitle=(it)=>audioCustomTitle(it)||audioAutoTitle(it);
+const audioDateLabel=(it)=>{try{return new Date(it.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}catch{return""}};
+const audioPeriodOk=(it)=>{if(audioFilterPeriod==="all")return true;const t=new Date(it.created_at).getTime();if(!isFinite(t))return false;const now=new Date();if(audioFilterPeriod==="today"){const d0=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();return t>=d0}const days=audioFilterPeriod==="7"?7:30;return t>=now.getTime()-days*86400000};
+const audioQNorm=audioFilterQ.trim().toLowerCase();
+const audioKeywordOk=(it)=>{if(!audioQNorm)return true;const hay=[audioDisplayTitle(it),audioAutoTitle(it),it.title,it.patient_id,it.patient_name,it.room,it.audio_path,audioDateLabel(it)].filter(Boolean).join(" ").toLowerCase();return hay.includes(audioQNorm)};
+const audioFilterActive=audioFilterType!=="all"||!!audioQNorm||audioFilterPeriod!=="all";
+const audioListFiltered=(audioList||[]).filter(it=>(audioFilterType==="all"||audioCatOf(it)===audioFilterType)&&audioPeriodOk(it)&&audioKeywordOk(it));
+const audioCounts=(()=>{const c={all:0,record:0,minute:0,seminar:0,storage:0};(audioList||[]).forEach(it=>{c.all++;c[audioCatOf(it)]++});return c})();
+const audioFilteredBytes=audioFilterActive?audioBytesOf(audioListFiltered):audioTotalBytes;
+const startAudioTitleEdit=(it)=>{const k=audioKey(it);btnFbClear("audioTitle:"+k);setAudioTitleEdit({k,value:audioCustomTitle(it)||(it.type==="minute"?(it.title||""):"")})};
+const cancelAudioTitleEdit=()=>setAudioTitleEdit(null);
+// 保存先: 議事録=minutes.title（既存カラム）/ 診察・未紐付け=audio_titles（item_keyでupsert。空欄で保存すると行を消して自動タイトルに戻す）
+const saveAudioTitle=async(it)=>{
+  if(!supabase||!audioTitleEdit)return;
+  const k=audioKey(it);const fb="audioTitle:"+k;
+  const newTitle=(audioTitleEdit.value||"").trim();
+  try{
+    btnFbSet(fb,"run","保存中");
+    if(it.type==="minute"){
+      if(!newTitle){btnFbSet(fb,"err","タイトルを入力してください");return}
+      const{error}=await supabase.from("minutes").update({title:newTitle}).eq("id",it.id);
+      if(error)throw error;
+      setAudioList(prev=>prev.map(x=>x.type==="minute"&&x.id===it.id?{...x,title:newTitle}:x));
+    }else{
+      const ik=audioItemKey(it);
+      if(!ik){btnFbSet(fb,"err","保存先を特定できません");return}
+      if(!newTitle){
+        const{error}=await supabase.from("audio_titles").delete().eq("item_key",ik);
+        if(error)throw error;
+        setAudioTitles(prev=>{const n={...prev};delete n[ik];return n});
+      }else{
+        const{error}=await supabase.from("audio_titles").upsert({item_key:ik,title:newTitle,updated_at:new Date().toISOString()},{onConflict:"item_key"});
+        if(error)throw error;
+        setAudioTitles(prev=>({...prev,[ik]:newTitle}));
+      }
+    }
+    setAudioTitleEdit(null);
+    btnFbSet(fb,"ok","保存しました");
+  }catch(e){
+    console.error("[saveAudioTitle] error:",e);
+    const missing=AUDIO_TITLES_MISSING_RE.test(e?.message||"")||e?.code==="PGRST205";
+    if(missing)setAudioTitlesTableMissing(true);
+    btnFbSet(fb,"err",missing?"テーブル未作成（下の案内を参照）":"保存失敗: "+(e?.message||e));
+  }
+};
 // upsert:true が必須。これが無いと、既に切れたmp3が置いてあるパスへの手動再変換(♻)が
 // 「既存」として黙って握り潰され、壊れたmp3が残り続ける。
 const uploadMp3ToStorage=async(mp3Path,mp3Blob)=>{
@@ -7446,16 +7520,32 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,margin:0}}>🎙 録音音声管理</h3>
 <div style={{display:"flex",gap:8,alignItems:"center"}}>
 {audioListMsg&&<span style={{fontSize:11,color:audioListMsg.startsWith("✓")?C.rG:C.err,fontWeight:600}}>{audioListMsg}</span>}
-{audioList.length>0&&<span title="mp3とwebm原本を合わせたStorage上の合計容量" style={{fontSize:11,fontWeight:700,color:C.pD,padding:"2px 8px",borderRadius:6,background:C.pLL,whiteSpace:"nowrap"}}>合計 {fmtBytes(audioTotalBytes)}</span>}
+{audioList.length>0&&audioFilterActive&&<span data-audio-count="filtered" style={{fontSize:11,fontWeight:700,color:"#9a3412",padding:"2px 8px",borderRadius:6,background:"#fff7ed",border:"1px solid #fdba74",whiteSpace:"nowrap"}}>{audioListFiltered.length}件表示中（全{audioList.length}件）</span>}
+{audioList.length>0&&<span data-audio-total={audioFilterActive?"filtered":"all"} title={audioFilterActive?"絞り込み後の行が占めるStorage上の合計容量（mp3＋webm原本）":"mp3とwebm原本を合わせたStorage上の合計容量"} style={{fontSize:11,fontWeight:700,color:C.pD,padding:"2px 8px",borderRadius:6,background:C.pLL,whiteSpace:"nowrap"}}>{audioFilterActive?"絞り込み合計":"合計"} {fmtBytes(audioFilteredBytes)}</span>}
 <button onClick={fetchAudioList} disabled={audioListLoading} style={{padding:"6px 14px",borderRadius:10,border:"none",background:audioListLoading?C.g200:`linear-gradient(135deg,${C.pD},${C.p})`,color:C.w,fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:audioListLoading?"wait":"pointer"}}>{audioListLoading?"⏳ 取得中...":"🔄 一覧を取得"}</button>
 </div>
 </div>
-<p style={{fontSize:11,color:C.g400,marginBottom:10}}>過去に保存した診察・議事録の音声を一覧から再生・ダウンロードできます。要約を実行していない録音も「🎙 音声のみ」として表示されます。音声保存ON時の録音は自動でmp3に変換され（webm原本も保持）、mp3がある場合は再生・DLがmp3になります。最新150件まで表示。</p>
+<p style={{fontSize:11,color:C.g400,marginBottom:10}}>過去に保存した診察・議事録の音声を一覧から再生・ダウンロードできます。要約を実行していない録音も「🎙 音声のみ」として表示されます。音声保存ON時の録音は自動でmp3に変換され（webm原本も保持）、mp3がある場合は再生・DLがmp3になります。最新150件まで表示。種別・キーワード・期間で絞り込みでき、各行の「✏ 編集」でタイトルを付けられます。</p>
 {audioList.length>0&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:10,padding:"6px 10px",borderRadius:10,background:"#fff7ed",border:"1px solid #fdba74"}}>
 <button onClick={selectAllAudios} disabled={audioDeleting} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+C.p+"66",background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:audioDeleting?"not-allowed":"pointer"}}>✓ 全選択</button>
 <button onClick={deselectAllAudios} disabled={audioDeleting} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+C.g200,background:C.w,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:audioDeleting?"not-allowed":"pointer"}}>⬜ 全解除</button>
 <button onClick={deleteSelectedAudios} disabled={audioDeleting||selectedAudios.size===0} style={{padding:"5px 14px",borderRadius:8,border:"none",background:selectedAudios.size===0||audioDeleting?C.g200:"linear-gradient(135deg,#dc2626,#991b1b)",color:selectedAudios.size===0||audioDeleting?C.g500:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:selectedAudios.size===0||audioDeleting?"not-allowed":"pointer"}}>{audioDeleting?"⏳ 削除中...":`🗑 選択した${selectedAudios.size}件を削除`}</button>
-<span style={{fontSize:10,color:"#9a3412",fontWeight:500}}>※削除にはパスワードが必要です</span>
+<span style={{fontSize:10,color:"#9a3412",fontWeight:500}}>※削除にはパスワードが必要です{audioFilterActive?"（全選択は絞り込み後の行のみ）":""}</span>
+</div>}
+{audioList.length>0&&<div data-audio-filter style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,padding:"8px 10px",borderRadius:10,background:C.g50,border:`1px solid ${C.g200}`}}>
+<div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+<span style={{fontSize:10,color:C.g500,fontWeight:700,marginRight:2}}>種別:</span>
+{[{v:"all",l:"すべて"},{v:"record",l:"🩺 診察"},{v:"minute",l:"📝 議事録"},{v:"seminar",l:"🎓 セミナー"},{v:"storage",l:"🎙 音声のみ"}].map(o=>{const on=audioFilterType===o.v;return(<button key={o.v} data-audio-type={o.v} onClick={()=>setAudioFilterType(o.v)} style={{padding:"4px 10px",borderRadius:999,border:on?`1.5px solid ${C.pD}`:`1px solid ${C.g200}`,background:on?C.pLL:C.w,color:on?C.pD:C.g600,fontSize:11,fontWeight:on?700:600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{o.l} <span style={{fontSize:10,opacity:0.8}}>{audioCounts[o.v]}</span></button>)})}
+</div>
+<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+<input type="search" value={audioFilterQ} onChange={e=>setAudioFilterQ(e.target.value)} placeholder="🔍 タイトル・患者ID・部屋(r1/r7)・日付・パスで絞り込み" aria-label="録音音声の検索" style={{flex:"1 1 220px",minWidth:0,padding:"5px 10px",borderRadius:8,border:`1px solid ${C.g200}`,fontSize:12,fontFamily:"inherit",outline:"none",background:C.w}}/>
+<div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+<span style={{fontSize:10,color:C.g500,fontWeight:700,marginRight:2}}>期間:</span>
+{[{v:"today",l:"今日"},{v:"7",l:"7日"},{v:"30",l:"30日"},{v:"all",l:"すべて"}].map(o=>{const on=audioFilterPeriod===o.v;return(<button key={o.v} data-audio-period={o.v} onClick={()=>setAudioFilterPeriod(o.v)} style={{padding:"4px 10px",borderRadius:999,border:on?`1.5px solid ${C.pD}`:`1px solid ${C.g200}`,background:on?C.pLL:C.w,color:on?C.pD:C.g600,fontSize:11,fontWeight:on?700:600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>{o.l}</button>)})}
+</div>
+{audioFilterActive&&<button data-audio-filter-clear onClick={()=>{setAudioFilterType("all");setAudioFilterQ("");setAudioFilterPeriod("all")}} style={{padding:"4px 10px",borderRadius:8,border:"none",background:C.g200,color:C.g600,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>✕ 絞り込み解除</button>}
+</div>
+{audioTitlesTableMissing&&<div data-audio-titles-hint style={{fontSize:10,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"4px 8px"}}>⚠ {AUDIO_TITLES_HINT}</div>}
 </div>}
 {audioList.length===0?(
 <div style={{padding:"20px",textAlign:"center",color:C.g400,fontSize:12,background:C.g50,borderRadius:8}}>
@@ -7463,14 +7553,17 @@ if(page==="settings")return(<div style={{maxWidth:900,margin:"0 auto",padding:mo
 </div>
 ):(
 <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:500,overflowY:"auto"}}>
-{audioList.map(item=>{
+{audioListFiltered.length===0&&<div data-audio-empty style={{padding:"16px",textAlign:"center",color:C.g400,fontSize:12}}>絞り込み条件に一致する音声がありません</div>}
+{audioListFiltered.map(item=>{
 const paths=(item.audio_path||"").split(",").map(p=>p.trim()).filter(Boolean);
-const dateLabel=new Date(item.created_at).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+const dateLabel=audioDateLabel(item);
 const typeLabel=item.type==="record"?"🩺 診察":item.type==="minute"?"📝 議事録":"🎙 音声のみ";
 const typeBg=item.type==="record"?"#dbeafe":item.type==="minute"?"#fef3c7":"#f3e8ff";
 const typeColor=item.type==="record"?"#1d4ed8":item.type==="minute"?"#92400e":"#7c3aed";
-const subtitle=item.type==="record"?`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}${item.patient_name?" / "+item.patient_name:""}`:item.type==="minute"?(item.title||"無題"):`${item.room||"-"}${item.patient_id?" / 患者ID:"+item.patient_id:""}（要約未実行・音声のみ）`;
 const k=audioKey(item);
+const subtitle=audioDisplayTitle(item);
+const customTitle=audioCustomTitle(item);
+const isTitleEditing=!!audioTitleEdit&&audioTitleEdit.k===k;
 const checked=selectedAudios.has(k);
 const hasAudio=paths.length>0;
 const isDupAudio=audioDupKeys.has(k); // 他のレコードと同じ音声を指している（容量は先に出た側で計上済み）
@@ -7484,7 +7577,21 @@ return(<div key={k} style={{padding:10,borderRadius:10,border:checked?`2px solid
 {hasAudio&&!isDupAudio&&<span title="このセッションがStorage上で占める容量（mp3＋webm原本）" style={{fontSize:10,fontWeight:700,color:C.g600,padding:"2px 6px",borderRadius:5,background:C.g100||"#f3f4f6",whiteSpace:"nowrap"}}>計 {fmtBytes(sBytes)}</span>}
 {hasAudio&&isDupAudio&&<span title="他のレコードと同じ音声ファイルを指しています。容量は先に表示されている側で計上済みです（実体は1つ）" style={{fontSize:10,fontWeight:700,color:"#92400e",padding:"2px 6px",borderRadius:5,background:"#fef3c7",border:"1px solid #fcd34d",whiteSpace:"nowrap"}}>⚠ 他と同じ音声（重複）</span>}
 </div>
-<div style={{fontSize:12,color:C.g700,fontWeight:500}}>{subtitle}</div>
+{isTitleEditing?(
+<div data-audio-title-editor style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+<input type="text" autoFocus value={audioTitleEdit.value} onChange={e=>setAudioTitleEdit(prev=>prev&&prev.k===k?{...prev,value:e.target.value}:prev)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.stopPropagation();saveAudioTitle(item)}else if(e.key==="Escape"){e.preventDefault();e.stopPropagation();cancelAudioTitleEdit()}}} placeholder={item.type==="minute"?"議事録のタイトル":"タイトル（空欄で保存すると自動タイトルに戻す）"} style={{flex:"1 1 200px",minWidth:0,padding:"4px 8px",border:`2px solid ${C.pD}`,borderRadius:6,fontSize:12,fontWeight:600,fontFamily:"inherit",outline:"none"}}/>
+<button onClick={()=>saveAudioTitle(item)} disabled={btnFbBusy("audioTitle:"+k)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:C.rG,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>💾 保存</button>
+<button onClick={cancelAudioTitleEdit} style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,color:C.g500,fontSize:11,fontWeight:600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>キャンセル</button>
+<BtnFb k={"audioTitle:"+k}/>
+</div>
+):(
+<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+<span data-audio-title style={{fontSize:12,color:C.g700,fontWeight:customTitle?700:500,wordBreak:"break-word"}}>{subtitle}</span>
+{customTitle&&<span title={"自動タイトル: "+audioAutoTitle(item)} style={{fontSize:10,color:C.g400}}>（{audioAutoTitle(item)}）</span>}
+<button data-audio-title-edit onClick={()=>startAudioTitleEdit(item)} disabled={audioDeleting} title="タイトルを編集" style={{padding:"2px 8px",borderRadius:6,border:`1px solid ${C.g200}`,background:C.w,color:C.g500,fontSize:10,fontWeight:600,fontFamily:"inherit",cursor:"pointer",whiteSpace:"nowrap"}}>✏ 編集</button>
+<BtnFb k={"audioTitle:"+k}/>
+</div>
+)}
 {paths.map((p,idx)=>{
 const mp3p=mp3PathOf(p);
 // mp3が実在すると確認できた時だけmp3を既定にする（一覧取得時のサイズが取れている＝実体あり）。表示とDLの実体を一致させる
