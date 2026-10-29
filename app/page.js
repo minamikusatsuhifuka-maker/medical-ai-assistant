@@ -6,6 +6,7 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { filterNoiseCore } from "./lib/noise-filter";
+import { buildDictMatcher, applyDictSafe } from "./lib/dict-apply";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
 import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings, isNonDiseaseKey } from "./lib/disease-canonical";
@@ -3924,10 +3925,12 @@ const renderSmnMarkdown=(text)=>{
   closeList();
   return html;
 };
-const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;for(const[from,to] of dict){if(!from||!to||from===to)continue;if(from.length>=3){try{const kataFrom=toKatakana(from);const hiraFrom=kataFrom.replace(/[\u30A1-\u30F6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const kataEsc=kataFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const hiraEsc=hiraFrom.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");const patterns=[...new Set([escaped,kataEsc,hiraEsc])];const re=new RegExp(patterns.join("|"),"gi");r=r.replace(re,to)}catch{r=r.split(from).join(to)}}else if(/^[\u30A1-\u30F6\u30FC]+$/.test(from)){
-// \u30AB\u30BF\u30AB\u30CA1\u301C2\u6587\u5B57\u30A8\u30F3\u30C8\u30EA\uFF08\u4F8B:\u300C\u30A4\u30D6\u300D\u2192\u30A4\u30DC\uFF09\u306F\u524D\u5F8C\u304C\u540C\u3058\u30AB\u30BF\u30AB\u30CA\u8A9E\u306E\u5185\u90E8\uFF08\u30C9\u30E9\u30A4\u30D6/\u30E9\u30A4\u30D6\u7B49\uFF09\u3067\u306F\u767A\u706B\u3055\u305B\u306A\u3044
-try{const esc=from.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");r=r.replace(new RegExp(`(?<![\u30A1-\u30F6\u30FC])${esc}(?![\u30A1-\u30F6\u30FC])`,"g"),to)}catch{r=r.split(from).join(to)}
-}else{r=r.split(from).join(to)}}
+// 辞書置換の本体は app/lib/dict-apply.js（A: 全エントリを長い語優先で1回だけ置換／B: すでに正式名の箇所は置換しない）。
+// 正規表現は辞書が変わったときだけ組み直す。置換で例外が出たら辞書置換なしで返す（fail-open）
+const dictMatcherRef=useRef({dict:null,m:null});
+const applyDict=(text)=>{if(!dictEnabled||!text)return text;let r=text;
+try{if(dictMatcherRef.current.dict!==dict)dictMatcherRef.current={dict,m:buildDictMatcher(dict)}}catch(e){console.error("[applyDict] 辞書の正規表現を組めないため辞書置換なしで返す:",e);dictMatcherRef.current={dict,m:null}}
+r=applyDictSafe(text,dictMatcherRef.current.m);
 // \u72EC\u7ACB\u3057\u305F\u300C\u305F\u3060\u308C\u300D\u306E\u307F\u300C\u305F\u3060\u308C\uFF08\u3073\u3089\u3093\uFF09\u300D\u6CE8\u8A18\u3092\u4ED8\u3051\u308B\u5B89\u5168\u30EB\u30FC\u30EB\uFF0827949b6\u306E\u8AA4\u7F6E\u63DB\u30D0\u30B0\u306E\u6559\u8A13\uFF09\u3002
 // \u300C\u3044\u305F\u3060\u2026\u300D\u300C\u307E\u3076\u305F\u2026\u300D\u7B49\u306E\u65E5\u5E38\u8A9E\u5185\u90E8\uFF08\u524D\u304C\u300C\u3044\u300D\u300C\u3076\u300D\uFF09\u3067\u306F\u767A\u706B\u305B\u305A\u3001\u52A9\u8A5E\u30FB\u6D3B\u7528\u304C\u7D9A\u304F\u72EC\u7ACB\u4F7F\u7528\u306E\u307F\u5BFE\u8C61\u3002
 try{r=r.replace(/(?<![\u3044\u3076])\u305F\u3060\u308C(?!\uFF08\u3073\u3089\u3093\uFF09)(?=[\u3066\u305F\u304C\u308B\u306F\u3082\u306B\u306E\u3067\u3084\u3092\u3078\u3001\u3002\uFF01\uFF1F\s]|$)/g,"\u305F\u3060\u308C\uFF08\u3073\u3089\u3093\uFF09")}catch{}
