@@ -76,6 +76,25 @@ console.log("\n── 置換前＝置換後の行は守り（その語の中に�
   eq(applyDictOnce("ミチの先", buildDictMatcher([["ミチ", "道"]])), "道の先", "守りがなければ従来どおり");
 }
 
+console.log("\n── 2段の連鎖の解決（辞書を組む時点で最終形まで。適用は1回）");
+{
+  const chainDict = [["メピオ", "ベピオ"], ["ベピオ", "ベピオゲル"], ["冷たいチーズ", "液体窒素"], ["液体窒素", "液体窒素凍結療法"], ["ネクティ", "ニキビ"], ["ニキビ", "ざ瘡"],
+    ["あああ", "いいい"], ["いいい", "ううう"], ["ううう", "あああ"]];
+  const m = buildDictMatcher(chainDict);
+  eq(applyDictOnce("メピオを塗って", m), "ベピオゲルを塗って", "メピオ → ベピオゲル（2段目までたどる）");
+  eq(applyDictOnce("冷たいチーズで焼きます", m), "液体窒素凍結療法で焼きます", "冷たいチーズ → 液体窒素凍結療法");
+  eq(applyDictOnce("ネクティがあります", m), "ざ瘡があります", "ネクティ → ざ瘡");
+  eq(applyDictOnce("メピオローションに変更", m), "ベピオローションに変更", "直後が名前の続きなら、後ろに語を補う組はたどらない（ベピオゲルローションにならない）");
+  eq(applyDictOnce("あああ", m), "いいい", "循環（あああ→いいい→ううう→あああ）はたどらず1段のまま");
+  eq(m.report.cycles.length > 0, true, "循環は report.cycles に記録される");
+  const o = applyDictOnce("メピオを塗って", m);
+  eq(applyDictOnce(o, m), o, "連鎖解決後も2回通して変わらない（冪等）");
+  const deep = buildDictMatcher([["a1x", "a2x"], ["a2x", "a3x"], ["a3x", "a4x"], ["a4x", "a5x"], ["a5x", "a6x"], ["a6x", "a7x"], ["a7x", "a8x"]]);
+  eq(deep.report.depthLimit.length > 0, true, "深さ上限（5段）に当たった組は report.depthLimit に記録され1段のまま");
+  eq(applyDictOnce("a1x", deep), "a2x", "深さ上限に当たった組は1段のまま");
+  eq(applyDictOnce("メピオを", buildDictMatcher(chainDict, { resolveChains: false })), "ベピオを", "resolveChains:false なら1段（解決処理で例外が出たときも同じ扱い）");
+}
+
 console.log("\n── fail-open・境界");
 eq(applyDictSafe("診察の本文です", null), "診察の本文です", "辞書が空(matcher=null)なら無加工");
 eq(applyDictSafe("診察の本文です", {}, () => { throw new Error("注入した例外"); }), "診察の本文です", "置換で例外 → 無加工で返す(fail-open)");

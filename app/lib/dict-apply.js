@@ -18,7 +18,56 @@ const NAME_CONT = /[ァ-ヶー一-鿿々A-Za-z0-9０-９Ａ-Ｚａ-ｚ%％]/;
 // 置換後が置換前（のかな違い）で始まる＝後ろに語を補う組（ベピオ→ベピオゲル 等）か
 const extendsFrom = (lit, to) => { const T = toKata(to).toLowerCase(), F = toKata(lit).toLowerCase(); return T.length > F.length && T.startsWith(F); };
 
-export function buildDictMatcher(dict) {
+// 2段の連鎖の解決（2026-10-29 院長承認）: 辞書を組む時点で、各エントリの行き先を辞書で最終形までたどっておく。
+// 適用は1回のまま（実行時に多段置換はしない）。例: メピオ→ベピオ、ベピオ→ベピオゲル なら メピオ の行き先を ベピオゲル にする
+//   - 行き先は2通り持つ: 直後が名前の続きでないとき(toFree)／直後にカタカナ・漢字・英数字が続くとき(toCont)
+//     （「メピオローション」が「ベピオゲルローション」にならないよう、後ろに語を補う組は名前の続きの前ではたどらない）
+//   - 循環（A→B→…→A）・深さ上限（MAX_CHAIN段）に当たった組はたどらず1段のまま（report に記録）
+//   - 解決処理で例外が出たら、全エントリ1段のままの辞書で動かす（fail-open）
+const MAX_CHAIN = 5;
+const CONT_SENTINEL = "々"; // NAME_CONT に含まれ、辞書の語にならない文字。「直後が名前の続き」の文脈を作るために末尾に足す
+
+export function buildDictMatcher(dict, { resolveChains = true } = {}) {
+  const base = buildBaseMatcher(dict);
+  if (!base || !resolveChains) return base;
+  try {
+    const report = { cycles: [], depthLimit: [] };
+    const memo = new Map();
+    // to を辞書で最終形までたどる。null=循環・深さ上限（1段のまま使う）
+    const resolve = (start, cont) => {
+      const key = (cont ? "C:" : "F:") + start;
+      if (memo.has(key)) return memo.get(key);
+      const seen = [start];
+      let cur = start, out = null;
+      for (let d = 0; d < MAX_CHAIN; d++) {
+        const next = cont ? stripSentinel(applyDictOnce(cur + CONT_SENTINEL, base)) : applyDictOnce(cur, base);
+        if (next === null) { out = null; break; }
+        if (next === cur) { out = cur; break; }
+        if (seen.includes(next)) { report.cycles.push({ to: start, path: [...seen, next] }); out = null; break; }
+        seen.push(next); cur = next;
+        if (d === MAX_CHAIN - 1) report.depthLimit.push({ to: start, path: seen.slice() });
+      }
+      memo.set(key, out);
+      return out;
+    };
+    // すべて1段の辞書でたどってから一斉に入れる（途中で入れると、たどる途中の結果が並び順で変わるため）
+    const resolved = base.alts.map((a) => [resolve(a.to, false), resolve(a.to, true)]);
+    base.alts.forEach((a, k) => {
+      const [f, c] = resolved[k];
+      a.toFree = f == null ? a.to : f;
+      a.toCont = c == null ? a.to : c;
+    });
+    base.report = report;
+    return base;
+  } catch (e) {
+    console.error("[dict-apply] 連鎖の解決で例外のため1段のまま使う:", e);
+    for (const a of base.alts) { delete a.toFree; delete a.toCont; }
+    return base;
+  }
+}
+const stripSentinel = (s) => (s.endsWith(CONT_SENTINEL) ? s.slice(0, -CONT_SENTINEL.length) : null);
+
+function buildBaseMatcher(dict) {
   const alts = [];
   (Array.isArray(dict) ? dict : []).forEach((e, i) => {
     if (!Array.isArray(e)) return;
@@ -48,7 +97,7 @@ export function buildDictMatcher(dict) {
     if (!byKey.has(k)) byKey.set(k, []);
     byKey.get(k).push(a);
   }
-  return { re: new RegExp(alts.map((a) => a.src).join("|"), "g"), byKey };
+  return { re: new RegExp(alts.map((a) => a.src).join("|"), "g"), byKey, alts };
 }
 
 // 一致した文字列から、正規表現が実際に選んだエントリ（並び順で最初に当たるもの）を引く
@@ -78,7 +127,8 @@ export function applyDictOnce(text, matcher) {
     const a = pick(matcher, m[0]);
     if (!a) continue;
     const at = m.index;
-    const keepEnd = insideExistingTo(text, at, m[0], a.to);
+    let keepEnd = insideExistingTo(text, at, m[0], a.to);
+    if (keepEnd < 0 && a.toFree && a.toFree !== a.to) keepEnd = insideExistingTo(text, at, m[0], a.toFree);
     if (keepEnd >= 0) {
       // すでに正式名になっている → その語の終わりまで手を付けずに進める
       out += text.slice(last, keepEnd);
@@ -86,8 +136,9 @@ export function applyDictOnce(text, matcher) {
       re.lastIndex = keepEnd;
       continue;
     }
-    if (a.ext && NAME_CONT.test(text[at + m[0].length] || "")) continue; // 別の名前の一部 → 補わない
-    out += text.slice(last, at) + a.to;
+    const cont = NAME_CONT.test(text[at + m[0].length] || "");
+    if (a.ext && cont) continue; // 別の名前の一部 → 補わない
+    out += text.slice(last, at) + ((cont ? a.toCont : a.toFree) || a.to);
     last = at + m[0].length;
   }
   return out + text.slice(last);
