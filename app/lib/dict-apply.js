@@ -24,8 +24,13 @@ export function buildDictMatcher(dict) {
     if (!Array.isArray(e)) return;
     const from = e[0] == null ? "" : String(e[0]);
     const to = e[1] == null ? "" : String(e[1]);
-    if (!from || !to || from === to) return;
-    if (from.length >= 3) {
+    if (!from || !to) return;
+    // 置換前＝置換後の行は「守り」: 長い語優先の1回置換で、その語の中に短い語が当たるのを防ぎ、言ったとおりに残す
+    //   書いたとおりの形だけを守る（かな違いは守らない）。同じ語にほかの置換があればそちらを優先する
+    const same = from === to;
+    if (same) {
+      alts.push({ lit: from, src: from.length >= 3 ? ciAscii(esc(from)) : esc(from), ci: from.length >= 3, to, i, ext: false, guard: true });
+    } else if (from.length >= 3) {
       const k = toKata(from);
       for (const v of new Set([from, k, toHira(k)])) alts.push({ lit: v, src: ciAscii(esc(v)), ci: true, to, i, ext: extendsFrom(v, to) });
     } else if (KATA_ONLY.test(from)) {
@@ -35,8 +40,8 @@ export function buildDictMatcher(dict) {
     }
   });
   if (!alts.length) return null;
-  // 長い語を優先。同じ長さなら辞書の並び順（旧実装で先に当たっていた方）を優先
-  alts.sort((a, b) => b.lit.length - a.lit.length || a.i - b.i);
+  // 長い語を優先。同じ長さなら守りでない行、次に辞書の並び順（旧実装で先に当たっていた方）を優先
+  alts.sort((a, b) => b.lit.length - a.lit.length || (a.guard ? 1 : 0) - (b.guard ? 1 : 0) || a.i - b.i);
   const byKey = new Map();
   for (const a of alts) {
     const k = a.lit.toLowerCase();
