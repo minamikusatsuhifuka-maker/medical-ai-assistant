@@ -1,6 +1,6 @@
 // 検証シナリオ: 端末(localStorage mk_dict)に残った辞書の突き合わせ（指示書 chain-deploy-and-mkdict-decision §2）
 // 実行: node scripts/verify-scenario-dict-purge.cjs [BASE_URL]   BASE_URL 省略時は http://localhost:3100
-//   A) 端末に [れも→でも, 古い語→旧い語, ニキビ→痤瘡, 既定辞書の1組]、Supabase は [ニキビ→ざ瘡]（読み込み成功）
+//   A) 端末に [れも→でも, 古い語→旧い語, ニキビ→痤瘡, 既定辞書の1組, 結果の変わらない組]、Supabase は [ニキビ→ざ瘡]（読み込み成功）
 //      → 端末の辞書は「Supabase＋最新の既定辞書」に置き換わり、外れた3組を理由つきで表示・使用ログに送る
 //      → 表示は メイン・履歴・（メインに戻って）設定 のどの画面でも出たまま。「確認しました」で閉じる
 //   B) 再読み込み → 表示は二度と出ない
@@ -43,7 +43,7 @@ const ls = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("mk_dic
   const browser = await pw.chromium.launch({ headless: true });
 
   console.log("── A) 端末に古い辞書・Supabase は1件");
-  const seed = [["れも", "でも"], ["古い語", "旧い語"], ["ニキビ", "痤瘡"], DEF0];
+  const seed = [["れも", "でも"], ["古い語", "旧い語"], ["ニキビ", "痤瘡"], DEF0, ["ステロイド外用薬", "ステロイド外用薬"]];
   let { ctx, page, pageErrors, logs } = await run(browser, { seed, sbFail: false });
   const box = page.locator('[data-dict-purged="1"]');
   assert(await box.isVisible(), "メイン画面: 外した組の表示が出る");
@@ -51,6 +51,7 @@ const ls = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("mk_dic
   console.log("   表示:", JSON.stringify(t));
   assert(t.includes("3組") && t.includes("「れも→でも」— 既知の有害な登録") && t.includes("「古い語→旧い語」— Supabase にも最新の既定辞書にもない") && t.includes("「ニキビ→痤瘡」— 行き先を Supabase・既定辞書の「ざ瘡」に揃えた"), "3組と理由が表示される（有害・どこにもない・行き先を揃えた）");
   assert(!t.includes(`${DEF0[0]}→${DEF0[1]}`), "既定辞書にある組は外れない");
+  assert(!t.includes("ステロイド外用薬→ステロイド外用薬"), "外れても置換の結果が変わらない組は表示しない");
   const d = await ls(page);
   const want = [["ニキビ", "ざ瘡"], ...DEFAULT_DICT.filter(([f]) => f !== "ニキビ")];
   assert(JSON.stringify(d) === JSON.stringify(want), `端末の辞書は Supabase＋最新の既定辞書（${want.length}組）に置き換わる`);

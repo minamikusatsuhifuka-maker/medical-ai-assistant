@@ -7,7 +7,7 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { filterNoiseCore } from "./lib/noise-filter";
-import { buildDictMatcher, applyDictSafe } from "./lib/dict-apply";
+import { buildDictMatcher, applyDictSafe, applyDictOnce } from "./lib/dict-apply";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
 import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings, isNonDiseaseKey } from "./lib/disease-canonical";
@@ -639,7 +639,8 @@ const sanitizeDict=(entries)=>Array.isArray(entries)?entries.filter(e=>Array.isA
 // 端末の辞書(mk_dict)の突き合わせ（2026-10-29 院長承認）: Supabase の読み込みに成功したら「Supabase＋最新の既定辞書」を正とする
 // 旧: 端末にしかない語を残してつないでいたため、Supabase で消した語・既定辞書の直しが既に使っている端末に届かなかった
 // localEntries は端末に保存されていたそのままの一覧。戻り値 {merged, removed:[{f,t,reason}]}（removed は端末から外れた組）
-const reconcileDict=(sbEntries,localEntries)=>{const sbFrom=new Set(sbEntries.map(([f])=>f));const merged=sanitizeDict([...sbEntries,...DEFAULT_DICT.filter(([f])=>!sbFrom.has(f))]);const have=new Set(merged.map(([f,t])=>f+"\u0000"+t));const toOf=new Map();for(const[f,t]of merged)if(!toOf.has(f))toOf.set(f,t);const removed=[],seen=new Set();for(const e of(Array.isArray(localEntries)?localEntries:[])){if(!Array.isArray(e)||!e[0]||!e[1])continue;const f=String(e[0]),t=String(e[1]),k=f+"\u0000"+t;if(have.has(k)||seen.has(k))continue;seen.add(k);removed.push({f,t,reason:DICT_BANNED_FROM.has(f.trim())||isPoisonedDictEntry(f,t)?"既知の有害な登録（自動で除去）":toOf.has(f)?`行き先を Supabase・既定辞書の「${toOf.get(f)}」に揃えた`:"Supabase にも最新の既定辞書にもない（削除済み・または古い既定辞書の語）"})}return{merged,removed}};
+// 外れても置換の結果が変わらない組（既定辞書の重複の統合で消えた「アンテベート→アンテベート」等）は表示しない
+const reconcileDict=(sbEntries,localEntries)=>{const sbFrom=new Set(sbEntries.map(([f])=>f));const merged=sanitizeDict([...sbEntries,...DEFAULT_DICT.filter(([f])=>!sbFrom.has(f))]);let mm=null;try{mm=buildDictMatcher(merged)}catch{}const sameResult=(f,t)=>{try{return!!mm&&applyDictOnce(f,mm)===t}catch{return false}};const have=new Set(merged.map(([f,t])=>f+"\u0000"+t));const toOf=new Map();for(const[f,t]of merged)if(!toOf.has(f))toOf.set(f,t);const removed=[],seen=new Set();for(const e of(Array.isArray(localEntries)?localEntries:[])){if(!Array.isArray(e)||!e[0]||!e[1])continue;const f=String(e[0]),t=String(e[1]),k=f+"\u0000"+t;if(have.has(k)||seen.has(k))continue;seen.add(k);if(!DICT_BANNED_FROM.has(f.trim())&&!isPoisonedDictEntry(f,t)&&sameResult(f,t))continue;removed.push({f,t,reason:DICT_BANNED_FROM.has(f.trim())||isPoisonedDictEntry(f,t)?"既知の有害な登録（自動で除去）":toOf.has(f)?`行き先を Supabase・既定辞書の「${toOf.get(f)}」に揃えた`:"Supabase にも最新の既定辞書にもない（削除済み・または古い既定辞書の語）"})}return{merged,removed}};
 // ノイズ語一覧の読み込み時の浄化（登録時と同じガード isDangerousNoisePattern: 空・2文字以下・日常語・医療内容語）
 // 端末(localStorage)に古い・危険な登録語が残って書き起こしを削り続けるのを防ぐ。戻り値 {kept, removed:[{p,reason}]}
 const cleanNoisePatterns=(list)=>{const kept=[],removed=[];const seen=new Set();for(const raw of(Array.isArray(list)?list:[])){const p=String(raw==null?"":raw).trim();if(seen.has(p))continue;seen.add(p);let reason=null;try{reason=isDangerousNoisePattern(p)}catch{reason=null}if(reason)removed.push({p,reason});else kept.push(p)}return{kept,removed}};
