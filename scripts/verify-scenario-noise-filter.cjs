@@ -15,7 +15,8 @@ const CHUNK = "えーっと、背中がかゆいんです。 ご視聴ありが�
   const browser = await pw.chromium.launch({ headless: true, args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--use-file-for-fake-audio-capture=" + WAV] });
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 950 }, permissions: ["microphone"] });
   await ctx.addInitScript(() => { try { localStorage.setItem("mk_noisePatterns", JSON.stringify(["えーっと"])); } catch {} });
-  await ctx.route(/\/rest\/v1\//, (r) => { const m = r.request().method(); return m === "GET" ? r.fulfill({ status: 200, contentType: "application/json", body: "[]" }) : m === "HEAD" ? r.fulfill({ status: 200, headers: { "content-range": "*/0" }, body: "" }) : r.fulfill({ status: 201, contentType: "application/json", body: '[{"id":"verify-x"}]' }); });
+  // Supabase の noise_patterns も「えーっと」を返す（読み込み成功時は Supabase が正のため）
+  await ctx.route(/\/rest\/v1\//, (r) => { const m = r.request().method(); if (m === "GET" && /\/rest\/v1\/noise_patterns/.test(r.request().url())) return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ pattern: "えーっと" }]) }); return m === "GET" ? r.fulfill({ status: 200, contentType: "application/json", body: "[]" }) : m === "HEAD" ? r.fulfill({ status: 200, headers: { "content-range": "*/0" }, body: "" }) : r.fulfill({ status: 201, contentType: "application/json", body: '[{"id":"verify-x"}]' }); });
   await ctx.route(/\/storage\/v1\//, (r) => r.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
   await ctx.route("**/api/extract-*", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
   const logs = [];
