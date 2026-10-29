@@ -928,6 +928,8 @@ const[hoverPreview,setHoverPreview]=useState(true);
 const[manualCopy,setManualCopy]=useState(null);
 const[sumCopyPrompt,setSumCopyPrompt]=useState(null);
 const[autoCopySum,setAutoCopySum]=useState(true);
+// 要約の連打ガード（実行中フラグ: ref=判定用・state=ボタンのdisabled表示用）
+const[sumRunning,setSumRunning]=useState(false);
 const[canHover,setCanHover]=useState(false);
 const[histHoverPv,setHistHoverPv]=useState(null);
 const hoverPvOpenTimer=useRef(null);
@@ -1103,6 +1105,8 @@ const startRef=useRef(null),stopRef=useRef(null),sumRef=useRef(null),clrRef=useR
 const escapeRef=useRef(null);
 useEffect(()=>{
 const handler=(e)=>{
+// 押しっぱなしの自動連打(e.repeat)は無視する（F2押しっぱなしで要約が約40秒に900回走った障害の再発防止）
+if(e.repeat)return;
 if(e.key==="Escape"){e.preventDefault();if(escapeRef.current)escapeRef.current();return}
 const tag=document.activeElement?.tagName;
 if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"){
@@ -4359,16 +4363,20 @@ const go=async()=>{autoTplRef.current=false;setAutoTplMsg("");saveRecordRef.curr
 const stop=()=>{if(cR.current)clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording")mR.current.stop();mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive");sSt("待機中")};
 const pause=()=>{if(cR.current)clearInterval(cR.current);if(mR.current&&mR.current.state==="recording")mR.current.stop();if(mR_save.current&&mR_save.current.state==="recording")mR_save.current.pause();sRS("paused");sSt("一時停止")};
 const resume=()=>{if(!msR.current)return;sRS("recording");sSt("録音中");if(mR_save.current&&mR_save.current.state==="paused")mR_save.current.resume();else if(!mR_save.current)mR_save.current=startSaveMR(msR.current);const m=cMR(msR.current);m.start();mR.current=m;cR.current=setInterval(()=>{if(mR.current&&mR.current.state==="recording"){mR.current.stop();setTimeout(()=>{if(mR.current!==null){const m2=cMR(msR.current);m2.start();mR.current=m2}},100)}},10000)};
+// 処方リスト抽出は最新の要約の分だけ反映する（古い応答が後から届いても上書きしない）
+const rxSeqRef=useRef(0);
 const extractRx=async(summaryText)=>{
 if(!summaryText||!summaryText.trim())return;
+const seq=++rxSeqRef.current;
 setRxLd(true);
 try{
 const r=await fetch("/api/extract-rx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:summaryText})});
 const d=await r.json();
+if(seq!==rxSeqRef.current)return;
 if(d.items&&d.items.length>0){setRxItems(d.items);setRxOpen(true)}
 else{setRxItems([])}
-}catch{setRxItems([])}
-finally{setRxLd(false)}
+}catch{if(seq===rxSeqRef.current)setRxItems([])}
+finally{if(seq===rxSeqRef.current)setRxLd(false)}
 };
 const generateUsageGuide=async()=>{
 if(!rxItems.length)return;
@@ -4413,9 +4421,10 @@ const drugWarnSuffix=(g)=>g.flagged.length?` ⚠書き起こしに無い薬剤�
 // 要約に投げられる書き起こしかを判定（通常要約と比較モードで同じ足切りを使う）
 const examTextGuard=(t,fbKey)=>{if(!t.trim()){sSt("テキストを入力してください");btnFbSet(fbKey,"err","⚠ 失敗: テキストがありません");return false}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet(fbKey,"err","⚠ 失敗: 書き起こしが短すぎます");return false}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet(fbKey,"err","⚠ 失敗: 会話内容が少なすぎます");return false}return true};
 
-const sum=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;setSumCopyPrompt(null);sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(csModelLabel(summaryModel)+" で要約中...");try{
+const sumBody=async(tx)=>{if(!tx&&rsRef.current==="recording"){const textBeforeStop=iR.current;stopSum();await new Promise(resolve=>setTimeout(resolve,800));if(!iR.current&&textBeforeStop) iR.current=textBeforeStop;}let t=tx||iR.current;if(!t.trim()){sSt("テキストを入力してください");btnFbSet("sum","err","⚠ 失敗: テキストがありません");return}if(t.trim().length<20){sSt("⚠️ 書き起こしが短すぎます。音声入力を確認してください。");btnFbSet("sum","err","⚠ 失敗: 書き起こしが短すぎます");return}if(t.replace(/[\s\n]/g,"").length<15){sSt("⚠️ 会話内容が少なすぎます。マイクの位置や音量を確認してください。");btnFbSet("sum","err","⚠ 失敗: 会話内容が少なすぎます");return}sumDoneRef.current=false;setSumCopyPrompt(null);sLd(true);setProg(10);btnFbSet("sum","run","要約中…");/* 高速化: 要約直前の自動補正(直列)は廃止。補正は手動✨ボタンで実行 */sSt(csModelLabel(summaryModel)+" で要約中...");try{
 const enhancedPrompt=buildExamPrompt();
 setProg(40);
+sumInputRef.current=iR.current;
 const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:iR.current,mode:summaryModel==="claude"?"claude":"gemini",prompt:enhancedPrompt,model_preference:summaryModel,stream:summaryModel!=="claude"})});
 if(summaryModel==="claude"){
 const d=await r.json();if(d.error){sOut("エラー: "+d.error);btnFbSet("sum","err","⚠ 失敗: "+String(d.error).slice(0,40))}else{const g=applyDrugGuard(d.summary);sOut(g.text);if(d.model)setGeminiModel(d.model);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,g.text);extractRx(g.text);await autoCopySummary(g.text,`要約完了 ✓ [${d.model||"claude"}]`+drugWarnSuffix(g),`要約完了 [${d.model||"claude"}]`+drugWarnSuffix(g));}
@@ -4427,6 +4436,20 @@ if(json.error){sOut("エラー: "+json.error);btnFbSet("sum","err","⚠ 失敗: 
 if(json.chunk){if(!finalSummary)btnFbClear("sum");/* ストリーミング: 結果欄に文字が流れ始めたら⏳表示を消す */finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
 if(json.done){const g=applyDrugGuard(finalSummary);sOut(g.text);setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,g.text);extractRx(g.text);await autoCopySummary(g.text,`要約完了 ✓ [${usedModel}]`+drugWarnSuffix(g),`要約完了 [${usedModel}]`+drugWarnSuffix(g));}}catch{}}}}
 }catch{sSt("エラーが発生しました");btnFbSet("sum","err","⚠ 失敗: 通信エラー")}finally{sLd(false);setProg(0)}};
+// 要約の連打ガード: 実行中は新しい要約を受け付けない（ボタン2連打・ショートカット・音声コマンド共通の入口）
+// 例外: 録音中の要約で最終チャンク到着後に stopSum から呼ばれる sum(ft)（テキスト付き）は、実行中なら完了後に1回だけ実行する。
+//       ただし直前の要約に渡した書き起こしと同じなら作り直さない（同じ内容の要約・保存の重複を防ぐ）
+const sumRunningRef=useRef(false);
+const sumPendingRef=useRef(null);
+const sumInputRef=useRef(null);
+const sum=async(tx)=>{
+  if(sumRunningRef.current){if(tx)sumPendingRef.current=tx;else sSt("⏳ 要約中です。完了までお待ちください");return}
+  sumRunningRef.current=true;setSumRunning(true);
+  try{await sumBody(tx)}finally{sumRunningRef.current=false;setSumRunning(false)}
+  const p=sumPendingRef.current;
+  sumPendingRef.current=null;
+  if(p&&p!==sumInputRef.current)await sum(p);
+};
 // ---- 3.6 / 3.7 同時実行・並列比較（診察のみ・明示ボタンからのみ実行）----
 // 同じ書き起こし・同じプロンプトで2モデルを並列に走らせ、初回応答/完了時間と本文を並べて出す。
 // 採用するまで履歴には保存しない（比較のたびに履歴が2件増えるのを防ぐ）。
@@ -4744,7 +4767,7 @@ const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:(
 const fn=actions[id];if(fn)fn();
 }})};
 renderPipShortcuts();
-pw.document.addEventListener("keydown",(e)=>{const scs=shortcutsRef.current;const sc=scs.find(s=>{if(!s.enabled)return false;const parts=s.key.split("+");const mainKey=parts[parts.length-1];const needCtrl=parts.includes("Ctrl")||parts.includes("Cmd");const needShift=parts.includes("Shift");const needAlt=parts.includes("Alt");let keyMatch=false;if(mainKey.startsWith("F")&&/^F\d+$/.test(mainKey)){keyMatch=e.key===mainKey}else if(mainKey==="ArrowUp"||mainKey==="ArrowDown"||mainKey==="ArrowLeft"||mainKey==="ArrowRight"||mainKey==="Enter"||mainKey==="Space"||mainKey===" "||mainKey==="Escape"||mainKey==="Tab"||mainKey==="Backspace"||mainKey==="Delete"){keyMatch=e.key===mainKey||(mainKey==="Space"&&e.key===" ")}else{keyMatch=e.key===mainKey||e.key.toUpperCase()===mainKey.toUpperCase()}return keyMatch&&(e.ctrlKey||e.metaKey)===needCtrl&&e.shiftKey===needShift&&e.altKey===needAlt});if(!sc)return;e.preventDefault();const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:()=>{stopSum()},clear:()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")},next:()=>{clr();const d2=pipRef.current;if(d2){const pi=d2.getElementById("pip-pid");if(pi)pi.value="";try{const al=d2.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pb=d2.getElementById("pip-progress");if(pb)pb.remove()}catch{};try{const ld=d2.getElementById("pip-loading");if(ld)ld.remove()}catch{}}},copy:()=>{const text=oR.current||iR.current||"";if(text)copyTextToClipboard(text,oR.current?"要約":"書き起こし",{doc:pw.document})},pip:()=>{closePip()},undo:()=>undo(),room1:()=>sRid("r1"),room2:()=>sRid("r2"),room3:()=>sRid("r3"),room4:()=>sRid("r4"),room5:()=>sRid("r5"),room6:()=>sRid("r6"),room7:()=>sRid("r7")};const fn=actions[sc.id];if(fn){fn();setTimeout(pipBtnUpdate,300)}});
+pw.document.addEventListener("keydown",(e)=>{if(e.repeat)return;/* 押しっぱなしの自動連打は無視 */const scs=shortcutsRef.current;const sc=scs.find(s=>{if(!s.enabled)return false;const parts=s.key.split("+");const mainKey=parts[parts.length-1];const needCtrl=parts.includes("Ctrl")||parts.includes("Cmd");const needShift=parts.includes("Shift");const needAlt=parts.includes("Alt");let keyMatch=false;if(mainKey.startsWith("F")&&/^F\d+$/.test(mainKey)){keyMatch=e.key===mainKey}else if(mainKey==="ArrowUp"||mainKey==="ArrowDown"||mainKey==="ArrowLeft"||mainKey==="ArrowRight"||mainKey==="Enter"||mainKey==="Space"||mainKey===" "||mainKey==="Escape"||mainKey==="Tab"||mainKey==="Backspace"||mainKey==="Delete"){keyMatch=e.key===mainKey||(mainKey==="Space"&&e.key===" ")}else{keyMatch=e.key===mainKey||e.key.toUpperCase()===mainKey.toUpperCase()}return keyMatch&&(e.ctrlKey||e.metaKey)===needCtrl&&e.shiftKey===needShift&&e.altKey===needAlt});if(!sc)return;e.preventDefault();const actions={rec:()=>{if(rsRef.current==="recording"){stop()}else{go()}},sum:()=>{stopSum()},clear:()=>{saveUndo();sInp("");sOut("");sSt("クリアしました")},next:()=>{clr();const d2=pipRef.current;if(d2){const pi=d2.getElementById("pip-pid");if(pi)pi.value="";try{const al=d2.getElementById("pip-alert");if(al)al.remove()}catch{};try{const pb=d2.getElementById("pip-progress");if(pb)pb.remove()}catch{};try{const ld=d2.getElementById("pip-loading");if(ld)ld.remove()}catch{}}},copy:()=>{const text=oR.current||iR.current||"";if(text)copyTextToClipboard(text,oR.current?"要約":"書き起こし",{doc:pw.document})},pip:()=>{closePip()},undo:()=>undo(),room1:()=>sRid("r1"),room2:()=>sRid("r2"),room3:()=>sRid("r3"),room4:()=>sRid("r4"),room5:()=>sRid("r5"),room6:()=>sRid("r6"),room7:()=>sRid("r7")};const fn=actions[sc.id];if(fn){fn();setTimeout(pipBtnUpdate,300)}});
 pipRef.current=pw.document;setPipWin(pw);setPipActive(true);
 const btnLoop=setInterval(()=>{if(!pipRef.current){clearInterval(btnLoop);return}pipBtnUpdate()},600);
 pw.addEventListener("pagehide",()=>{clearInterval(btnLoop);pipRef.current=null;pipBtnUpdateRef.current=()=>{};setPipWin(null);setPipActive(false)});
@@ -7976,7 +7999,7 @@ const fn=actions[sc.id];if(fn)fn();
 {audioSaveNote&&<div style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:8,background:audioSaveNote.t==="err"?"#fef2f2":"#f0fdf4",border:`1px solid ${audioSaveNote.t==="err"?"#fecaca":"#bbf7d0"}`,color:audioSaveNote.t==="err"?"#b91c1c":"#15803d",whiteSpace:"nowrap"}}>{audioSaveNote.m}</div>}
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
-<button onClick={()=>sum()} disabled={ld||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button><BtnFb k="sum"/>
+<button onClick={()=>sum()} disabled={ld||sumRunning||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button><BtnFb k="sum"/>
 <button onClick={runAbSum} disabled={ld||!inp.trim()||!!abSum?.running} title="同じ書き起こしで Gemini 3.6 と 3.7 を同時に走らせ、速度と内容を並べて比較します" onMouseEnter={e=>showTip(e,"3.6と3.7を同時実行して比較")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${C.p}55`,background:abSum?.running?C.g100:"#eef7e2",color:abSum?.running?C.g400:"#3a6820",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(ld||!inp.trim()||abSum?.running)?"default":"pointer",opacity:!inp.trim()?0.4:1,whiteSpace:"nowrap",height:mob?44:undefined}}>{abSum?.running?"⏳ 比較中...":"⚖ 3.6/3.7 比較"}</button><BtnFb k="abSum"/>
 {inp.trim()&&<button onClick={()=>manualClean(inp,(c)=>{sInp(c);iR.current=c},"inp")} disabled={cleaningTx} title="書き起こしを補正（捏造除去・用語補正）" onMouseEnter={e=>showTip(e,"書き起こしを補正（捏造除去・用語補正）")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:14,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer",whiteSpace:"nowrap",height:mob?44:undefined}}>{cleaningTx?(cleanProg&&cleanProg.total>1?`⏳${cleanProg.cur}/${cleanProg.total}`:"⏳"):"✨補正"}</button>}{undoCleanBtn("inp")}<BtnFb k="clean:inp"/>
 <button onClick={()=>{if((inp.trim()||out.trim())&&!window.confirm("書き起こし・要約を保存せずに破棄します。よろしいですか？"))return;saveUndo();sInp("");sOut("");sSt("クリアしました")}} title="書き起こし・要約を破棄してクリア" onMouseEnter={e=>showTip(e,"書き起こし・要約を破棄してクリア")} onMouseLeave={hideTip} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>🗑</button>
