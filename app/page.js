@@ -1384,12 +1384,17 @@ const[disableSilenceSkip,setDisableSilenceSkip]=useState(false);
 useEffect(()=>{try{const v=localStorage.getItem("mk_disableSilenceSkip")==="1";disableSilenceSkipRef.current=v;setDisableSilenceSkip(v)}catch{}},[]);
 useEffect(()=>{disableSilenceSkipRef.current=disableSilenceSkip},[disableSilenceSkip]);
 // チャンク診断カウンタ: どの段階でチャンクが消えているかの見える化（計測のみ・フロー非干渉）。
-const[diagCnt,setDiagCnt]=useState({rec:0,lv:0,sil:0,sent:0,ok:0,err:0});
+const[diagCnt,setDiagCnt]=useState({rec:0,lv:0,sil:0,sent:0,ok:0,empty:0,err:0});
 const[diagErr,setDiagErr]=useState("");
-const[diagLastLen,setDiagLastLen]=useState(null); // 直近の応答テキスト文字数（「届いているが空」の検出用）
+const[diagLastLen,setDiagLastLenRaw]=useState(null); // 直近の応答テキスト文字数（「届いているが空」の検出用）
 const[diagMR,setDiagMR]=useState(""); // MediaRecorderのmimeType/state/直近チャンクサイズ
 // updater内(レンダー時実行)の例外もページを壊さないよう、値アクセスはすべてフォールバック付き。
 const bumpDiag=(k)=>{try{setDiagCnt(p=>({...(p||{}),[k]:(((p||{})[k])||0)+1}))}catch{}};
+// 応答の文字数を記録し、0字なら「空応答」も数える（OKに空応答が混ざって異常が見えなかったため。呼び出し側は変更しない）
+const setDiagLastLen=(n)=>{try{setDiagLastLenRaw(n);if(n===0)bumpDiag("empty")}catch{}};
+// 録音を開始したら（停止→録音中）カウンタを0に戻す。累計表示が誤読を招いたため。一時停止からの再開では戻さない
+const diagPrevRsRef=useRef({rs:"inactive",min:"inactive",smn:"inactive"});
+useEffect(()=>{const p=diagPrevRsRef.current;const started=(p.rs==="inactive"&&rs==="recording")||(p.min==="inactive"&&minRS==="recording")||(p.smn==="inactive"&&smnRS==="recording");diagPrevRsRef.current={rs,min:minRS,smn:smnRS};if(started){setDiagCnt({rec:0,lv:0,sil:0,sent:0,ok:0,empty:0,err:0});setDiagErr("");setDiagLastLenRaw(null)}},[rs,minRS,smnRS]);
 const noteDiagMR=(mr,size)=>{try{setDiagMR(`${(mr&&mr.mimeType)||"?"} / ${(mr&&mr.state)||"?"} / ${(size!=null?size:"?")}B`)}catch{}};
 const DiagRow=({active})=>{
 try{
@@ -1398,7 +1403,7 @@ const n=(v)=>(typeof v==="number"?v:0);
 if(!active&&n(c.rec)<=0)return null;
 return(
 <div style={{fontSize:10,color:"#6b7280",background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:8,padding:"4px 10px",marginBottom:8,fontVariantNumeric:"tabular-nums",lineHeight:1.6}}>
-<div>📊 チャンク: 録音 {n(c.rec)} ／ ゲート通過 {n(c.lv)} ／ 無音判定通過 {n(c.sil)} ／ 送信 {n(c.sent)} ／ 応答OK {n(c.ok)}{typeof diagLastLen==="number"?`（直近${diagLastLen}字）`:""} ／ エラー {n(c.err)}{diagErr?<span style={{color:"#dc2626"}}>　⚠ {String(diagErr)}</span>:null}</div>
+<div>📊 チャンク: 録音 {n(c.rec)} ／ ゲート通過 {n(c.lv)} ／ 無音判定通過 {n(c.sil)} ／ 送信 {n(c.sent)} ／ 応答OK {Math.max(0,n(c.ok)-n(c.empty))} ／ 空応答(0字) {n(c.empty)}{typeof diagLastLen==="number"?`（直近${diagLastLen}字）`:""} ／ エラー {n(c.err)}{diagErr?<span style={{color:"#dc2626"}}>　⚠ {String(diagErr)}</span>:null}</div>
 {diagMR?<div>🎛 MR: {String(diagMR)}</div>:null}
 </div>
 );
@@ -4517,7 +4522,7 @@ const adoptAbSum=async(key)=>{
   extractRx(g.text);
   await autoCopySummary(g.text,`要約完了 ✓ [${r.model||key}]`+drugWarnSuffix(g),`要約完了 [${r.model||key}]`+drugWarnSuffix(g));
 };
-const stopSum=()=>{clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){const f=new FormData();f.append("audio",e.data,"audio.webm");try{const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-final",duration_seconds:Math.min(10,Math.max(1,Math.round(e.data.size/16000))),request_meta:{blob_size:e.data.size,text_length:(d.text||"").length,room:rid,final:true}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());const ft=foldAccum(iR.current+(iR.current?"\n":"")+(noise?applyDict(noise):""));sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive")};
+const stopSum=()=>{clearInterval(cR.current);if(audioChunkTimer.current){clearInterval(audioChunkTimer.current);audioChunkTimer.current=null}if(mR.current&&mR.current.state==="recording"){const cr2=mR.current;cr2.ondataavailable=async(e)=>{if(e.data.size>0){/* 最終チャンク: ゲート・無音判定を通さず送るため各段にも数える（送信だけ増えて録音とずれていた） */bumpDiag("rec");bumpDiag("lv");bumpDiag("sil");noteDiagMR(cr2,e.data.size);const f=new FormData();f.append("audio",e.data,"audio.webm");try{const endpoint=(asrEngine==="avalon"&&!isIOSDevice)?"/api/transcribe-avalon":asrEngine==="qwen"?"/api/transcribe-qwen":asrEngine==="gemini"?"/api/transcribe-gemini":"/api/transcribe";bumpDiag("sent");const r=await fetch(endpoint,{method:"POST",body:f});if(r.ok)bumpDiag("ok");else{bumpDiag("err");setDiagErr("HTTP "+r.status)}const d=await r.json();if(r.ok)setDiagLastLen(((d&&d.text)||"").length);if(asrEngine==="avalon"){if(d&&d.fallback){setAvalonFellBack(true);setAvalonFellBackReason(d.avalonError||"")}else if(d&&!d.fallback){setAvalonFellBack(false);setAvalonFellBackReason("")}}if(endpoint==="/api/transcribe"){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe",model:"whisper-1",context:"transcribe-final",duration_seconds:Math.min(10,Math.max(1,Math.round(e.data.size/16000))),request_meta:{blob_size:e.data.size,text_length:(d.text||"").length,room:rid,final:true}})}).catch(()=>{});}if(d.text&&d.text.trim()){const noise=filterTranscriptNoise(d.text.trim());const ft=foldAccum(iR.current+(iR.current?"\n":"")+(noise?applyDict(noise):""));sInp(ft);setTimeout(()=>sum(ft),300)}else{sum()}}catch{sum()}}else{sum()}};cr2.stop()}else{sum()}mR.current=null;if(mR_save.current&&mR_save.current.state!=="inactive")mR_save.current.stop();mR_save.current=null;xAM();sRS("inactive")};
 const saveUndo=()=>{undoRef.current={inp:iR.current||"",out:out,pName:pName,pId:pId}};
 const undo=()=>{if(!undoRef.current)return;const u=undoRef.current;sInp(u.inp);sOut(u.out);sPName(u.pName);sPId(u.pId);undoRef.current=null;sSt("↩ 元に戻しました")};
 // PiPボタン更新の外側ラッパー：本体は openPip 内で定義され pipBtnUpdateRef に登録される
