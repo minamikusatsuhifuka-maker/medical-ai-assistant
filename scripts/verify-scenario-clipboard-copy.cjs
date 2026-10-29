@@ -112,6 +112,14 @@ const AUTO_SUMMARY = "S) 手湿疹の再燃\nP) 保湿剤とステロイド外�
   await page.getByRole("button", { name: "📋 コピー", exact: true }).first().click();
   await page.waitForTimeout(300);
   assert((await clip()) === AUTO_SUMMARY, "D) 診察要約欄の📋コピー: 中身一致");
+  assert((await fb.innerText()).includes("✓ 要約をコピーしました"), "D) メイン画面でも上部に「✓ コピーしました」が出る（全画面共通の表示）");
+  // メイン画面で両方失敗 → 手動コピー小窓（履歴画面以外でも出ること）
+  await resetClip(); await fail(true, true);
+  await page.getByRole("button", { name: "📋 コピー", exact: true }).first().click();
+  await manual.waitFor({ timeout: 3000 });
+  assert((await manual.locator("textarea").inputValue()) === AUTO_SUMMARY, "D) メイン画面でも両方失敗 → 手動コピー小窓に全文が出る");
+  await fail(false, false);
+  await manual.getByRole("button", { name: "閉じる" }).click();
 
   // ---- F 自動コピー失敗 → 大きなボタン ----
   await resetClip(); await fail(true, true);
