@@ -40,7 +40,7 @@ export function buildDictMatcher(dict, { resolveChains = true } = {}) {
       const seen = [start];
       let cur = start, out = null;
       for (let d = 0; d < MAX_CHAIN; d++) {
-        const next = cont ? stripSentinel(applyDictOnce(cur + CONT_SENTINEL, base)) : applyDictOnce(cur, base);
+        const next = cont ? stripSentinel(applyDictOnce(cur + CONT_SENTINEL, base, { chainStep: true })) : applyDictOnce(cur, base, { chainStep: true });
         if (next === null) { out = null; break; }
         if (next === cur) { out = cur; break; }
         if (seen.includes(next)) { report.cycles.push({ to: start, path: [...seen, next] }); out = null; break; }
@@ -117,7 +117,9 @@ const insideExistingTo = (text, at, m, to) => {
 };
 
 // 置換本体（例外はそのまま投げる。fail-open は呼び出し側が担う）
-export function applyDictOnce(text, matcher) {
+// chainStep: 連鎖の解決のときだけ true。行き先の語がすでに文字列にあるなら、その段はたどらない
+//   （「AGA（男性型脱毛症）」に AGA→男性型脱毛症 が当たって「男性型脱毛症（男性型脱毛症）」になるのを防ぐ）
+export function applyDictOnce(text, matcher, { chainStep = false } = {}) {
   if (!text || !matcher) return text;
   const { re } = matcher;
   re.lastIndex = 0;
@@ -126,6 +128,7 @@ export function applyDictOnce(text, matcher) {
     if (m[0] === "") { re.lastIndex++; continue; }
     const a = pick(matcher, m[0]);
     if (!a) continue;
+    if (chainStep && text.toLowerCase().includes(a.to.toLowerCase())) continue;
     const at = m.index;
     let keepEnd = insideExistingTo(text, at, m[0], a.to);
     if (keepEnd < 0 && a.toFree && a.toFree !== a.to) keepEnd = insideExistingTo(text, at, m[0], a.toFree);
@@ -136,6 +139,9 @@ export function applyDictOnce(text, matcher) {
       re.lastIndex = keepEnd;
       continue;
     }
+    // 直後に「（置換後の語）」の注記がすでにある（「AGA（男性型脱毛症）」の AGA）→ 置換しない（2回通しても2重にしない）
+    const after = text.slice(at + m[0].length);
+    if ([a.to, a.toFree].some((t) => t && (after.startsWith(`（${t}）`) || after.startsWith(`(${t})`)))) continue;
     const cont = NAME_CONT.test(text[at + m[0].length] || "");
     if (a.ext && cont) continue; // 別の名前の一部 → 補わない
     out += text.slice(last, at) + ((cont ? a.toCont : a.toFree) || a.to);

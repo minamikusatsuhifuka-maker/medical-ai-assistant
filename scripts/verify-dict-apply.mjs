@@ -50,6 +50,8 @@ for (const [label, dict] of dicts) {
   for (const s of samples) { const o = ap(s); if (ap(o) !== o) notIdem.push([s, o, ap(o)]); }
   if (notIdem.length) console.log("   冪等でない例（辞書データの連鎖 A→B, B→C）:", JSON.stringify(notIdem.slice(0, 8)));
   eq(notIdem.filter(([s, o, o2]) => /(.{2,})\1/.test(o2) && !/(.{2,})\1/.test(o)).length, 0, `2回通しても語が2重にならない（${samples.length}文）`);
+  const parenDup = samples.map((s) => ap(s)).filter((o) => /(.{2,})[（(]\1[）)]/.test(o));
+  eq(parenDup.length, 0, `「語（同じ語）」の2重がない${parenDup.length ? ": " + JSON.stringify(parenDup.slice(0, 5)) : ""}`);
 
   console.log("── 薬剤マスタ132剤を正式名で通す");
   eq(DRUG_MASTER.length, 132, "薬剤マスタは132剤");
@@ -93,6 +95,10 @@ console.log("\n── 2段の連鎖の解決（辞書を組む時点で最終形
   eq(deep.report.depthLimit.length > 0, true, "深さ上限（5段）に当たった組は report.depthLimit に記録され1段のまま");
   eq(applyDictOnce("a1x", deep), "a2x", "深さ上限に当たった組は1段のまま");
   eq(applyDictOnce("メピオを", buildDictMatcher(chainDict, { resolveChains: false })), "ベピオを", "resolveChains:false なら1段（解決処理で例外が出たときも同じ扱い）");
+  const ag = buildDictMatcher([["えーじーえー", "AGA（男性型脱毛症）"], ["AGA", "男性型脱毛症"]]);
+  eq(applyDictOnce("えーじーえーの治療", ag), "AGA（男性型脱毛症）の治療", "行き先の語がすでにある段はたどらない（男性型脱毛症（男性型脱毛症）にならない）");
+  eq(applyDictOnce("AGA（男性型脱毛症）の治療", ag), "AGA（男性型脱毛症）の治療", "直後に「（置換後の語）」があれば置換しない（2回通しても同じ）");
+  eq(applyDictOnce("AGAの治療", ag), "男性型脱毛症の治療", "注記がなければ従来どおり置換する");
 }
 
 console.log("\n── fail-open・境界");
