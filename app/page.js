@@ -5,6 +5,7 @@ import { supabase } from "./lib/supabase";
 import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
+import { filterNoiseCore } from "./lib/noise-filter";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
 import { DISEASE_HEADING_PROMPT_RULES, parseDiseaseHeadings, isNonDiseaseKey } from "./lib/disease-canonical";
@@ -3834,39 +3835,14 @@ const collapseRepeats=(text)=>{
 // 純粋な文字列処理で軽量だが、超長尺の毎チャンク全走査を避けるため末尾80行のみ畳む（相槌連続はせいぜい数十行・頭側は確定済み）。
 const foldAccum=(text)=>{if(!text)return text;const lines=text.split("\n");if(lines.length<=80)return collapseRepeats(text);const keep=lines.length-80;return lines.slice(0,keep).join("\n")+"\n"+collapseRepeats(lines.slice(keep).join("\n"));};
 
+// 書き起こしのノイズ除去（本体は app/lib/noise-filter.js）。組み込み7件は「文」だけ、登録語は「語」だけを除き、行ごとは消さない。
+// 除去したときだけパターン番号と文字数を記録（本文・登録語は送らない）。例外時は無加工で返す（fail-open）
 const filterTranscriptNoise=(text)=>{
   if(!text||!text.trim())return "";
-
-  const lines=text.split("\n");
-  const filtered=lines.filter(line=>{
-    const t=line.trim();
-    if(!t)return false;
-
-    // カスタム登録パターンチェック（完全一致・部分一致）
-    for(const np of noisePatterns){
-      if(!np)continue;
-      try{if(t===np||t.includes(np))return false}catch{}
-    }
-
-    // 動画・映像系のみ除去（診察内容は除去しない）
-    const videoPatterns=[
-      /次の映像でお会いしましょう/,
-      /ご視聴ありがとう/,
-      /チャンネル登録/,
-      /高評価.*チャンネル/,
-      /subscribe/i,
-      /see you next time/i,
-      /次回もよろしく.*チャンネル/,
-    ];
-
-    for(const p of videoPatterns){
-      if(p.test(t))return false;
-    }
-
-    return true;
-  });
-
-  return collapseRepeats(filtered.join("\n").trim());
+  let r;
+  try{r=filterNoiseCore(text,noisePatterns)}catch(e){console.error("[filterTranscriptNoise] 例外のため無加工で返す:",e);try{return collapseRepeats(text.trim())}catch{return text.trim()}}
+  if(r.dropped.length){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe-noise-client",model:"filter",context:"transcribe-noise-client",request_meta:{raw_length:text.length,kept_length:r.text.length,dropped:r.dropped}})}).catch(()=>{})}
+  return collapseRepeats(r.text);
 };
 
 // 履歴カードのコンテンツバッジ判定
