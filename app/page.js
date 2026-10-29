@@ -636,6 +636,10 @@ const POISONED_DICT_ENTRIES=[
 ];
 const isPoisonedDictEntry=(from,to)=>POISONED_DICT_ENTRIES.some(([pf,pt])=>String(from).trim()===pf&&String(to).trim()===pt);
 const sanitizeDict=(entries)=>Array.isArray(entries)?entries.filter(e=>Array.isArray(e)&&e[0]&&e[1]&&!DICT_BANNED_FROM.has(String(e[0]).trim())&&!isPoisonedDictEntry(e[0],e[1])):entries;
+// 端末の辞書(mk_dict)の突き合わせ（2026-10-29 院長承認）: Supabase の読み込みに成功したら「Supabase＋最新の既定辞書」を正とする
+// 旧: 端末にしかない語を残してつないでいたため、Supabase で消した語・既定辞書の直しが既に使っている端末に届かなかった
+// localEntries は端末に保存されていたそのままの一覧。戻り値 {merged, removed:[{f,t,reason}]}（removed は端末から外れた組）
+const reconcileDict=(sbEntries,localEntries)=>{const sbFrom=new Set(sbEntries.map(([f])=>f));const merged=sanitizeDict([...sbEntries,...DEFAULT_DICT.filter(([f])=>!sbFrom.has(f))]);const have=new Set(merged.map(([f,t])=>f+"\u0000"+t));const toOf=new Map();for(const[f,t]of merged)if(!toOf.has(f))toOf.set(f,t);const removed=[],seen=new Set();for(const e of(Array.isArray(localEntries)?localEntries:[])){if(!Array.isArray(e)||!e[0]||!e[1])continue;const f=String(e[0]),t=String(e[1]),k=f+"\u0000"+t;if(have.has(k)||seen.has(k))continue;seen.add(k);removed.push({f,t,reason:DICT_BANNED_FROM.has(f.trim())||isPoisonedDictEntry(f,t)?"既知の有害な登録（自動で除去）":toOf.has(f)?`行き先を Supabase・既定辞書の「${toOf.get(f)}」に揃えた`:"Supabase にも最新の既定辞書にもない（削除済み・または古い既定辞書の語）"})}return{merged,removed}};
 // ノイズ語一覧の読み込み時の浄化（登録時と同じガード isDangerousNoisePattern: 空・2文字以下・日常語・医療内容語）
 // 端末(localStorage)に古い・危険な登録語が残って書き起こしを削り続けるのを防ぐ。戻り値 {kept, removed:[{p,reason}]}
 const cleanNoisePatterns=(list)=>{const kept=[],removed=[];const seen=new Set();for(const raw of(Array.isArray(list)?list:[])){const p=String(raw==null?"":raw).trim();if(seen.has(p))continue;seen.add(p);let reason=null;try{reason=isDangerousNoisePattern(p)}catch{reason=null}if(reason)removed.push({p,reason});else kept.push(p)}return{kept,removed}};
@@ -888,6 +892,10 @@ const[noisePatterns,setNoisePatterns]=useState([]);
 const[noisePurged,setNoisePurged]=useState([]);
 // 浄化で除いた語を一度だけ表示する（同じ組み合わせを表示済みなら出さない）
 const notePurgedNoise=(removed)=>{try{const key=JSON.stringify(removed.map(r=>r.p).sort());if(localStorage.getItem("mk_noisePurgedShown")===key)return;setNoisePurged(prev=>{const m=new Map(prev.map(r=>[r.p,r]));for(const r of removed)m.set(r.p,r);return[...m.values()]})}catch{}};
+// 端末の辞書の突き合わせで外れた組（ノイズ語と同じく一度だけ表示。外れた組は使用ログにも残す）
+const[dictPurged,setDictPurged]=useState([]);
+const notePurgedDict=(removed)=>{try{const key=JSON.stringify(removed.map(r=>r.f+"→"+r.t).sort());if(localStorage.getItem("mk_dictPurgedShown")===key)return;setDictPurged(removed);fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/dict-purge-client",model:"filter",context:"dict-purge-client",request_meta:{removed_count:removed.length,has_remo:removed.some(r=>r.f==="れも"),removed:removed.slice(0,200).map(r=>r.f+"→"+r.t)}})}).catch(()=>{})}catch{}};
+const closeDictPurged=()=>{try{localStorage.setItem("mk_dictPurgedShown",JSON.stringify(dictPurged.map(r=>r.f+"→"+r.t).sort()))}catch{}setDictPurged([])};
 const closeNoisePurged=()=>{try{localStorage.setItem("mk_noisePurgedShown",JSON.stringify(noisePurged.map(r=>r.p).sort()))}catch{}setNoisePurged([])};
 const[noiseScanLd,setNoiseScanLd]=useState(false);
 const[noiseCandidates,setNoiseCandidates]=useState([]);
@@ -956,7 +964,7 @@ useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/
 // Geminiモデル稼働チェック（ListModels照合）。手動ボタン＆起動時14日経過で自動実行。失敗しても本体機能に影響させない。
 const runModelCheck=async(manual=false)=>{try{setModelChecking(true);const res=await fetch("/api/gemini-model-check");const data=await res.json();if(data&&data.ok){setModelCheck(data);try{localStorage.setItem("mk_modelCheckAt",String(Date.now()));localStorage.setItem("mk_modelCheckResult",JSON.stringify(data))}catch{}}else if(manual){setModelCheck({ok:false,error:(data&&data.error)||"チェックに失敗しました",checkedAt:new Date().toISOString()})}}catch(e){if(manual)setModelCheck({ok:false,error:"チェックに失敗しました",checkedAt:new Date().toISOString()})}finally{setModelChecking(false)}};
 useEffect(()=>{try{const raw=localStorage.getItem("mk_modelCheckResult");if(raw)setModelCheck(JSON.parse(raw));const at=Number(localStorage.getItem("mk_modelCheckAt")||0);const FOURTEEN=14*24*60*60*1000;if(!at||Date.now()-at>FOURTEEN){runModelCheck(false)}}catch{}},[]);
-useEffect(()=>{if(!supabase)return;(async()=>{try{const{data}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(data&&data.length>0){setDict(prev=>{const sbEntries=data.map(r=>[r.from_text,r.to_text]);const localOnly=prev.filter(([f])=>!sbEntries.some(([sf])=>sf===f));const merged=sanitizeDict([...sbEntries,...localOnly]);try{localStorage.setItem("mk_dict",JSON.stringify(merged))}catch{}return merged})}}catch(e){console.error("dict load from supabase error:",e)}
+useEffect(()=>{if(!supabase)return;(async()=>{try{const{data,error:dErr}=await supabase.from("dictionary").select("from_text,to_text").order("created_at",{ascending:false});if(!dErr&&Array.isArray(data)){/* 読み込みに成功したら Supabase＋最新の既定辞書を正とし、端末にしかない組は外して一度だけ表示する。失敗時は端末の辞書に触らない */let raw=[];try{raw=JSON.parse(localStorage.getItem("mk_dict")||"[]")||[]}catch{}const r=reconcileDict(data.map(x=>[x.from_text,x.to_text]),raw);setDict(r.merged);try{localStorage.setItem("mk_dict",JSON.stringify(r.merged))}catch{}if(r.removed.length)notePurgedDict(r.removed)}else if(dErr){console.error("dict load from supabase error(端末の辞書はそのまま):",dErr)}}catch(e){console.error("dict load from supabase error:",e)}
 // ノイズパターンをSupabaseから読み込む
 try{const{data:npData,error:npErr}=await supabase.from("noise_patterns").select("pattern").order("created_at",{ascending:false});if(!npErr&&Array.isArray(npData)){/* 読み込みに成功したら0件でも Supabase を正として端末の一覧を置き換える（旧: 1件以上のときだけ上書きし、0件だと端末の古い一覧が残っていた） */const c=cleanNoisePatterns(npData.map(r=>r.pattern));let localOnly=[];try{const sbSet=new Set(npData.map(r=>String(r.pattern||"").trim()));localOnly=(JSON.parse(localStorage.getItem("mk_noisePatterns")||"[]")||[]).map(p=>String(p||"").trim()).filter(p=>p&&!sbSet.has(p)).map(p=>({p,reason:"Supabase の一覧にない（ほかの端末で削除済み・または未同期）"}))}catch{}setNoisePatterns(c.kept);if(c.removed.length||localOnly.length)notePurgedNoise([...c.removed,...localOnly]);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(c.kept))}catch{}}else if(npErr){console.error("noise_patterns load error(端末の一覧はそのまま):",npErr)}}catch(e){console.error("noise_patterns load error:",e)}
 loadTodayStats();
@@ -4791,6 +4799,13 @@ const globalOverlays=(<>
 <div style={{marginBottom:6}}>この端末に残っていた登録語のうち、次の語を外しました。書き起こしの大事な部分まで消す危険がある語（登録時と同じ基準）と、Supabase の一覧にない語です。必要なら 設定 ▸ 書き起こしノイズフィルター から登録し直してください。</div>
 <ul style={{margin:"0 0 8px 16px",padding:0,maxHeight:160,overflow:"auto"}}>{noisePurged.map((r,i)=><li key={i}>「{r.p}」— {r.reason}</li>)}</ul>
 <button onClick={closeNoisePurged} style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#f59e0b",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>確認しました</button>
+</div>}
+{/* 端末の辞書の突き合わせで外れた組（一度だけ表示） */}
+{dictPurged.length>0&&<div data-dict-purged="1" style={{position:"fixed",bottom:16,left:16,zIndex:100002,maxWidth:440,background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:12,padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,.18)",fontSize:12,color:"#1e3a8a"}}>
+<div style={{fontWeight:700,marginBottom:4}}>📖 この端末の辞書から{dictPurged.length}組を外しました</div>
+<div style={{marginBottom:6}}>辞書は Supabase と最新の既定辞書を正にしました。この端末にだけ残っていた次の組を外しています。必要なら 辞書 から登録し直してください。</div>
+<ul style={{margin:"0 0 8px 16px",padding:0,maxHeight:200,overflow:"auto"}}>{dictPurged.map((r,i)=><li key={i}>「{r.f}→{r.t}」— {r.reason}</li>)}</ul>
+<button onClick={closeDictPurged} style={{padding:"4px 12px",borderRadius:8,border:"none",background:"#3b82f6",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>確認しました</button>
 </div>}
 {/* コピー結果（全コピー箇所共通・モーダル表示中も見えるよう最前面） */}
 <div data-copy-fb="1" style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:100001,pointerEvents:"none"}}><BtnFb k="copy"/></div>
