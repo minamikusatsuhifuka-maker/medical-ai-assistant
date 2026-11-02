@@ -813,8 +813,10 @@ ${rows}あるので、**検索ボックスに疾患名を入れて**絞り込ん
 // 2026-08-25 院長要望: Gemini 2.5 Pro(gemini-pro) と Claude Sonnet 4.6(claude) を選択肢から削除。
 // ※ どちらも「要約テストラボ」(labModels)からは引き続き呼ばれるため、APIルート側の経路は残してある。
 const SUMMARY_MODEL_OPTIONS=[
-  {v:"gemini",label:"Gemini 3.6 Flash ✨",desc:"応答が速く安定（推奨）"},
-  {v:"gemini-3-7-flash",label:"Gemini 3.7 Flash",desc:"最新・記載はやや丁寧／待ち時間が不安定"},
+  // 表示名は gemini-models.js の並びから作る（2026-11-02 §5）。v（中のキー）は変えない:
+  //   gemini … EXAM_SUMMARY_MODELS（3.6 先頭・8/14 の判断のまま）／gemini-3-7-flash … GEMINI_MODELS（3.8 先頭。3.7 を指定しても実体は 3.8）
+  {v:"gemini",label:EXAM_PRIMARY_LABEL+" ✨",desc:"応答が速く安定（推奨）"},
+  {v:"gemini-3-7-flash",label:COMMON_PRIMARY_LABEL,desc:"記載はやや丁寧／待ち時間が不安定"},
 ];
 const DEFAULT_SUMMARY_MODEL="gemini";
 const isValidSummaryModel=(v)=>SUMMARY_MODEL_OPTIONS.some(o=>o.v===v);
@@ -4418,7 +4420,7 @@ setUsageGuide(d.summary||"");
 }catch(e){setUsageGuide("エラー: "+e.message)}
 finally{setUsageGuideLd(false)}
 };
-// ---- 診察要約の共通部品（通常要約と 3.6/3.7 比較モードで共用。要約ロジックを二重に持たないため）----
+// ---- 診察要約の共通部品（通常要約と 3.6/3.8 比較モードで共用。要約ロジックを二重に持たないため）----
 const EXAM_FORBIDDEN_RULES="\n\n【絶対禁止】以下は一切出力しないこと：音声認識の精度が〜、断片的な情報から〜、再録音をお願いします、把握が困難、推定します、※で始まる注釈、**で囲まれた注意書き、カルテ要約以外の説明文やコメント\n\n【入力の扱い】書き起こしには音声認識の誤変換や、診療と無関係な文（広告文・キャッチコピー・製品コード/型番の羅列・意味不明な繰り返し）が混入することがある。診療会話として文脈が通らないそれらの断片はカルテに反映せず無視する";
 // 薬剤名ルール・疾患見出し書式ルールは診察SOAP/処置系のみ（カウンセリング・議事録には入れない）
 const buildExamPrompt=()=>ct.prompt+EXAM_FORBIDDEN_RULES+(ct.id==="counseling-std"?"":DRUG_NAME_PROMPT_RULES+DISEASE_HEADING_PROMPT_RULES);
@@ -4458,10 +4460,12 @@ const sum=async(tx)=>{
   sumPendingRef.current=null;
   if(p&&p!==sumInputRef.current)await sum(p);
 };
-// ---- 3.6 / 3.7 同時実行・並列比較（診察のみ・明示ボタンからのみ実行）----
+// ---- 3.6 / 3.8 同時実行・並列比較（診察のみ・明示ボタンからのみ実行）----
 // 同じ書き起こし・同じプロンプトで2モデルを並列に走らせ、初回応答/完了時間と本文を並べて出す。
 // 採用するまで履歴には保存しない（比較のたびに履歴が2件増えるのを防ぐ）。
-const AB_SUM_MODELS=[{key:"gemini-3-6-flash",label:"Gemini 3.6 Flash"},{key:"gemini-3-7-flash",label:"Gemini 3.7 Flash"}];
+const AB_SUM_MODELS=[{key:"gemini-3-6-flash",label:"Gemini 3.6 Flash"},{key:"gemini-3-7-flash",label:COMMON_PRIMARY_LABEL}]; // 2 つめの中は 3.7 指定（実体は共通の先頭＝3.8）
+const abShort=(l)=>String(l||"").replace(/^Gemini /,"").replace(/ Flash$/,"");
+const AB_SUM_TITLE=AB_SUM_MODELS.map(m=>abShort(m.label)).join(" / ");
 const runAbSum=async()=>{
   const t=(iR.current||"");
   if(!examTextGuard(t,"abSum"))return;
@@ -4470,7 +4474,7 @@ const runAbSum=async()=>{
   const enhancedPrompt=buildExamPrompt();
   setAbSum({running:true,results:Object.fromEntries(AB_SUM_MODELS.map(m=>[m.key,{label:m.label,text:"",ttft:null,total:null,err:"",done:false}]))});
   btnFbSet("abSum","run","2モデルで要約中…");
-  sSt("⚖ Gemini 3.6 / 3.7 を同時実行して比較中...");
+  sSt("⚖ Gemini "+AB_SUM_TITLE+" を同時実行して比較中...");
   const patch=(key,upd)=>setAbSum(p=>p?{...p,results:{...p.results,[key]:{...p.results[key],...upd}}}:p);
   const one=async(m)=>{
     const t0=performance.now();
@@ -8016,7 +8020,7 @@ const fn=actions[sc.id];if(fn)fn();
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
 <button onClick={()=>sum()} disabled={ld||sumRunning||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button><BtnFb k="sum"/>
-<button onClick={runAbSum} disabled={ld||!inp.trim()||!!abSum?.running} title="同じ書き起こしで Gemini 3.6 と 3.7 を同時に走らせ、速度と内容を並べて比較します" onMouseEnter={e=>showTip(e,"3.6と3.7を同時実行して比較")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${C.p}55`,background:abSum?.running?C.g100:"#eef7e2",color:abSum?.running?C.g400:"#3a6820",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(ld||!inp.trim()||abSum?.running)?"default":"pointer",opacity:!inp.trim()?0.4:1,whiteSpace:"nowrap",height:mob?44:undefined}}>{abSum?.running?"⏳ 比較中...":"⚖ 3.6/3.7 比較"}</button><BtnFb k="abSum"/>
+<button onClick={runAbSum} disabled={ld||!inp.trim()||!!abSum?.running} title={"同じ書き起こしで Gemini "+AB_SUM_MODELS.map(m=>abShort(m.label)).join(" と ")+" を同時に走らせ、速度と内容を並べて比較します"} onMouseEnter={e=>showTip(e,AB_SUM_MODELS.map(m=>abShort(m.label)).join("と")+"を同時実行して比較")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${C.p}55`,background:abSum?.running?C.g100:"#eef7e2",color:abSum?.running?C.g400:"#3a6820",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(ld||!inp.trim()||abSum?.running)?"default":"pointer",opacity:!inp.trim()?0.4:1,whiteSpace:"nowrap",height:mob?44:undefined}}>{abSum?.running?"⏳ 比較中...":"⚖ "+AB_SUM_MODELS.map(m=>abShort(m.label)).join("/")+" 比較"}</button><BtnFb k="abSum"/>
 {inp.trim()&&<button onClick={()=>manualClean(inp,(c)=>{sInp(c);iR.current=c},"inp")} disabled={cleaningTx} title="書き起こしを補正（捏造除去・用語補正）" onMouseEnter={e=>showTip(e,"書き起こしを補正（捏造除去・用語補正）")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:14,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer",whiteSpace:"nowrap",height:mob?44:undefined}}>{cleaningTx?(cleanProg&&cleanProg.total>1?`⏳${cleanProg.cur}/${cleanProg.total}`:"⏳"):"✨補正"}</button>}{undoCleanBtn("inp")}<BtnFb k="clean:inp"/>
 <button onClick={()=>{if((inp.trim()||out.trim())&&!window.confirm("書き起こし・要約を保存せずに破棄します。よろしいですか？"))return;saveUndo();sInp("");sOut("");sSt("クリアしました")}} title="書き起こし・要約を破棄してクリア" onMouseEnter={e=>showTip(e,"書き起こし・要約を破棄してクリア")} onMouseLeave={hideTip} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>🗑</button>
 <button onClick={undo} title="要約を元に戻す" onMouseEnter={e=>showTip(e,"要約を元に戻す")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35,minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>↩</button>
@@ -8044,10 +8048,10 @@ const fn=actions[sc.id];if(fn)fn();
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}
 </div>}
 </div>
-{/* ⚖ 3.6/3.7 比較モード: 表示中は通常の要約欄を隠して2カラム（モバイルは上下2段）で並べる */}
+{/* ⚖ 3.6/3.8 比較モード（2 つめは 3.7 指定・実体は 3.8）: 表示中は通常の要約欄を隠して2カラム（モバイルは上下2段）で並べる */}
 {abSum&&<div style={{marginBottom:8,padding:10,borderRadius:12,border:`1.5px solid ${C.p}55`,background:"#fbfdf7"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-<span style={{fontSize:12,fontWeight:700,color:"#3a6820"}}>⚖ Gemini 3.6 / 3.7 比較{abSum.running&&"（実行中）"}</span>
+<span style={{fontSize:12,fontWeight:700,color:"#3a6820"}}>⚖ Gemini {AB_SUM_TITLE} 比較{abSum.running&&"（実行中）"}</span>
 <span style={{fontSize:10,color:C.g400}}>採用するまで履歴には保存されません</span>
 <button onClick={()=>{setAbSum(null);sSt("比較を閉じました")}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
 </div>
