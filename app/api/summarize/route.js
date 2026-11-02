@@ -103,7 +103,8 @@ function buildGeminiModelList(model_preference) {
   }
   // gemini-3-8-flash: 共通の順番（3.8 先頭）。2026-11-02 §3 でカウンセリング分析が送る（診察の既定は下の EXAM_SUMMARY_MODELS のまま）
   // "common" は名前にモデル番号を持たない共通の鍵（画面の内部キー）。先頭が変わっても画面を直さなくてよい
-  if (model_preference === "common" || model_preference === "gemini-3-8-flash") {
+  // claude: Claude の経路は削除した（2026-11-02）。古い画面から届いたら共通の順番で生成する
+  if (model_preference === "common" || model_preference === "gemini-3-8-flash" || model_preference === "claude") {
     return GEMINI_MODELS;
   }
   // gemini-3-7-flash: 3.7 を明示指定（診察の既定は下記のとおり 3.6 なので、試すときはこちらを選ぶ）
@@ -169,34 +170,6 @@ async function callGemini(text, prompt, model_preference) {
   throw new Error("Gemini全モデル失敗: " + lastError);
 }
 
-async function callClaude(text, prompt) {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) throw new Error("CLAUDE_API_KEY が設定されていません");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 16384,
-      temperature: 0.3,
-      system: prompt,
-      messages: [{ role: "user", content: text }],
-    }),
-  });
-  const data = await res.json();
-  if (data.content?.[0]?.text) return {
-    summary: data.content[0].text,
-    model: data.model || "claude-sonnet-4-6",
-    input_tokens: data.usage?.input_tokens || 0,
-    output_tokens: data.usage?.output_tokens || 0,
-  };
-  throw new Error("Claude応答エラー: " + JSON.stringify(data));
-}
-
 export async function POST(request) {
   let _model_preference_for_err = null;
   try {
@@ -206,23 +179,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "テキストが必要です" }, { status: 400 });
     }
     const finalPrompt = prompt || DEFAULT_PROMPT;
-    const useClaude = model_preference === "claude" || mode === "claude";
-
-    // Claude は常に非ストリーミング
-    // 2026-08-25: 診察の「🤖 要約AIモデル」からは Claude を選べなくしたため、この経路は
-    // 「要約テストラボ」(labModels に claude を含む)からのみ呼ばれる。診察要約からは到達しない。
-    // 将来また選択肢に戻す可能性があるため経路は残置。
-    if (useClaude) {
-      const r = await callClaude(text, finalPrompt);
-      const usage = await logUsage({
-        route: "/api/summarize",
-        model: r.model,
-        context: ctx || (model_preference === "claude" ? "claude" : null),
-        input_tokens: r.input_tokens, output_tokens: r.output_tokens,
-        request_meta: { char_length: text.length, model_preference },
-      });
-      return NextResponse.json({ summary: r.summary, model: "Claude Sonnet 4.6", usage });
-    }
+    // 2026-11-02: Claude Sonnet 4.6 は補充しない判断で、要約テストラボの選択肢からも外した。Claude の経路は削除。
+    // 古い画面が mode/model_preference に claude を送ってきても、下の Gemini（共通の順番）で生成する
 
     // Gemini ストリーミング（stream:true の場合のみ）
     if (useStream) {
