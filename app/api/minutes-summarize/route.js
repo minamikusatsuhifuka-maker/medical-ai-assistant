@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS } from "../../lib/gemini-models";
+import { GEMINI_MODELS, MINUTES_SUMMARY_MODELS } from "../../lib/gemini-models";
 
 // 対策1: maxDuration を 800秒に拡大（Vercel Pro上限）
 export const maxDuration = 800;
@@ -103,6 +103,10 @@ async function parallelWithLimit(items, worker, concurrency = 3) {
 async function callGeminiSingle(geminiModel, text, prompt, maxOutputTokens) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未設定");
+  // 検証用: 開発時だけ、指定したモデルをわざと失敗させてフォールバックを確かめる（本番では効かない）
+  if (process.env.NODE_ENV !== "production" && String(process.env.MINUTES_TEST_FAIL_MODELS || "").split(",").includes(geminiModel)) {
+    throw new Error(`${geminiModel}: 検証のため失敗させた`);
+  }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: "POST",
@@ -188,8 +192,16 @@ async function callClaude(text, prompt, maxTokens = 8192) {
   throw new Error("Claude応答エラー: " + JSON.stringify(data));
 }
 
-// 統一的モデル呼び出し（model パラメータで使い分け）
-async function callModel(model, text, prompt, maxOutputTokens) {
+// 統一的モデル呼び出し
+// 2026-11-02: 議事録は Gemini 3.8 Flash に固定。古い端末・古い画面が送る model（3.7/3.6/3.5/3.1 Pro/Claude 等）は
+// すべて MINUTES_SUMMARY_MODELS（3.8 → 3.7 → 3.6 → 3.5 → 2.5）に読み替える。used に実際に使ったモデルを集める
+async function callModel(model, text, prompt, maxOutputTokens, used) {
+  const result = await callGeminiList(MINUTES_SUMMARY_MODELS, text, prompt, maxOutputTokens);
+  if (used) used.add(result.model);
+  return result;
+}
+// 旧: model パラメータで使い分けていた版（参照用に残す・呼ばない）
+async function callModelLegacy(model, text, prompt, maxOutputTokens) {
   if (model === "claude") {
     return await callClaude(text, prompt, maxOutputTokens);
   }
@@ -214,14 +226,14 @@ async function callModel(model, text, prompt, maxOutputTokens) {
 }
 
 // チャンク要約（既存プロンプト維持）
-async function summarizeChunk(chunk, i, total, model) {
+async function summarizeChunk(chunk, i, total, model, used) {
   const chunkPromptText = CHUNK_PROMPT + FORBIDDEN_RULES + `\n\n（これは全${total}部のうち第${i + 1}部です）\n`;
-  const result = await callModel(model, chunk, chunkPromptText, 8192);
+  const result = await callModel(model, chunk, chunkPromptText, 8192, used);
   return result.summary;
 }
 
 // 対策3: 中間統合（グループ単位）
-async function midIntegrate(groupSummaries, groupIndex, totalGroups, model) {
+async function midIntegrate(groupSummaries, groupIndex, totalGroups, model, used) {
   const prompt = `以下は、長時間会議の書き起こしをチャンク分割して要約した結果の一部（グループ${groupIndex + 1}/${totalGroups}）です。
 この複数チャンクの要約を統合し、**このグループで議論された論点を網羅的にまとめた中間要約**を作成してください。
 
@@ -233,22 +245,26 @@ async function midIntegrate(groupSummaries, groupIndex, totalGroups, model) {
 5. Markdown記号（#, ##, ###, **, *）は使わず、見出しは「■」、箇条書きは「・」で整形すること。
 `;
   const input = `【チャンク要約群】\n${groupSummaries.join("\n\n---\n\n")}`;
-  const result = await callModel(model, input, prompt, 16384);
+  const result = await callModel(model, input, prompt, 16384, used);
   return result.summary;
 }
 
 // 最終統合
-async function finalIntegrate(finalInput, model, additionalInstruction) {
+async function finalIntegrate(finalInput, model, additionalInstruction, used) {
   const userPrefix = additionalInstruction ? additionalInstruction + "\n\n" : "";
   const finalPromptText = userPrefix + FINAL_PROMPT + FORBIDDEN_RULES;
-  return await callModel(model, finalInput, finalPromptText, 32768);
+  return await callModel(model, finalInput, finalPromptText, 32768, used);
 }
 
 export async function POST(request) {
   const startTime = Date.now();
   try {
     const { text, prompt, model: reqModel } = await request.json();
-    const model = reqModel || "gemini-3-7-flash"; // デフォルトは Gemini 3.7 Flash（2026-08 移行）
+    const model = "gemini-3-8-flash"; // 2026-11-02 Gemini 3.8 Flash に固定（reqModel は古い端末互換のため受けるが使わない）
+    void reqModel;
+    const used = new Set(); // 実際に生成したモデル（チャンク・最終統合のすべて）
+    const primary = MINUTES_SUMMARY_MODELS[0];
+    const usedInfo = () => { const models = [...used]; return { models, fallback: models.some((m) => m !== primary) }; };
     if (!text || !text.trim()) {
       return Response.json({ error: "テキストが必要です" }, { status: 400 });
     }
@@ -257,7 +273,7 @@ export async function POST(request) {
     if (text.length <= CHUNK_SIZE) {
       const userPrefix = prompt ? prompt + "\n\n" : "";
       const singlePrompt = userPrefix + FINAL_PROMPT.replace("【各チャンクの要約】", "【書き起こし】") + FORBIDDEN_RULES;
-      const result = await callModel(model, text, singlePrompt, 32768);
+      const result = await callModel(model, text, singlePrompt, 32768, used);
       const truncated = result.finishReason && result.finishReason !== "STOP";
       console.log(`[minutes-summarize] single done: input=${text.length}chars, output=${result.summary.length}chars, finishReason=${result.finishReason}, totalElapsed=${Date.now() - startTime}ms`);
       if (truncated) {
@@ -266,6 +282,7 @@ export async function POST(request) {
       return Response.json({
         summary: result.summary,
         model: result.model,
+        ...usedInfo(),
         chunks: 1,
         truncated: !!truncated,
         finishReason: result.finishReason,
@@ -289,7 +306,7 @@ export async function POST(request) {
 
     const chunkResults = await parallelWithLimit(chunks, async (chunk, i) => {
       const t0 = Date.now();
-      const summary = await summarizeChunk(chunk, i, chunks.length, model);
+      const summary = await summarizeChunk(chunk, i, chunks.length, model, used);
       console.log(`[minutes-summarize] chunk ${i + 1}/${chunks.length} done: input=${chunk.length}chars, output=${summary.length}chars, elapsed=${Date.now() - t0}ms`);
       return summary;
     }, 3);
@@ -319,7 +336,7 @@ export async function POST(request) {
       // 各グループを中間統合（並列・同時2）
       const midResults = await parallelWithLimit(groups, async (group, gi) => {
         const t0 = Date.now();
-        const midSummary = await midIntegrate(group, gi, groups.length, model);
+        const midSummary = await midIntegrate(group, gi, groups.length, model, used);
         console.log(`[minutes-summarize] mid-group ${gi + 1}/${groups.length} done: input_chunks=${group.length}, output=${midSummary.length}chars, elapsed=${Date.now() - t0}ms`);
         return midSummary;
       }, 2);
@@ -339,13 +356,13 @@ export async function POST(request) {
 
     // 対策4: 最終統合（エラー時はチャンク要約連結にフォールバック）
     let finalSummary;
-    let finalModelName = model;
+    let finalModelName = primary;
     let finishReason = "STOP";
     let finalIntegrationFailed = false;
     let finalIntegrationError = null;
 
     try {
-      const finalResult = await finalIntegrate(finalInput, model, prompt);
+      const finalResult = await finalIntegrate(finalInput, model, prompt, used);
       finalSummary = finalResult.summary;
       finalModelName = finalResult.model;
       finishReason = finalResult.finishReason;
@@ -358,7 +375,7 @@ export async function POST(request) {
       finalIntegrationFailed = true;
       finalIntegrationError = err?.message || String(err);
       // フォールバック: チャンク要約を連結した暫定版
-      finalSummary = `■ ⚠️ 最終統合でエラーが発生しました\n\n最終的な統合処理に失敗したため、各チャンクの要約をそのまま連結したものを表示しています。\nGemini 2.5 Pro や Claude Sonnet 4.6 に切り替えて再生成するか、書き起こしのみ保存してください。\n\nエラー: ${finalIntegrationError}\n\n--------\n\n${chunkSummaries.join("\n\n--------\n\n")}`;
+      finalSummary = `■ ⚠️ 最終統合でエラーが発生しました\n\n最終的な統合処理に失敗したため、各チャンクの要約をそのまま連結したものを表示しています。\nもう一度作成するか、書き起こしのみ保存してください。\n\nエラー: ${finalIntegrationError}\n\n--------\n\n${chunkSummaries.join("\n\n--------\n\n")}`;
     }
 
     const truncated = finalIntegrationFailed || (finishReason !== "STOP");
@@ -366,6 +383,7 @@ export async function POST(request) {
     return Response.json({
       summary: finalSummary,
       model: finalModelName,
+      ...usedInfo(),
       chunks: chunks.length,
       truncated: !!truncated,
       finishReason: finalIntegrationFailed ? "ERROR" : finishReason,

@@ -12,7 +12,7 @@ export const GEMINI_MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.
 // 廃番疑いが出たら、人が判断してこのファイルのモデル名を更新する（1ファイルで全ルートに反映）。
 // ※3.5-flash-lite は診察Lite撤去（複数疾患SOAP分離不可）に伴い監視対象から除外（使わないモデルの監視は不要）。
 // ※2.5-pro は GEMINI_MODELS から外したが、選好「gemini-pro」で今も呼ぶため監視対象には残す。
-export const ACTIVE_MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+export const ACTIVE_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
 // 一部ルートが選好「gemini-3-pro」で使うプレビュー版。提供が流動的なので廃番警告は控えめに扱う（参考情報）。
 export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"];
 
@@ -23,6 +23,12 @@ export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"]
 // 出力品質は 3.7 の方がやや良いが、要約は診療の律速なので待ち時間のブレを優先して回避する。
 // 3.7 の応答が安定したら、この定数を GEMINI_MODELS に戻すだけで切り替わる（院長判断待ち）。
 export const EXAM_SUMMARY_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+
+// 議事録の要約だけは Gemini 3.8 Flash に固定（2026-11-02 指示書 minutes-model-3-8-only）。画面の選択肢は無くした。
+// 自動フォールバックは 3.8 → 3.7 → 3.6 の順で残し、その後ろに従来の 3.5 → 2.5 を付けて全滅を避ける。
+// 実測（2026-11-02・本番APIキー）: gemini-3.8-flash は 200（thinkingLevel low は可・minimal は 400）。
+//   なお gemini-3.7-flash を指定しても応答の modelVersion は gemini-3.8-flash だった（Google 側で 3.7 が 3.8 を指している）。
+export const MINUTES_SUMMARY_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
 
 // ---- thinkingLevel の分岐（モデル世代ごとにサポート値が違う） ----
 // 実測（2026-08-14・本番APIキー）:
