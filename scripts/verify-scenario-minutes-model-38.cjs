@@ -43,6 +43,8 @@ const TEXT = "それでは朝礼を始めます。来週の月曜日から受付
   for (const old of ["Gemini 3.7 Flash ✨", "Gemini 3.1 Pro", "Claude Sonnet 4.6", "Gemini 3.5 Flash", "Gemini 3.6 Flash"]) {
     assert(await page.locator("button:visible", { hasText: old }).count() === 0 || !(await section.innerText()).includes(old), `議事録の選択肢「${old}」は出ない`);
   }
+  const head = await page.locator("h2", { hasText: "📝 議事録まとめ" }).locator("xpath=..").innerText();
+  assert(head.includes("Gemini 3.8 Flash") && !head.includes("3.7"), "見出しの横も Gemini 3.8 Flash（古い 3.7 の表示が無い）");
   assert(await page.evaluate(() => localStorage.getItem("mk_minutesModel")) === null, "古い設定 mk_minutesModel=claude は消える（読み替えて開ける）");
 
   console.log(`--- [${MODE}] 議事録を作る ---`);
