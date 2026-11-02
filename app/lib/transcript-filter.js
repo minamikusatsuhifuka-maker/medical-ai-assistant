@@ -54,6 +54,18 @@ export const PHRASE_RULES = [
   ["P43", /お大事に/],
   ["P44", /お元気で/],
 ];
+// ① 動画の決まり文句（2026-11-02 追加・指示書 minutes-silence-hallucination §2）。語単体ではなく句で判定する
+// 無音のチャンクで Whisper が出す。同じ文にこの系統が複数あれば（「購読していいねとコメントお願いします」）まとめて
+// 取り除き、残りが敬語の語尾とお礼（ありがとうございます）だけならその文を消す。「ご覧ください」「登録」単体は足さない
+export const VIDEO_PHRASE_RULES = [
+  ["P45", /最後まで(?:ご)?視聴(?:して)?(?:くださって|下さって|くれて|いただいて|頂いて|いただき|頂き|くださり|下さり)?/],
+  ["P46", /最後までご覧(?:いただき|頂き|くださり|下さり|いただいて|頂いて|くださって|下さって)/],
+  ["P47", /次(?:の|回の)動画で(?:また|しばらく|も)?(?:お)?会い(?:しましょう|ましょう)/],
+  ["P48", /(?:チャンネル(?:を|の)?)?購読して(?:ください|くださいね|ね)?/],
+  ["P49", /いいね(?:と|や|、)?コメント(?:を|も)?(?:よろしく)?/],
+  ["P50", /高評価(?:と|や|、)?チャンネル登録(?:を)?(?:よろしく)?/],
+];
+const VIDEO_THANKS = /(?:本当に)?(?:ありがとう|有難う|有り難う)(?:ございま(?:す|した)|御座いま(?:す|した))?/g;
 // ① の「残り」として許すもの: 空白・句読点・記号と、敬語・終助詞の語尾だけ
 const PUNCT = /[\s、。，．,.！!？?…・ー〜~「」『』（）()]/g;
 const ALLOWED_REST = /^(?:お願いいたします|お願いします|いたします|します|して|ください|くださいね|ございます|ございました|です|でした|ます|ました|ね|よ|な|ぁ|ねぇ)*$/;
@@ -107,7 +119,19 @@ export function splitSentences(text) {
   return out.filter((x) => x.s || x.sep);
 }
 
+const gRe = (re) => new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+// 動画の決まり文句だけの文なら、その番号（P45〜）を返す。page.js 側（filterNoiseCore）でも使う
+export const matchVideoPhrase = (s) => {
+  const hit = VIDEO_PHRASE_RULES.find(([, re]) => re.test(s));
+  if (!hit) return null;
+  let rest = s;
+  for (const [, re] of VIDEO_PHRASE_RULES) rest = rest.replace(gRe(re), "");
+  rest = rest.replace(VIDEO_THANKS, "").replace(PUNCT, "");
+  return ALLOWED_REST.test(rest) ? hit[0] : null;
+};
 const matchPhrase = (s) => {
+  const v = matchVideoPhrase(s);
+  if (v) return v;
   for (const [id, re] of PHRASE_RULES) {
     if (!re.test(s)) continue;
     const rest = s.replace(new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"), "").replace(PUNCT, "");

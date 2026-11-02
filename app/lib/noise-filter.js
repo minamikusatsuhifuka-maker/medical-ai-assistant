@@ -3,10 +3,11 @@
 //   - 組み込み7件（動画配信の定型句）: その語を含む「文」だけを消す（旧: 行=チャンクごと破棄）
 //   - 利用者が登録したノイズ語: その「語」だけを取り除き、文の残りは必ず残す。
 //     取り除いた結果が句読点・空白だけになった文に限り、その文を消す
+//   - 動画の決まり文句（transcript-filter の ① P45〜P50）は文ごと消す（2026-11-02 追加）
 //   - 行（チャンク）ごと消すことはしない
 //   - 記録はパターン番号と文字数のみ（本文・登録語そのものは返さない）
 //   - 例外時の fail-open は呼び出し側（page.js）が担う
-import { splitSentences } from "./transcript-filter.js";
+import { splitSentences, matchVideoPhrase } from "./transcript-filter.js";
 
 export const BUILTIN_NOISE_RULES = [
   ["N1", /次の映像でお会いしましょう/],
@@ -34,6 +35,9 @@ export function filterNoiseCore(text, registered = []) {
       if (s) {
         const hit = BUILTIN_NOISE_RULES.find(([, re]) => re.test(s));
         if (hit) { dropped.push({ rule: hit[0], len: s.length }); continue; }
+        // 動画の決まり文句（①の P45〜P50 と同じ判定）。Avalon・Gemini はサーバのフィルタを通らないため、ここでも見る
+        const video = matchVideoPhrase(s);
+        if (video) { dropped.push({ rule: video, len: s.length }); continue; }
         for (const w of words) {
           if (!s.includes(w)) continue;
           const before = s.length;
