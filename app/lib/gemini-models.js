@@ -1,8 +1,19 @@
 // 要約・校正・生成系ルートで共通利用するGeminiモデルのフォールバック順。
-// 2026-08: gemini-3.7-flash を第一候補に更新（2026-07は3.6-flash）。
+// 2026-11-02: gemini-3.8-flash を先頭に（2026-08〜は3.7、2026-07は3.6）。
+//   実測で gemini-3.7-flash を指定しても応答は gemini-3.8-flash（Google 側の別名）。3.8→3.7 は同じモデルへの切り替えで、
+//   フォールバックとして別のモデルになるのは 3.6 から。3.7 は残すが「3.7 に落ちれば安全」とは考えない。
 // 旧 gemini-2.0-flash は無効化されたため使用しない。
-// ※二重管理を避けるため、モデル変更はこの1ファイルのみで行う。
-export const GEMINI_MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+// ※二重管理を避けるため、モデル変更はこの1ファイルのみで行う。画面の表示名は app/lib/model-labels.js がここから作る。
+export const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+
+// 検証用: 開発時だけ、環境変数 GEMINI_TEST_FAIL_MODELS（カンマ区切り）に書いたモデルをわざと失敗させる。
+// 3.8・3.7 を両方失敗させて 3.6 に届くかを確かめるため。NODE_ENV=production では常に false（本番では効かない）。
+// 旧名 MINUTES_TEST_FAIL_MODELS も受ける。
+export function geminiTestFail(model) {
+  if (process.env.NODE_ENV === "production") return false;
+  const list = String(process.env.GEMINI_TEST_FAIL_MODELS || process.env.MINUTES_TEST_FAIL_MODELS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return list.includes(model);
+}
 
 // 定期チェック（gemini-model-check）の照合対象。このアプリが要約系で実際に呼ぶ「安定版」モデル。
 // 廃番検知は ListModels の結果とこのリストを照合する。
@@ -28,7 +39,8 @@ export const EXAM_SUMMARY_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gem
 // 自動フォールバックは 3.8 → 3.7 → 3.6 の順で残し、その後ろに従来の 3.5 → 2.5 を付けて全滅を避ける。
 // 実測（2026-11-02・本番APIキー）: gemini-3.8-flash は 200（thinkingLevel low は可・minimal は 400）。
 //   なお gemini-3.7-flash を指定しても応答の modelVersion は gemini-3.8-flash だった（Google 側で 3.7 が 3.8 を指している）。
-export const MINUTES_SUMMARY_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
+// 2026-11-02 の §1 で共通の順番（GEMINI_MODELS）も 3.8 先頭になったので、同じものを指す
+export const MINUTES_SUMMARY_MODELS = GEMINI_MODELS;
 
 // ---- thinkingLevel の分岐（モデル世代ごとにサポート値が違う） ----
 // 実測（2026-08-14・本番APIキー）:
@@ -65,6 +77,7 @@ export function applyThinking(genConfig, model) {
 export async function callGeminiWithFallback(apiKey, requestBody, logLabel = "gemini") {
   let lastErr = "";
   for (const model of GEMINI_MODELS) {
+    if (geminiTestFail(model)) { lastErr = `${model}: 検証のため失敗させた`; console.error(`[${logLabel}] Gemini error:`, lastErr); continue; }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
       method: "POST",

@@ -64,7 +64,7 @@ function buildGeminiModelList(model_preference) {
   if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
   if (model_preference === "gemini-pro") return ["gemini-2.5-pro", ...GEMINI_MODELS];
   if (model_preference === "gemini-3-5-flash") return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
-  // デフォルト: gemini-models.js の GEMINI_MODELS（2026-08 時点は 3.7 Flash 優先）
+  // デフォルト: gemini-models.js の GEMINI_MODELS（先頭のモデルは gemini-models.js を参照）
   return GEMINI_MODELS;
 }
 

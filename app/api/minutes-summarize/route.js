@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, MINUTES_SUMMARY_MODELS } from "../../lib/gemini-models";
+import { GEMINI_MODELS, MINUTES_SUMMARY_MODELS, geminiTestFail } from "../../lib/gemini-models";
 
 // 対策1: maxDuration を 800秒に拡大（Vercel Pro上限）
 export const maxDuration = 800;
@@ -104,7 +104,7 @@ async function callGeminiSingle(geminiModel, text, prompt, maxOutputTokens) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY 未設定");
   // 検証用: 開発時だけ、指定したモデルをわざと失敗させてフォールバックを確かめる（本番では効かない）
-  if (process.env.NODE_ENV !== "production" && String(process.env.MINUTES_TEST_FAIL_MODELS || "").split(",").includes(geminiModel)) {
+  if (geminiTestFail(geminiModel)) {
     throw new Error(`${geminiModel}: 検証のため失敗させた`);
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
@@ -221,7 +221,7 @@ async function callModelLegacy(model, text, prompt, maxOutputTokens) {
   if (model === "gemini-3-7-flash") {
     return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
   }
-  // デフォルト（gemini-flash 等の既存互換キー含む）: gemini-models.js の GEMINI_MODELS（2026-08 時点は 3.7 Flash 優先）
+  // デフォルト（gemini-flash 等の既存互換キー含む）: gemini-models.js の GEMINI_MODELS（先頭のモデルは gemini-models.js を参照）
   return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
 }
 

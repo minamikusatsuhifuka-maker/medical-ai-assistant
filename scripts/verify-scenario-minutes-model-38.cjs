@@ -3,6 +3,7 @@
 // 実行: node scripts/verify-scenario-minutes-model-38.cjs <BASE_URL> <mode>
 //   mode=real     … /api/minutes-summarize は本物（Gemini を実際に呼ぶ）。3.8 で生成され、フォールバックの表示が出ない
 //   mode=fallback … 本物を呼ぶ。dev を MINUTES_TEST_FAIL_MODELS=gemini-3.8-flash で起動しておく → 3.7 で生成・表示が出る
+//   （3.8・3.7 を両方失敗させたときは EXPECT_FB="Gemini 3.6 Flash" を付けて fallback で流す）
 //   mode=mockfb   … 応答をモック（3.7 で生成した形）して表示だけ確かめる（本番エイリアス用）
 //   Supabase は全モック（議事録の行は作らない）
 let pw;
@@ -10,6 +11,7 @@ try { pw = require("playwright"); }
 catch { pw = require("/Users/tpjatpja/.npm/_npx/e41f203b7505f1fb/node_modules/playwright"); }
 const BASE = process.argv[2] || "http://localhost:3100";
 const MODE = process.argv[3] || "real";
+const FB = process.env.EXPECT_FB || "Gemini 3.7 Flash"; // フォールバックで期待するモデルの表示名
 function assert(cond, msg) { if (!cond) throw new Error("ASSERT FAILED: " + msg); console.log("  ✓ " + msg); }
 const TEXT = "それでは朝礼を始めます。来週の月曜日から受付の順番を変えます。在庫の確認は木曜日に田中さんがします。新しい予約の仕組みは来月から試します。以上です。";
 
@@ -60,8 +62,8 @@ const TEXT = "それでは朝礼を始めます。来週の月曜日から受付
     assert(bt.includes("Gemini 3.8 Flash"), "3.8 で生成された（見出しのモデル表示）");
     assert(await fb.count() === 0, "フォールバックの表示は出ない");
   } else {
-    assert(bt.includes("Gemini 3.7 Flash"), "3.7 で生成された（見出しのモデル表示）");
-    assert(await fb.count() === 1 && (await fb.innerText()).includes("Gemini 3.8 Flash が使えず Gemini 3.7 Flash で生成"), "画面に「Gemini 3.8 Flash が使えず Gemini 3.7 Flash で生成」が出る");
+    assert(bt.includes(FB), `${FB} で生成された（見出しのモデル表示）`);
+    assert(await fb.count() === 1 && (await fb.innerText()).includes(`Gemini 3.8 Flash が使えず ${FB} で生成`), `画面に「Gemini 3.8 Flash が使えず ${FB} で生成」が出る`);
   }
   const out = await page.locator("textarea").evaluateAll((els) => els.map((e) => e.value).find((v) => v.includes("【議事録】") || v.includes("■")) || "");
   assert(out.length > 20, `議事録の本文が出ている（${out.length}字）`);
