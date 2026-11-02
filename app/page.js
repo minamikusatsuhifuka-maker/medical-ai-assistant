@@ -7,7 +7,7 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { filterNoiseCore, repeatChunkCheck, REPEAT_CHUNK_WINDOW } from "./lib/noise-filter";
-import { COMMON_PRIMARY_MODEL, COMMON_PRIMARY_LABEL, EXAM_PRIMARY_LABEL, chainLabel, CLAUDE_AVAILABLE, CLAUDE_UNAVAILABLE_NOTE, friendlyModelError } from "./lib/model-labels";
+import { COMMON_PRIMARY_MODEL, COMMON_PRIMARY_LABEL, EXAM_PRIMARY_LABEL, chainLabel, friendlyModelError } from "./lib/model-labels";
 import { buildDictMatcher, applyDictSafe, applyDictOnce } from "./lib/dict-apply";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
@@ -811,7 +811,7 @@ ${rows}あるので、**検索ボックスに疾患名を入れて**絞り込ん
 // === MAIN COMPONENT ===
 // 診察の「🤖 要約AIモデル」で選べるモデル。UIとlocalStorageの検証で同じ定義を使う（二重管理を作らない）。
 // 2026-08-25 院長要望: Gemini 2.5 Pro(gemini-pro) と Claude Sonnet 4.6(claude) を選択肢から削除。
-// ※ どちらも「要約テストラボ」(labModels)からは引き続き呼ばれるため、APIルート側の経路は残してある。
+// 2026-11-02: 要約テストラボからも Claude を外し、/api/summarize の Claude の経路は削除した（補充しない判断）。
 const SUMMARY_MODEL_OPTIONS=[
   // 表示名は gemini-models.js の並びから作る（2026-11-02 §5）。v（中のキー）は変えない:
   //   gemini … EXAM_SUMMARY_MODELS（3.6 先頭・8/14 の判断のまま）／gemini-3-7-flash … GEMINI_MODELS（3.8 先頭。3.7 を指定しても実体は 3.8）
@@ -1561,9 +1561,10 @@ const toggleJourneyModel=(m)=>{
 // 要約テストラボ（4モデル並列比較）
 const[labText,setLabText]=useState("");
 const[labTemplate,setLabTemplate]=useState("free");
-// 要約テストラボの選択肢（2026-11-02 §4: 3.8 Flash / 3.6 Flash / Claude Sonnet 4.6。3.1 Pro・3.5・2.5 Pro は外した）
+// 要約テストラボの選択肢（2026-11-02: 3.8 Flash / 3.6 Flash の2つ。3.1 Pro・3.5・2.5 Pro・Claude Sonnet 4.6 は外した）
+// Claude は補充しない院長の判断（exam-model-decision 追加）。古い端末に残った claude の選択は読み込みで外す
 // gemini-3-8-flash は /api/summarize で共通の順番（GEMINI_MODELS）、gemini-3-6-flash は 3.6 → 3.5 → 2.5
-const LAB_MODEL_OPTIONS=["gemini-3-8-flash","gemini-3-6-flash","claude"];
+const LAB_MODEL_OPTIONS=["gemini-3-8-flash","gemini-3-6-flash"];
 const[labModels,setLabModels]=useState(LAB_MODEL_OPTIONS);
 const[labResults,setLabResults]=useState([]);
 const[labBusy,setLabBusy]=useState(false);
@@ -1647,7 +1648,7 @@ const renderTitleEditor=(item,opts)=>{
 };
 useEffect(()=>{try{
   const s=localStorage.getItem("mk_labModels");
-  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>LAB_MODEL_OPTIONS.includes(x));if(valid.length>0)setLabModels(valid);else{/* 古い選択（3.1 Pro・3.5 等）だけなら既定に戻す */setLabModels(LAB_MODEL_OPTIONS);try{localStorage.setItem("mk_labModels",JSON.stringify(LAB_MODEL_OPTIONS))}catch{}}}}
+  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>LAB_MODEL_OPTIONS.includes(x));if(valid.length>0){setLabModels(valid);if(valid.length!==arr.length){try{localStorage.setItem("mk_labModels",JSON.stringify(valid))}catch{}}}else{/* 古い選択（3.1 Pro・3.5 等）だけなら既定に戻す */setLabModels(LAB_MODEL_OPTIONS);try{localStorage.setItem("mk_labModels",JSON.stringify(LAB_MODEL_OPTIONS))}catch{}}}}
   const t=localStorage.getItem("mk_labTemplate");
   if(t&&["exam","minutes","counseling","free"].includes(t))setLabTemplate(t);
   const et=localStorage.getItem("mk_labExamTplId");
@@ -3478,7 +3479,7 @@ const runSingleLabSummary=async(model,textBody,systemPrompt,controller)=>{
   const res=await fetch("/api/summarize",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({text:textBody,mode:model==="claude"?"claude":"gemini",prompt:systemPrompt,model_preference:model,context:"summary-lab"}),
+    body:JSON.stringify({text:textBody,mode:"gemini",prompt:systemPrompt,model_preference:model,context:"summary-lab"}),
     signal:controller.signal
   });
   if(!res.ok)throw new Error("HTTP "+res.status);
@@ -3505,11 +3506,9 @@ const runLabAnalyzeAll=async()=>{
   }
   const controllers=labModels.map(()=>new AbortController());
   labAbortRef.current=controllers;
-  // Claude が使えないあいだ（CLAUDE_AVAILABLE=false・残高不足）は枠だけ出して呼ばない（2026-11-02 §1）
-  const labOff=(m)=>m==="claude"&&!CLAUDE_AVAILABLE;
-  const initial=labModels.map(m=>({model:m,status:labOff(m)?"unavailable":"running",output:"",error:null,usage:null,startedAt:Date.now(),endedAt:null}));
+  const initial=labModels.map(m=>({model:m,status:"running",output:"",error:null,usage:null,startedAt:Date.now(),endedAt:null}));
   setLabResults(initial);
-  await Promise.allSettled(labModels.map((m,i)=>labOff(m)?Promise.resolve():runSingleLabSummary(m,textBody,systemPrompt,controllers[i])
+  await Promise.allSettled(labModels.map((m,i)=>runSingleLabSummary(m,textBody,systemPrompt,controllers[i])
     .then(r=>{setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,...r,status:"done",endedAt:Date.now()}:x))})
     .catch(e=>{const aborted=e.name==="AbortError";if(!aborted)console.warn("[summary-lab]",m,e.message);setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
   ));
@@ -6799,13 +6798,13 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
   </div>
 </div>
 <div style={{marginBottom:12}}>
-  <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6}}>モデル選択（複数選択可・最大4つ）</div>
+  <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6}}>モデル選択（複数選択可）</div>
   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
     {LAB_MODEL_OPTIONS.map(m=>{const selected=labModels.includes(m);const color=csModelColorByLabel(m);return(
       <button key={m} onClick={()=>toggleLabModel(m)} disabled={labBusy} style={{position:"relative",flex:"1 1 180px",padding:"12px",borderRadius:10,border:selected?`2px solid ${color}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?color:C.g500,cursor:labBusy?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>
         {selected&&<span style={{position:"absolute",top:4,left:8,color,fontSize:14,fontWeight:700}}>✓</span>}
         <div style={{fontWeight:700,fontSize:13}}>{csModelLabel(m)}</div>
-        {m==="claude"&&!CLAUDE_AVAILABLE?<div data-claude-unavailable="1" style={{fontSize:10,marginTop:3,fontWeight:600,color:"#92400e"}}>{CLAUDE_UNAVAILABLE_NOTE}</div>:<div style={{fontSize:10,marginTop:3,fontWeight:400,opacity:0.85}}>{csModelSubLabel(m)}</div>}
+        <div style={{fontSize:10,marginTop:3,fontWeight:400,opacity:0.85}}>{csModelSubLabel(m)}</div>
       </button>
     )})}
   </div>
@@ -6820,7 +6819,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
 {labResults.length>1&&<div style={{display:"flex",gap:4,marginBottom:8,borderBottom:`2px solid ${C.g200}`,overflowX:"auto"}}>
   <button onClick={()=>setLabCompareTab("all")} style={{padding:"7px 14px",border:"none",background:labCompareTab==="all"?"#888":"transparent",color:labCompareTab==="all"?"#fff":C.g600,fontWeight:labCompareTab==="all"?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2}}>🔬 全体比較</button>
   {labResults.map((r,i)=>{const color=csModelColorByLabel(r.model);const active=labCompareTab===r.model;return(
-    <button key={i} onClick={()=>setLabCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":C.g600,fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:active?`2px solid ${color}`:"2px solid transparent"}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":r.status==="unavailable"?" —":""}</button>
+    <button key={i} onClick={()=>setLabCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":C.g600,fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:active?`2px solid ${color}`:"2px solid transparent"}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":""}</button>
   )})}
 </div>}
 {(labCompareTab==="all"||labResults.length===1)&&<div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${Math.min(labResults.length,2)},minmax(0,1fr))`,gap:12}}>
@@ -6828,10 +6827,10 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
     <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden",background:C.w}}>
       <div style={{padding:"8px 12px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
         <strong style={{fontSize:13,color}}>{csModelLabel(r.model)}</strong>{r.modelLabel&&csModelLabel(r.modelLabel)!==csModelLabel(r.model)&&<span data-lab-actual="1" style={{fontSize:10,fontWeight:600,color:"#92400e",marginLeft:6}}>⚠ 実際は {csModelLabel(r.modelLabel)}</span>}
-        <span style={{fontSize:10,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":r.status==="unavailable"?"— 利用できません":""}</span>
+        <span style={{fontSize:10,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
       </div>
       <div style={{padding:10,maxHeight:400,overflowY:"auto"}}>
-        {r.status==="unavailable"?(<div data-lab-unavailable="1" style={{color:"#92400e",fontSize:12,fontWeight:600}}>{CLAUDE_UNAVAILABLE_NOTE}</div>):r.status==="error"?(<div data-lab-error="1" style={{color:"#dc2626",fontSize:12}}>{friendlyModelError(r.error)}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:12,fontFamily:"inherit",lineHeight:1.6}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
+        {r.status==="error"?(<div data-lab-error="1" style={{color:"#dc2626",fontSize:12}}>{friendlyModelError(r.error)}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:12,fontFamily:"inherit",lineHeight:1.6}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
       </div>
       {r.usage&&<div style={{padding:"6px 10px",fontSize:10,color:C.g500,borderTop:`1px solid ${C.g200}`,background:"#fafaf9"}}>入力: {(r.usage.promptTokens||r.usage.input_tokens||0).toLocaleString()}t / 出力: {(r.usage.completionTokens||r.usage.output_tokens||0).toLocaleString()}t</div>}
     </div>
@@ -6841,10 +6840,10 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
   <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden"}}>
     <div style={{padding:"10px 14px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
       <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>{r.modelLabel&&csModelLabel(r.modelLabel)!==csModelLabel(r.model)&&<span data-lab-actual="1" style={{fontSize:10,fontWeight:600,color:"#92400e",marginLeft:6}}>⚠ 実際は {csModelLabel(r.modelLabel)}</span>}
-      <span style={{fontSize:11,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":r.status==="unavailable"?"— 利用できません":""}</span>
+      <span style={{fontSize:11,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
     </div>
     <div style={{padding:14}}>
-      {r.status==="unavailable"?(<div data-lab-unavailable="1" style={{color:"#92400e",fontSize:13,fontWeight:600}}>{CLAUDE_UNAVAILABLE_NOTE}</div>):r.status==="error"?(<div data-lab-error="1" style={{color:"#dc2626",fontSize:13}}>{friendlyModelError(r.error)}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:13,fontFamily:"inherit",lineHeight:1.7}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
+      {r.status==="error"?(<div data-lab-error="1" style={{color:"#dc2626",fontSize:13}}>{friendlyModelError(r.error)}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:13,fontFamily:"inherit",lineHeight:1.7}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
     </div>
     {r.usage&&<div style={{padding:"8px 14px",fontSize:11,color:C.g500,borderTop:`1px solid ${C.g200}`,background:"#fafaf9"}}>入力: {(r.usage.promptTokens||r.usage.input_tokens||0).toLocaleString()}t / 出力: {(r.usage.completionTokens||r.usage.output_tokens||0).toLocaleString()}t</div>}
   </div>

@@ -41,7 +41,7 @@
 ### モデルの判断と本番の鍵（2026-11-02）
 - 診察の要約は 3.6 先頭のまま。理由と 3.6/3.8 の比較は `docs/exam-model-decision-2026-11-02.md`
 - 本番の鍵で手元を動かすときは `docs/runbook-prod-env.md`（**このフォルダで `vercel env run` すると `.env.local` の偽の鍵が優先される**）
-- Claude は残高不足のあいだ `app/lib/model-labels.js` の `CLAUDE_AVAILABLE=false`（補充したら true）
+- Claude Sonnet 4.6 は使わない（補充しない院長の判断・2026-11-02）。要約テストラボの選択肢は 3.8 / 3.6 の2つ。API の Claude の経路も削除済み
 
 ## ビルド・デプロイ
 - 必ずnpm run buildで成功確認してからデプロイ
