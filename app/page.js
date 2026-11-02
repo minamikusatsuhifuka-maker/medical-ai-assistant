@@ -1085,6 +1085,7 @@ const csModelSubLabel=(m)=>{
   if(s==="gemini-3-pro"||s.includes("3.1-pro"))return"最新・最高精度 ⭐";
   if(s==="claude"||s.includes("claude"))return"日本語精度";
   if(s==="gemini-pro"||s.includes("2.5-pro"))return"バランス型";
+  if(s==="gemini-3-8-flash"||s.includes("3.8-flash"))return"共通の先頭（3.7 を指定しても実体は 3.8）";
   if(s==="gemini-3-7-flash"||s.includes("3.7-flash"))return"最新・記載が丁寧";
   if(s==="gemini-3-6-flash"||s==="gemini"||s.includes("3.6-flash"))return"速く安定 ✨";
   if(s==="gemini-3-5-flash-lite"||s.includes("3.5-flash-lite"))return"最速・簡易";
@@ -1558,7 +1559,10 @@ const toggleJourneyModel=(m)=>{
 // 要約テストラボ（4モデル並列比較）
 const[labText,setLabText]=useState("");
 const[labTemplate,setLabTemplate]=useState("free");
-const[labModels,setLabModels]=useState(["gemini-pro","gemini-3-pro","gemini-3-5-flash","claude"]);
+// 要約テストラボの選択肢（2026-11-02 §4: 3.8 Flash / 3.6 Flash / Claude Sonnet 4.6。3.1 Pro・3.5・2.5 Pro は外した）
+// gemini-3-8-flash は /api/summarize で共通の順番（GEMINI_MODELS）、gemini-3-6-flash は 3.6 → 3.5 → 2.5
+const LAB_MODEL_OPTIONS=["gemini-3-8-flash","gemini-3-6-flash","claude"];
+const[labModels,setLabModels]=useState(LAB_MODEL_OPTIONS);
 const[labResults,setLabResults]=useState([]);
 const[labBusy,setLabBusy]=useState(false);
 const labAbortRef=useRef(null);
@@ -1641,7 +1645,7 @@ const renderTitleEditor=(item,opts)=>{
 };
 useEffect(()=>{try{
   const s=localStorage.getItem("mk_labModels");
-  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-pro"||x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setLabModels(valid)}}
+  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>LAB_MODEL_OPTIONS.includes(x));if(valid.length>0)setLabModels(valid);else{/* 古い選択（3.1 Pro・3.5 等）だけなら既定に戻す */setLabModels(LAB_MODEL_OPTIONS);try{localStorage.setItem("mk_labModels",JSON.stringify(LAB_MODEL_OPTIONS))}catch{}}}}
   const t=localStorage.getItem("mk_labTemplate");
   if(t&&["exam","minutes","counseling","free"].includes(t))setLabTemplate(t);
   const et=localStorage.getItem("mk_labExamTplId");
@@ -6791,7 +6795,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
 <div style={{marginBottom:12}}>
   <div style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:6}}>モデル選択（複数選択可・最大4つ）</div>
   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-    {["gemini-pro","gemini-3-pro","gemini-3-5-flash","claude"].map(m=>{const selected=labModels.includes(m);const color=csModelColorByLabel(m);return(
+    {LAB_MODEL_OPTIONS.map(m=>{const selected=labModels.includes(m);const color=csModelColorByLabel(m);return(
       <button key={m} onClick={()=>toggleLabModel(m)} disabled={labBusy} style={{position:"relative",flex:"1 1 180px",padding:"12px",borderRadius:10,border:selected?`2px solid ${color}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?color:C.g500,cursor:labBusy?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>
         {selected&&<span style={{position:"absolute",top:4,left:8,color,fontSize:14,fontWeight:700}}>✓</span>}
         <div style={{fontWeight:700,fontSize:13}}>{csModelLabel(m)}</div>
@@ -6817,7 +6821,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
   {labResults.map((r,i)=>{const color=csModelColorByLabel(r.model);const dur=r.endedAt&&r.startedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;return(
     <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden",background:C.w}}>
       <div style={{padding:"8px 12px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
-        <strong style={{fontSize:13,color}}>{csModelLabel(r.model)}</strong>
+        <strong style={{fontSize:13,color}}>{csModelLabel(r.model)}</strong>{r.modelLabel&&csModelLabel(r.modelLabel)!==csModelLabel(r.model)&&<span data-lab-actual="1" style={{fontSize:10,fontWeight:600,color:"#92400e",marginLeft:6}}>⚠ 実際は {csModelLabel(r.modelLabel)}</span>}
         <span style={{fontSize:10,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
       </div>
       <div style={{padding:10,maxHeight:400,overflowY:"auto"}}>
@@ -6830,7 +6834,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
 {labCompareTab!=="all"&&labResults.length>1&&labResults.filter(r=>r.model===labCompareTab).map((r,i)=>{const color=csModelColorByLabel(r.model);const dur=r.endedAt&&r.startedAt?((r.endedAt-r.startedAt)/1000).toFixed(1):null;return(
   <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden"}}>
     <div style={{padding:"10px 14px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
-      <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>
+      <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>{r.modelLabel&&csModelLabel(r.modelLabel)!==csModelLabel(r.model)&&<span data-lab-actual="1" style={{fontSize:10,fontWeight:600,color:"#92400e",marginLeft:6}}>⚠ 実際は {csModelLabel(r.modelLabel)}</span>}
       <span style={{fontSize:11,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
     </div>
     <div style={{padding:14}}>
