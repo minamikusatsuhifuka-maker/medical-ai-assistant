@@ -1,5 +1,6 @@
 // 検証シナリオ: 要約テストラボの選択肢は Gemini 3.8 Flash / Gemini 3.6 Flash / Claude Sonnet 4.6 だけ（§4）。
-// 古い選択（3.1 Pro・3.5 Flash）が残っていても既定に戻り、3つで一斉に要約できる（実ブラウザ・API は本物）
+// 古い選択（3.1 Pro・3.5 Flash）が残っていても既定に戻り、3つの枠で一斉に要約できる（実ブラウザ・API は本物）
+// Claude は残高不足のあいだ呼ばず「残高不足のため利用できません」と出す（生の API エラーは出さない）
 // 実行: node scripts/verify-scenario-lab-models.cjs <BASE_URL>
 //   Supabase は全モック（ラボの結果は保存しない）
 let pw;
@@ -36,15 +37,17 @@ const TEXT = "患者: 2週間前から首のあたりが痒くて、赤くなっ
   assert((await runBtn.first().innerText()).includes("3個のAIで一斉要約"), "3つで一斉に要約するボタン");
   await page.locator("textarea:visible").first().fill(TEXT);
   await runBtn.first().click();
-  await page.waitForFunction(() => { const t = document.body.innerText; return (t.match(/✓ 完了/g) || []).length + (t.match(/⚠️ エラー/g) || []).length >= 3; }, null, { timeout: 180000 });
+  // Claude は残高不足のあいだ（model-labels.js の CLAUDE_AVAILABLE=false）呼ばずに「残高不足のため利用できません」（exam-model-decision §1）
+  assert(await page.locator('[data-claude-unavailable="1"]:visible').count() === 1 && (await page.locator('[data-claude-unavailable="1"]').innerText()).includes("残高不足のため利用できません"), "選択肢の Claude の枠に「残高不足のため利用できません」");
+  await page.waitForFunction(() => (document.body.innerText.match(/✓ 完了/g) || []).length + (document.body.innerText.match(/⚠️ エラー/g) || []).length >= 2, null, { timeout: 180000 });
   await page.waitForTimeout(1500);
   const body = await page.locator("body").innerText();
   const done = (body.match(/✓ 完了/g) || []).length;
-  const claudeCredit = /credit balance is too low/i.test(replies.claude || "");
-  if (claudeCredit) console.log("   ⚠ Claude は Anthropic のクレジット残高不足で失敗（アカウント側。コードの問題ではない）");
-  assert(done >= (claudeCredit ? 2 : 3), `要約が完了した枠 ${done}（Gemini 3.8・3.6 は必ず完了）`);
-  assert(!/⚠️ エラー/.test(body) || claudeCredit, "Claude の残高不足以外のエラーなし");
-  assert(sent.slice().sort().join(",") === "claude,gemini-3-6-flash,gemini-3-8-flash", "送ったキー: " + sent.join(","));
+  assert(done === 2, `要約が完了した枠 ${done}（Gemini 3.8・3.6）`);
+  assert(await page.locator('[data-lab-unavailable="1"]:visible').count() === 1, "Claude の枠は残り、「残高不足のため利用できません」と出る");
+  assert(!/⚠️ エラー/.test(body), "エラーの枠は無い");
+  assert(!/credit balance|anthropic|invalid_request_error|HTTP \d{3}/i.test(body), "生の API エラーの文は画面に出ない");
+  assert(sent.slice().sort().join(",") === "gemini-3-6-flash,gemini-3-8-flash", "Claude は呼ばない（送ったキー: " + sent.join(",") + "）");
   assert(await page.locator('[data-lab-actual="1"]').count() === 0, "どの枠も指定どおりのモデルで生成（「実際は」の注意なし）");
   assert(errs.length === 0, "pageerror ゼロ" + (errs.length ? ": " + errs.join(" | ") : ""));
   await browser.close();

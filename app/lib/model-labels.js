@@ -22,3 +22,17 @@ export const EXAM_PRIMARY_LABEL = modelLabel(EXAM_SUMMARY_MODELS[0]);
 // 「3.8 → 3.7 → 3.6」のような順番の表示（先頭から n 個）
 export const chainLabel = (models = GEMINI_MODELS, n = 3) =>
   models.slice(0, n).map((m, i) => (i === 0 ? modelLabel(m) : modelLabel(m).replace(/^Gemini /, "").replace(/ Flash$/, ""))).join(" → ");
+
+// Claude Sonnet 4.6 を今使えるか（2026-11-02 指示書 exam-model-decision §1）。
+// Anthropic のクレジット残高不足のあいだは false。要約テストラボの Claude の枠は残したまま、呼ばずに下の文を出す。
+// 残高を補充したら true に戻すだけでよい（ほかに直す所はない）。
+export const CLAUDE_AVAILABLE = false;
+export const CLAUDE_UNAVAILABLE_NOTE = "残高不足のため利用できません";
+// 生の API エラーを画面に出さないための言い換え（中身はコンソールにだけ残す）
+export function friendlyModelError(err) {
+  const s = String(err || "");
+  if (/credit balance|insufficient.?(credit|balance|quota)|billing/i.test(s)) return CLAUDE_UNAVAILABLE_NOTE;
+  if (/abort/i.test(s)) return "停止しました";
+  const h = s.match(/HTTP (\d{3})/);
+  return "生成に失敗しました。時間をおいてもう一度お試しください" + (h ? `（HTTP ${h[1]}）` : "");
+}

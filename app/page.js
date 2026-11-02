@@ -7,7 +7,7 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { filterNoiseCore, repeatChunkCheck, REPEAT_CHUNK_WINDOW } from "./lib/noise-filter";
-import { COMMON_PRIMARY_MODEL, COMMON_PRIMARY_LABEL, EXAM_PRIMARY_LABEL, chainLabel } from "./lib/model-labels";
+import { COMMON_PRIMARY_MODEL, COMMON_PRIMARY_LABEL, EXAM_PRIMARY_LABEL, chainLabel, CLAUDE_AVAILABLE, CLAUDE_UNAVAILABLE_NOTE, friendlyModelError } from "./lib/model-labels";
 import { buildDictMatcher, applyDictSafe, applyDictOnce } from "./lib/dict-apply";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
@@ -3505,11 +3505,13 @@ const runLabAnalyzeAll=async()=>{
   }
   const controllers=labModels.map(()=>new AbortController());
   labAbortRef.current=controllers;
-  const initial=labModels.map(m=>({model:m,status:"running",output:"",error:null,usage:null,startedAt:Date.now(),endedAt:null}));
+  // Claude が使えないあいだ（CLAUDE_AVAILABLE=false・残高不足）は枠だけ出して呼ばない（2026-11-02 §1）
+  const labOff=(m)=>m==="claude"&&!CLAUDE_AVAILABLE;
+  const initial=labModels.map(m=>({model:m,status:labOff(m)?"unavailable":"running",output:"",error:null,usage:null,startedAt:Date.now(),endedAt:null}));
   setLabResults(initial);
-  await Promise.allSettled(labModels.map((m,i)=>runSingleLabSummary(m,textBody,systemPrompt,controllers[i])
+  await Promise.allSettled(labModels.map((m,i)=>labOff(m)?Promise.resolve():runSingleLabSummary(m,textBody,systemPrompt,controllers[i])
     .then(r=>{setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,...r,status:"done",endedAt:Date.now()}:x))})
-    .catch(e=>{const aborted=e.name==="AbortError";setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
+    .catch(e=>{const aborted=e.name==="AbortError";if(!aborted)console.warn("[summary-lab]",m,e.message);setLabResults(prev=>prev.map((x,idx)=>idx===i?{...x,status:aborted?"aborted":"error",error:e.message,endedAt:Date.now()}:x))})
   ));
   setLabBusy(false);labAbortRef.current=null;
 };
@@ -6803,7 +6805,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
       <button key={m} onClick={()=>toggleLabModel(m)} disabled={labBusy} style={{position:"relative",flex:"1 1 180px",padding:"12px",borderRadius:10,border:selected?`2px solid ${color}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?color:C.g500,cursor:labBusy?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>
         {selected&&<span style={{position:"absolute",top:4,left:8,color,fontSize:14,fontWeight:700}}>✓</span>}
         <div style={{fontWeight:700,fontSize:13}}>{csModelLabel(m)}</div>
-        <div style={{fontSize:10,marginTop:3,fontWeight:400,opacity:0.85}}>{csModelSubLabel(m)}</div>
+        {m==="claude"&&!CLAUDE_AVAILABLE?<div data-claude-unavailable="1" style={{fontSize:10,marginTop:3,fontWeight:600,color:"#92400e"}}>{CLAUDE_UNAVAILABLE_NOTE}</div>:<div style={{fontSize:10,marginTop:3,fontWeight:400,opacity:0.85}}>{csModelSubLabel(m)}</div>}
       </button>
     )})}
   </div>
@@ -6818,7 +6820,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
 {labResults.length>1&&<div style={{display:"flex",gap:4,marginBottom:8,borderBottom:`2px solid ${C.g200}`,overflowX:"auto"}}>
   <button onClick={()=>setLabCompareTab("all")} style={{padding:"7px 14px",border:"none",background:labCompareTab==="all"?"#888":"transparent",color:labCompareTab==="all"?"#fff":C.g600,fontWeight:labCompareTab==="all"?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2}}>🔬 全体比較</button>
   {labResults.map((r,i)=>{const color=csModelColorByLabel(r.model);const active=labCompareTab===r.model;return(
-    <button key={i} onClick={()=>setLabCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":C.g600,fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:active?`2px solid ${color}`:"2px solid transparent"}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":""}</button>
+    <button key={i} onClick={()=>setLabCompareTab(r.model)} style={{padding:"7px 14px",border:"none",background:active?color:"transparent",color:active?"#fff":C.g600,fontWeight:active?700:500,borderRadius:"8px 8px 0 0",cursor:"pointer",whiteSpace:"nowrap",fontSize:12,fontFamily:"inherit",marginBottom:-2,borderBottom:active?`2px solid ${color}`:"2px solid transparent"}}>{csModelLabel(r.model)}{r.status==="running"?" ⏳":r.status==="error"?" ⚠️":r.status==="aborted"?" ⏹":r.status==="unavailable"?" —":""}</button>
   )})}
 </div>}
 {(labCompareTab==="all"||labResults.length===1)&&<div style={{display:"grid",gridTemplateColumns:mob?"1fr":`repeat(${Math.min(labResults.length,2)},minmax(0,1fr))`,gap:12}}>
@@ -6826,10 +6828,10 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
     <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden",background:C.w}}>
       <div style={{padding:"8px 12px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
         <strong style={{fontSize:13,color}}>{csModelLabel(r.model)}</strong>{r.modelLabel&&csModelLabel(r.modelLabel)!==csModelLabel(r.model)&&<span data-lab-actual="1" style={{fontSize:10,fontWeight:600,color:"#92400e",marginLeft:6}}>⚠ 実際は {csModelLabel(r.modelLabel)}</span>}
-        <span style={{fontSize:10,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+        <span style={{fontSize:10,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":r.status==="unavailable"?"— 利用できません":""}</span>
       </div>
       <div style={{padding:10,maxHeight:400,overflowY:"auto"}}>
-        {r.status==="error"?(<div style={{color:"#dc2626",fontSize:12}}>{r.error}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:12,fontFamily:"inherit",lineHeight:1.6}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
+        {r.status==="unavailable"?(<div data-lab-unavailable="1" style={{color:"#92400e",fontSize:12,fontWeight:600}}>{CLAUDE_UNAVAILABLE_NOTE}</div>):r.status==="error"?(<div data-lab-error="1" style={{color:"#dc2626",fontSize:12}}>{friendlyModelError(r.error)}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:12,fontFamily:"inherit",lineHeight:1.6}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
       </div>
       {r.usage&&<div style={{padding:"6px 10px",fontSize:10,color:C.g500,borderTop:`1px solid ${C.g200}`,background:"#fafaf9"}}>入力: {(r.usage.promptTokens||r.usage.input_tokens||0).toLocaleString()}t / 出力: {(r.usage.completionTokens||r.usage.output_tokens||0).toLocaleString()}t</div>}
     </div>
@@ -6839,10 +6841,10 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
   <div key={i} style={{border:`1px solid ${C.g200}`,borderRadius:10,overflow:"hidden"}}>
     <div style={{padding:"10px 14px",background:color+"15",borderLeft:`4px solid ${color}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
       <strong style={{fontSize:16,color}}>{csModelLabel(r.model)}</strong>{r.modelLabel&&csModelLabel(r.modelLabel)!==csModelLabel(r.model)&&<span data-lab-actual="1" style={{fontSize:10,fontWeight:600,color:"#92400e",marginLeft:6}}>⚠ 実際は {csModelLabel(r.modelLabel)}</span>}
-      <span style={{fontSize:11,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":""}</span>
+      <span style={{fontSize:11,color:C.g500}}>{r.status==="running"?"⏳ 実行中...":r.status==="done"?`✓ 完了${dur?` (${dur}s)`:""}`:r.status==="error"?"⚠️ エラー":r.status==="aborted"?"⏹ 停止":r.status==="unavailable"?"— 利用できません":""}</span>
     </div>
     <div style={{padding:14}}>
-      {r.status==="error"?(<div style={{color:"#dc2626",fontSize:13}}>{r.error}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:13,fontFamily:"inherit",lineHeight:1.7}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
+      {r.status==="unavailable"?(<div data-lab-unavailable="1" style={{color:"#92400e",fontSize:13,fontWeight:600}}>{CLAUDE_UNAVAILABLE_NOTE}</div>):r.status==="error"?(<div data-lab-error="1" style={{color:"#dc2626",fontSize:13}}>{friendlyModelError(r.error)}</div>):(<pre style={{whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,fontSize:13,fontFamily:"inherit",lineHeight:1.7}}>{r.output||(r.status==="running"?"（生成中...）":"")}</pre>)}
     </div>
     {r.usage&&<div style={{padding:"8px 14px",fontSize:11,color:C.g500,borderTop:`1px solid ${C.g200}`,background:"#fafaf9"}}>入力: {(r.usage.promptTokens||r.usage.input_tokens||0).toLocaleString()}t / 出力: {(r.usage.completionTokens||r.usage.output_tokens||0).toLocaleString()}t</div>}
   </div>
