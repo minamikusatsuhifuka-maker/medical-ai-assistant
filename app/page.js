@@ -1443,19 +1443,20 @@ if(!session)return;
 if(session.mode==="exam"){examSessionIdRef.current=session.sessionId;sInp(String(session.text||""))}
 else if(session.mode==="minutes"){minSessionIdRef.current=session.sessionId;setMinInp(String(session.text||""))}
 else if(session.mode==="seminar"){smnSessionIdRef.current=session.sessionId;setSmnTranscript(String(session.text||""))}
-setRecoverySessions(prev=>(prev||[]).filter(s=>s&&s.sessionId!==session.sessionId));
+setRecoverySessions(prev=>(prev||[]).filter(s=>s&&s.sessionId!==session.sessionId&&s.mode!==session.mode));
 sSt("✓ 書き起こしを復元しました");
 }catch(e){console.warn("[autosave] restore error:",e)}};
 const discardTranscriptSession=(session)=>{try{
 if(!session)return;
 if(!window.confirm("この書き起こしの復元データを破棄しますか？"))return;
 deleteTranscriptSession(session.sessionId);
-setRecoverySessions(prev=>(prev||[]).filter(s=>s&&s.sessionId!==session.sessionId));
+setRecoverySessions(prev=>(prev||[]).filter(s=>s&&s.sessionId!==session.sessionId&&s.mode!==session.mode));
 }catch(e){console.warn("[autosave] discard error:",e)}};
 // 復元バナー(防御的レンダリング: 例外時はnull=非表示に留め、ページを壊さない)
 const RecoveryBanner=({mode})=>{
 try{
-const list=(recoverySessions||[]).filter(s=>s&&s.mode===mode&&typeof s.text==="string");
+// 溜まった復元データ（最大5件）は帯が重なるため、同じ画面では最新の1件だけ出す（古いものは端末に残すが帯は出さない）
+const list=(recoverySessions||[]).filter(s=>s&&s.mode===mode&&typeof s.text==="string").sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0)).slice(0,1);
 if(!list.length)return null;
 return(<>{list.map(s=>{
 let when="";try{when=new Date(s.updatedAt||0).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}catch{}
