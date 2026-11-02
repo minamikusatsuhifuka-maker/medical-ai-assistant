@@ -6,7 +6,7 @@ import { supabase } from "./lib/supabase";
 import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
-import { filterNoiseCore } from "./lib/noise-filter";
+import { filterNoiseCore, repeatChunkCheck, REPEAT_CHUNK_WINDOW } from "./lib/noise-filter";
 import { buildDictMatcher, applyDictSafe, applyDictOnce } from "./lib/dict-apply";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
@@ -889,6 +889,8 @@ const[fontSize,setFontSize]=useState("medium");
 const[fontFamily,setFontFamily]=useState("Zen Maru Gothic");
 const[snippetFontSize,setSnippetFontSize]=useState(14);
 const[noisePatterns,setNoisePatterns]=useState([]);
+// 同じ文の繰り返しだけのチャンクを落とすための直前のチャンク（書き起こしが返ったもの・落としたものも含む）。録音開始で空にする
+const recentChunksRef=useRef([]);
 // 読み込み時の浄化で除いたノイズ語（画面に一度だけ表示する。無言で消すと「登録したのに効かない」の切り分けができないため）
 const[noisePurged,setNoisePurged]=useState([]);
 // 浄化で除いた語を一度だけ表示する（同じ組み合わせを表示済みなら出さない）
@@ -1414,7 +1416,7 @@ const bumpDiag=(k)=>{try{setDiagCnt(p=>({...(p||{}),[k]:(((p||{})[k])||0)+1}))}c
 const setDiagLastLen=(n)=>{try{setDiagLastLenRaw(n);if(n===0)bumpDiag("empty")}catch{}};
 // 録音を開始したら（停止→録音中）カウンタを0に戻す。累計表示が誤読を招いたため。一時停止からの再開では戻さない
 const diagPrevRsRef=useRef({rs:"inactive",min:"inactive",smn:"inactive"});
-useEffect(()=>{const p=diagPrevRsRef.current;const started=(p.rs==="inactive"&&rs==="recording")||(p.min==="inactive"&&minRS==="recording")||(p.smn==="inactive"&&smnRS==="recording");diagPrevRsRef.current={rs,min:minRS,smn:smnRS};if(started){setDiagCnt({rec:0,lv:0,sil:0,sent:0,ok:0,empty:0,err:0});setDiagErr("");setDiagLastLenRaw(null)}},[rs,minRS,smnRS]);
+useEffect(()=>{const p=diagPrevRsRef.current;const started=(p.rs==="inactive"&&rs==="recording")||(p.min==="inactive"&&minRS==="recording")||(p.smn==="inactive"&&smnRS==="recording");diagPrevRsRef.current={rs,min:minRS,smn:smnRS};if(started){recentChunksRef.current=[];setDiagCnt({rec:0,lv:0,sil:0,sent:0,ok:0,empty:0,err:0});setDiagErr("");setDiagLastLenRaw(null)}},[rs,minRS,smnRS]);
 const noteDiagMR=(mr,size)=>{try{setDiagMR(`${(mr&&mr.mimeType)||"?"} / ${(mr&&mr.state)||"?"} / ${(size!=null?size:"?")}B`)}catch{}};
 const DiagRow=({active})=>{
 try{
@@ -3860,6 +3862,8 @@ const filterTranscriptNoise=(text)=>{
   if(!text||!text.trim())return "";
   let r;
   try{r=filterNoiseCore(text,noisePatterns)}catch(e){console.error("[filterTranscriptNoise] 例外のため無加工で返す:",e);try{return collapseRepeats(text.trim())}catch{return text.trim()}}
+  // 同じ文の繰り返しだけのチャンクを落とす（直前3チャンクに2回以上・6文字以上・中身がその文だけ）。両方比較は2つの結果が交互に来るため使わない。例外時は無加工
+  try{if(asrEngine!=="both"&&r.text){const prev=recentChunksRef.current||[];const rc=repeatChunkCheck(r.text,prev);recentChunksRef.current=[...prev,r.text].slice(-REPEAT_CHUNK_WINDOW);if(rc.drop){r={text:"",dropped:[...r.dropped,{rule:rc.rule,len:rc.len}]}}}}catch(e){console.error("[filterTranscriptNoise] 繰り返し判定の例外（無加工で続行）:",e)}
   if(r.dropped.length){fetch("/api/log-usage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:"/api/transcribe-noise-client",model:"filter",context:"transcribe-noise-client",request_meta:{raw_length:text.length,kept_length:r.text.length,dropped:r.dropped}})}).catch(()=>{})}
   return collapseRepeats(r.text);
 };

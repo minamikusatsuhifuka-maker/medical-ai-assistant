@@ -52,3 +52,28 @@ export function filterNoiseCore(text, registered = []) {
   }
   return { text: lines.filter((l) => l).join("\n").trim(), dropped };
 }
+
+// §3 同じ文の繰り返しだけのチャンクを落とす（2026-11-02・指示書 minutes-silence-hallucination）
+// 無音のハルシネーションは同じ文が何度も出るのが特徴。パターンに無い文句にも効く。
+//   - 直前3チャンク（書き起こしが返ってきたチャンク）以内に同じ文（空白・句読点を除いて比較）が2回以上出ていて、
+//   - かつ、そのチャンクの中身がその文だけ（同じ文の繰り返しを含む）のとき → そのチャンクを落とす
+//   - 他に内容があるチャンクは落とさない。6文字未満の文には適用しない。最初のチャンク（履歴なし）には適用しない
+//   - recent は呼び出し側が持つ直前のチャンクの文字列（落としたチャンクも含める）。例外は呼び出し側で fail-open
+export const REPEAT_CHUNK_WINDOW = 3;
+export const REPEAT_CHUNK_MIN_LEN = 6;
+const SENT_PUNCT = /[\s、。，．,.！!？?…・〜~「」『』（）()]/g;
+const sentenceKeys = (text) => String(text || "").split("\n")
+  .flatMap((line) => splitSentences(line).map((x) => x.s.replace(SENT_PUNCT, "")))
+  .filter(Boolean);
+export function repeatChunkCheck(text, recent = []) {
+  const keys = sentenceKeys(text);
+  if (!keys.length) return { drop: false };
+  const uniq = [...new Set(keys)];
+  if (uniq.length !== 1) return { drop: false }; // 他に内容がある
+  const key = uniq[0];
+  if (key.length < REPEAT_CHUNK_MIN_LEN) return { drop: false };
+  const prev = (Array.isArray(recent) ? recent : []).slice(-REPEAT_CHUNK_WINDOW);
+  let count = 0;
+  for (const c of prev) for (const k of sentenceKeys(c)) if (k === key) count++;
+  return count >= 2 ? { drop: true, rule: "REPEAT_CHUNK", len: String(text).trim().length } : { drop: false };
+}

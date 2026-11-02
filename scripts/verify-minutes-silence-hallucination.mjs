@@ -9,7 +9,7 @@
 //   - C1「最後までご視聴」は「最後まで視聴して」（ご なし）に当たらない
 //   - P2「ご覧いただきありがとうございます」は当たるが、①は残りが敬語の語尾だけのときに限るため「最後まで」が残って消えない
 import { filterTranscriptCore } from "../app/lib/transcript-filter.js";
-import { filterNoiseCore } from "../app/lib/noise-filter.js";
+import { filterNoiseCore, repeatChunkCheck, REPEAT_CHUNK_WINDOW } from "../app/lib/noise-filter.js";
 import { matchVideoPhrase } from "../app/lib/transcript-filter.js";
 
 // 11/02 の議事録（11:15・13:00）の書き起こしに実際に出た行
@@ -59,5 +59,27 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   eq(matchVideoPhrase("チャンネルを購読してくださいね。"), "P48", "購読して（P48）");
   const r = filterNoiseCore("次の動画でお会いしましょう。 痒いです", []);
   eq(JSON.stringify(r.dropped), JSON.stringify([{ rule: "P47", len: 14 }]), "page.js の記録は番号と文字数だけ");
+
+  console.log("── §3 同じ文の繰り返しだけのチャンクを落とす");
+  // page.js の filterTranscriptNoise と同じ順（filterNoiseCore → repeatChunkCheck・履歴は落としたチャンクも含め直前3つ）
+  const run = (chunks) => { let recent = []; const out = [];
+    for (const c of chunks) { const t = filterNoiseCore(c, []).text; if (!t) continue;
+      const rc = repeatChunkCheck(t, recent); recent = [...recent, t].slice(-REPEAT_CHUNK_WINDOW); if (!rc.drop) out.push(t); }
+    return out; };
+  const U = "会議を終了させていただきます";
+  eq(JSON.stringify(run([U, U, U, U])), JSON.stringify([U, U]), "同じ文だけのチャンクは3回目から落ちる（未知の文句にも効く）");
+  eq(JSON.stringify(run([U])), JSON.stringify([U]), "最初のチャンクには適用しない");
+  eq(JSON.stringify(run([U, U, U + "。 " + U])), JSON.stringify([U, U]), "同じ文の繰り返しだけのチャンクも落ちる");
+  eq(JSON.stringify(run([U, U, "あと5分くらいで終わります。 " + U])), JSON.stringify([U, U, "あと5分くらいで終わります。 " + U]), "他に内容があるチャンクは落とさない");
+  eq(JSON.stringify(run(["そうですね", "そうですね", "そうですね"])), JSON.stringify(["そうですね", "そうですね", "そうですね"]), "6文字未満の文には適用しない");
+  eq(JSON.stringify(run([U, "在庫の確認をお願いします", "次の議題に移ります", "シフトの件です", U])), JSON.stringify([U, "在庫の確認をお願いします", "次の議題に移ります", "シフトの件です", U]), "直前3チャンクより前の出現は数えない");
+  eq(JSON.stringify(run([U + "。", U + "！", " " + U + " "])), JSON.stringify([U + "。", U + "！"]), "空白・句読点を除いて比較する（3回目は落ちる）");
+  const conv = ["はい、わかりました。それでお願いします", "ではそれで進めましょう", "はい、わかりました。それでお願いします",
+    "来週の木曜日に決めます", "はい、わかりました。それでお願いします", "はい、わかりました。 了解です"];
+  eq(JSON.stringify(run(conv)), JSON.stringify(conv), "同じ相づちを含む普通の会話は落ちない");
+  eq(repeatChunkCheck(U, [U, U]).len, U.length, "記録は文字数とルール名だけ");
+  eq(repeatChunkCheck(U, [U, U]).rule, "REPEAT_CHUNK", "ルール名 REPEAT_CHUNK");
+  eq(repeatChunkCheck("", [U, U]).drop, false, "空のチャンクは対象外");
+  eq(repeatChunkCheck(U, null).drop, false, "履歴が不正でも落とさない");
   console.log(`\n✅ ${pass} 件すべて PASS`);
 }
