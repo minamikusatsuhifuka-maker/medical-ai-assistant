@@ -3555,7 +3555,7 @@ const loadLabHistory=async()=>{
 };
 const restoreLab=(item)=>{
   setLabText(item.input_text||"");
-  setLabResults([{model:item.ai_model||"gemini-3-5-flash",status:"done",output:item.output_text||"",usage:item.scores?.usage||null,startedAt:0,endedAt:item.scores?.duration_ms||0,isRestored:true}]);
+  /* ai_model の無い古い履歴は「不明」と出す（特定のモデル名を決め打ちしない・2026-11-02 §2-1） */setLabResults([{model:item.ai_model||"不明",status:"done",output:item.output_text||"",usage:item.scores?.usage||null,startedAt:0,endedAt:item.scores?.duration_ms||0,isRestored:true}]);
   if(item.scores?.template&&LAB_TEMPLATES[item.scores.template])setLabTemplate(item.scores.template);
   if(item.scores?.exam_tpl_id&&LAB_EXAM_TEMPLATES.find(x=>x.id===item.scores.exam_tpl_id))setLabExamTplId(item.scores.exam_tpl_id);
   setLabCompareTab("all");
@@ -6875,7 +6875,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
           {labSelectMode&&<input type="checkbox" checked={sel} readOnly style={{marginTop:3}}/>}
           <div style={{flex:1,minWidth:0}}>
             {renderTitleEditor(h,{reloadFn:loadLabHistory,isSelectMode:labSelectMode,localUpdater:(id,t)=>setLabHistList(p=>p.map(x=>x.id===id?{...x,title:t}:x)),titleStyle:{fontSize:13,fontWeight:600,color:C.pD,marginBottom:3,wordBreak:"break-all"}})}
-            <div style={{fontSize:10,color:C.g500,marginBottom:4}}>{toJSTDate(h.created_at)} ・ {csModelLabel(h.ai_model)}</div>
+            <div style={{fontSize:10,color:C.g500,marginBottom:4}}>{toJSTDate(h.created_at)} ・ {csModelLabel(h.ai_model||"不明")}</div>
             <div style={{fontSize:11,color:C.g600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(h.input_text||"").slice(0,120)}{(h.input_text||"").length>120?"...":""}</div>
           </div>
           {!labSelectMode&&<button onClick={e=>{e.stopPropagation();deleteLabHistOne(h.id)}} style={{padding:"4px 8px",borderRadius:6,border:"none",background:"transparent",color:"#dc2626",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>}
