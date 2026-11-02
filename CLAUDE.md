@@ -38,6 +38,11 @@
 - そのため `model.startsWith("gemini-3")` で一律 minimal を付けると 3.7 で全リクエストが落ちる
 - 分岐は `app/lib/gemini-models.js` の `thinkingLevelFor()` / `applyThinking()` に集約済み。genConfig を組む側で直接 thinkingConfig を書かない
 
+### モデルの判断と本番の鍵（2026-11-02）
+- 診察の要約は 3.6 先頭のまま。理由と 3.6/3.8 の比較は `docs/exam-model-decision-2026-11-02.md`
+- 本番の鍵で手元を動かすときは `docs/runbook-prod-env.md`（**このフォルダで `vercel env run` すると `.env.local` の偽の鍵が優先される**）
+- Claude は残高不足のあいだ `app/lib/model-labels.js` の `CLAUDE_AVAILABLE=false`（補充したら true）
+
 ## ビルド・デプロイ
 - 必ずnpm run buildで成功確認してからデプロイ
 - デプロイ: git push origin main && npx vercel --prod
