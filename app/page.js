@@ -961,7 +961,7 @@ const hoverPvCacheRef=useRef({});
 const hoverPvLastCloseRef=useRef(0);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm){if(isValidSummaryModel(sm))setSummaryModel(sm);else{/* 選択肢から外したモデル(gemini-pro/claude)が保存されている端末は既定へ戻す */setSummaryModel(DEFAULT_SUMMARY_MODEL);try{localStorage.setItem("mk_summaryModel",DEFAULT_SUMMARY_MODEL)}catch{}}}/* 議事録の要約は Gemini 3.8 Flash に固定（2026-11-02）。古い選択（mk_minutesModel）は読まずに消す */try{localStorage.removeItem("mk_minutesModel")}catch{}const smm=localStorage.getItem("mk_smnSummaryModel");if(smm&&["gemini-3-5-flash","gemini-3-pro","claude"].includes(smm))setSmnSummaryModel(smm);const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np){const c=cleanNoisePatterns(JSON.parse(np));setNoisePatterns(c.kept);if(c.removed.length){notePurgedNoise(c.removed);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(c.kept))}catch{}}}const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const mstv=localStorage.getItem("mk_minSilenceThreshold");if(mstv!==null&&!isNaN(parseFloat(mstv)))setMinSilenceThreshold(parseFloat(mstv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1");const acs=localStorage.getItem("mk_autoCopySum");if(acs!==null)setAutoCopySum(acs==="1")}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm){if(isValidSummaryModel(sm))setSummaryModel(sm);else{/* 選択肢から外したモデル(gemini-pro/claude)が保存されている端末は既定へ戻す */setSummaryModel(DEFAULT_SUMMARY_MODEL);try{localStorage.setItem("mk_summaryModel",DEFAULT_SUMMARY_MODEL)}catch{}}}/* 議事録の要約は Gemini 3.8 Flash に固定（2026-11-02）。古い選択（mk_minutesModel）は読まずに消す */try{localStorage.removeItem("mk_minutesModel")}catch{}/* §3: セミナーの選択肢はなくした。古い選択は読まずに消す */try{localStorage.removeItem("mk_smnSummaryModel")}catch{}const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np){const c=cleanNoisePatterns(JSON.parse(np));setNoisePatterns(c.kept);if(c.removed.length){notePurgedNoise(c.removed);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(c.kept))}catch{}}}const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const mstv=localStorage.getItem("mk_minSilenceThreshold");if(mstv!==null&&!isNaN(parseFloat(mstv)))setMinSilenceThreshold(parseFloat(mstv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1");const acs=localStorage.getItem("mk_autoCopySum");if(acs!==null)setAutoCopySum(acs==="1")}catch{}},[]);
 // ホバー可能端末の判定（タッチ端末ではホバープレビューを丸ごと無効化）
 useEffect(()=>{try{setCanHover(window.matchMedia("(hover: hover) and (pointer: fine)").matches)}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
@@ -1042,24 +1042,13 @@ const[csOut,setCsOut]=useState(""),[csLd,setCsLd]=useState(false),[csMode,setCsM
 const[csSourcePatientId,setCsSourcePatientId]=useState(""),[csSourceDate,setCsSourceDate]=useState("");
 const[csScores,setCsScores]=useState({}),[csAiModel,setCsAiModel]=useState(""),[csSaving,setCsSaving]=useState(false),[csSaveMsg,setCsSaveMsg]=useState(""),[csUsage,setCsUsage]=useState(null);
 const[csHistory,setCsHistory]=useState([]),[csShowHistory,setCsShowHistory]=useState(false),[csHistoryLd,setCsHistoryLd]=useState(false);
-const[csModel,setCsModel]=useState("gemini-3-pro");
-const[csModels,setCsModels]=useState(["gemini-3-pro","gemini-3-5-flash","claude"]);
+const[csModel,setCsModel]=useState("common"); // §3: 選択肢なし。共通の順番（/api/summarize が GEMINI_MODELS に読み替える）
+const[csModels,setCsModels]=useState(["common"]);
 const[csResults,setCsResults]=useState([]);
 const[csCompareTab,setCsCompareTab]=useState("all");
 const[csPickOpen,setCsPickOpen]=useState(false),[csPickList,setCsPickList]=useState([]),[csPickLoading,setCsPickLoading]=useState(false),[csPickSearch,setCsPickSearch]=useState("");
-useEffect(()=>{try{
-  const sm=localStorage.getItem("mk_csModels");
-  if(sm){
-    const arr=JSON.parse(sm);
-    if(Array.isArray(arr)&&arr.length>0){
-      const valid=arr.filter(x=>x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");
-      if(valid.length>0){setCsModels(valid);setCsModel(valid[0]);return}
-    }
-  }
-  const s=localStorage.getItem("mk_csModel");
-  if(s==="gemini-3-pro"||s==="claude"){setCsModel(s);setCsModels([s]);localStorage.setItem("mk_csModels",JSON.stringify([s]))}
-  else if(s==="gemini"||s==="gemini-pro"){const def=["gemini-3-pro","gemini-3-5-flash","claude"];setCsModel(def[0]);setCsModels(def);localStorage.setItem("mk_csModels",JSON.stringify(def));localStorage.removeItem("mk_csModel")}
-}catch{}},[]);
+/* §3（2026-11-02）: カウンセリング分析の選択肢はなくした。古い選択（mk_csModels・mk_csModel）は読まずに消す */
+useEffect(()=>{try{localStorage.removeItem("mk_csModels");localStorage.removeItem("mk_csModel")}catch{}},[]);
 const csModelLabel=(m)=>{
   if(!m)return"Gemini 2.5 Pro";
   // 既に整形済みのラベルが渡された場合はそのまま返す（履歴の ai_model 互換）
@@ -1069,6 +1058,7 @@ const csModelLabel=(m)=>{
   if(s==="gemini-3-pro")return"Gemini 3.1 Pro";
   if(s==="claude")return"Claude Sonnet 4.6";
   if(s==="gemini-pro")return"Gemini 2.5 Pro";
+  if(s==="common")return COMMON_PRIMARY_LABEL;
   if(s==="gemini-3-8-flash")return"Gemini 3.8 Flash";
   if(s==="gemini-3-7-flash")return"Gemini 3.7 Flash";
   if(s==="gemini-3-6-flash")return"Gemini 3.6 Flash";
@@ -1104,6 +1094,9 @@ const csModelSubLabel=(m)=>{
 };
 const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 3.8 Flash")return"#047857";if(lbl==="Gemini 3.7 Flash")return"#059669";if(lbl==="Gemini 3.6 Flash")return"#0d9488";if(lbl==="Gemini 3.5 Flash-Lite")return"#0ea5e9";if(lbl==="Gemini 3.5 Flash")return"#10b981";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
 // 生成モデル名バッジ（csModelLabel で表示名に変換、内部キーは露出させない）
+// 選択肢をなくした画面のモデル表示（2026-11-02 §3）と、共通の先頭以外で生成したときの注意（黙って別のモデルを使わない）
+const FixedModelNote=({id})=>(<div data-fixed-model={id} style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:10}}>使うモデル: {COMMON_PRIMARY_LABEL}<span style={{fontWeight:400,color:C.g400,marginLeft:6,fontSize:11}}>（失敗したときは {chainLabel()} の順に自動で切り替え、使ったモデルを結果に表示します）</span></div>);
+const fallbackNote=(used)=>{try{if(!used)return null;const lbl=csModelLabel(used);if(!lbl||lbl===COMMON_PRIMARY_LABEL)return null;return(<span data-model-fallback="1" style={{display:"inline-block",fontSize:11,fontWeight:600,color:"#92400e",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle"}}>⚠ {COMMON_PRIMARY_LABEL} が使えず {lbl} で生成</span>)}catch{return null}};
 const modelBadge=(model)=>{if(!model)return null;const col=csModelColorByLabel(model);return(<span style={{display:"inline-block",fontSize:11,fontWeight:600,color:col,background:col+"18",border:`1px solid ${col}55`,borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle",whiteSpace:"nowrap"}}>{csModelLabel(model)}</span>)};
 const csModelDesc=(m)=>m==="gemini-3-pro"?"最新・最高精度 ⭐":m==="claude"?"日本語精度":"バランス型";
 const csModelColor=(m)=>m==="gemini-3-pro"?"#9333ea":m==="claude"?"#d97706":"#4285f4";
@@ -1243,7 +1236,7 @@ const[smnTitle,setSmnTitle]=useState("");
 const[smnTranscript,setSmnTranscript]=useState("");
 const[smnSummary,setSmnSummary]=useState("");
 const[smnSummaryLoading,setSmnSummaryLoading]=useState(false);
-const[smnSummaryModel,setSmnSummaryModel]=useState("gemini-3-5-flash");
+const[smnSummaryModel,setSmnSummaryModel]=useState("common"); // §3: 選択肢なし（セミナーの3ルートは常に共通の順番）
 const[smnSummaryModelUsed,setSmnSummaryModelUsed]=useState("");
 const[smnGensparkText,setSmnGensparkText]=useState("");
 const[smnGensparkLoading,setSmnGensparkLoading]=useState(false);
@@ -1545,17 +1538,14 @@ const[journeyResult,setJourneyResult]=useState("");
 const[journeyLoading,setJourneyLoading]=useState(false);
 const[journeyModal,setJourneyModal]=useState(false);
 const[journeyMeta,setJourneyMeta]=useState(null); // {model, usage}
-const[journeyModels,setJourneyModels]=useState(["gemini-3-pro","gemini-3-5-flash","claude"]);
+const[journeyModels,setJourneyModels]=useState(["common"]); // §3: 選択肢なし（/api/journey-map は常に共通の順番）
 const[journeyResults,setJourneyResults]=useState([]); // 並列実行用
 const[journeyCompareTab,setJourneyCompareTab]=useState("all");
 const[journeySaving,setJourneySaving]=useState(false),[journeySaveMsg,setJourneySaveMsg]=useState("");
 const[journeyHistOpen,setJourneyHistOpen]=useState(false),[journeyHistList,setJourneyHistList]=useState([]),[journeyHistLoading,setJourneyHistLoading]=useState(false),[journeyHistSearch,setJourneyHistSearch]=useState("");
 const journeyAbortRef=useRef(null);
-useEffect(()=>{try{
-  const s=localStorage.getItem("mk_journeyModels");
-  // gemini-pro(Gemini 2.5 Pro)は選択肢から除外。既存ユーザーが選択中でもフィルタで落とす
-  if(s){const arr=JSON.parse(s);if(Array.isArray(arr)&&arr.length>0){const valid=arr.filter(x=>x==="gemini-3-pro"||x==="gemini-3-5-flash"||x==="claude");if(valid.length>0)setJourneyModels(valid)}}
-}catch{}},[]);
+/* §3（2026-11-02）: ジャーニーマップの選択肢はなくした。古い選択（mk_journeyModels）は読まずに消す */
+useEffect(()=>{try{localStorage.removeItem("mk_journeyModels")}catch{}},[]);
 const toggleJourneyModel=(m)=>{
   setJourneyModels(prev=>{
     let next;
@@ -1962,7 +1952,7 @@ setJourneyResult("分析に必要なデータが不足しています。\nカウ
 setJourneyLoading(false);return;
 }
 const ctrl=new AbortController();journeyAbortRef.current=ctrl;
-const mp=journeyModels[0]||"gemini-pro";
+const mp=journeyModels[0]||"common";
 const res=await fetch("/api/journey-map",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content,model_preference:mp,context:"journey-map"}),signal:ctrl.signal});
 const data=await res.json();
 if(data.error)throw new Error(data.error);
@@ -6601,7 +6591,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 <div style={card}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
   <h2 style={{fontSize:18,fontWeight:700,color:"#2a5018",margin:0}}>🎓 セミナー学習</h2>
-  <span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8,flex:1}}>{smnSummaryModelUsed||smnSummaryModel}</span>
+  <span style={{fontSize:10,color:C.g400,fontWeight:500,marginLeft:8,flex:1}}>{csModelLabel(smnSummaryModelUsed||smnSummaryModel)}</span>
   <button onClick={openSmnHist} style={{padding:"6px 12px",borderRadius:10,border:`1px solid ${C.p}66`,background:C.pLL,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📂 履歴</button>
   <button onClick={()=>{smnStop();setPage("main")}} style={btn(C.p,C.pDD)}>✕ 閉じる</button>
 </div>
@@ -6610,10 +6600,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 
 <input value={smnTitle} onChange={e=>setSmnTitle(e.target.value)} placeholder="セミナータイトル（例：5月クリニック経営セミナー）" style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,fontFamily:"inherit",marginBottom:12,boxSizing:"border-box"}}/>
 
-{/* モデル選択 */}
-<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-{[{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"高精度"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash",desc:"高速"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const sel=smnSummaryModel===m.v;return(<button key={m.v} onClick={()=>{setSmnSummaryModel(m.v);try{localStorage.setItem("mk_smnSummaryModel",m.v)}catch{}}} disabled={smnSummaryLoading||smnGensparkLoading||smnInsightsLoading} style={{flex:"1 1 140px",padding:"8px 10px",borderRadius:10,border:sel?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:sel?C.pLL:C.w,fontSize:12,fontWeight:sel?700:500,color:sel?C.pD:C.g500,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}><div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
-</div>
+<FixedModelNote id="seminar"/>
 
 {/* 入力モード切替 */}
 <div style={{display:"flex",gap:8,marginBottom:16}}>
@@ -6680,7 +6667,7 @@ if(page==="seminar")return(<div style={{maxWidth:mob?"100%":820,margin:"0 auto",
 {/* 詳細要約結果 */}
 {smnSummary&&<div style={{marginTop:12,padding:14,borderRadius:12,background:"#f0fdf4",border:`2px solid ${C.p}88`}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-    <h3 style={{fontSize:15,fontWeight:700,color:"#2a5018",margin:0}}>📚 詳細要約・まとめ{modelBadge(smnSummaryModelUsed||smnSummaryModel)}</h3>
+    <h3 style={{fontSize:15,fontWeight:700,color:"#2a5018",margin:0}}>📚 詳細要約・まとめ{modelBadge(smnSummaryModelUsed||smnSummaryModel)}{fallbackNote(smnSummaryModelUsed)}</h3>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <button onClick={()=>{copyTextToClipboard(smnSummary,"要約")}} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.p}`,background:C.w,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
       <button onClick={saveSmnResult} disabled={smnSaved} style={{padding:"4px 12px",borderRadius:8,border:"none",background:smnSaved?"#10b981":C.p,color:C.w,fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:smnSaved?"default":"pointer",opacity:smnSaved?0.85:1}}>{smnSaved?"✓ 保存済み":"💾 保存"}</button>
@@ -6898,9 +6885,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
 {[{k:"full",l:"📊 総合分析"},{k:"listening",l:"👂 傾聴・共感"},{k:"needs",l:"🎯 ニーズ把握"},{k:"marketing",l:"💡 マーケティング"},{k:"plan",l:"📅 年間計画"}].map(m=>(<button key={m.k} onClick={()=>setCsMode(m.k)} style={{padding:"5px 12px",borderRadius:10,border:csMode===m.k?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:csMode===m.k?C.pLL:C.w,fontSize:12,fontWeight:csMode===m.k?700:500,color:csMode===m.k?C.pD:C.g500,fontFamily:"inherit",cursor:"pointer"}}>{m.l}</button>))}
 </div>
-<div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-{[{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"高精度"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash",desc:"高速"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=csModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleCsModel(m.v)} disabled={csLd} style={{position:"relative",flex:"1 1 140px",padding:"10px 12px 8px",borderRadius:10,border:selected?`2px solid ${C.p}`:`1px solid ${C.g200}`,background:selected?C.pLL:C.w,fontSize:12,fontWeight:selected?700:500,color:selected?C.pD:C.g500,cursor:csLd?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:4,left:6,color:C.pD,fontSize:13,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:10,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
-</div>
+<FixedModelNote id="counseling"/>
 <div style={{marginBottom:10}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
 <span style={{fontSize:12,fontWeight:600,color:C.g500}}>分析テキスト</span>
@@ -6979,7 +6964,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 </div>}
 {csOut&&csResults.length<=1&&<div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 分析結果</span>
+<span style={{fontSize:13,fontWeight:700,color:C.pD}}>📋 分析結果{csAiModel&&modelBadge(csAiModel)}{fallbackNote(csAiModel)}</span>
 <button onClick={()=>copyTextToClipboard(csOut,"カウンセリング要約")} style={{padding:"4px 12px",borderRadius:10,border:`1px solid ${C.p}44`,background:C.w,fontSize:12,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button></div>
 {renderSourceInfo()}
 {csScores&&Object.keys(csScores).length>0&&<div style={{marginBottom:12}}>
@@ -7090,9 +7075,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={openJourneyHist} style={{padding:"5px 12px",borderRadius:10,border:"1px solid #7dd3fc",background:"#fff",fontSize:11,fontWeight:700,color:"#0369a1",fontFamily:"inherit",cursor:"pointer"}}>📂 ジャーニー履歴</button>
 </div>
 <p style={{fontSize:12,color:"#0c4a6e",marginBottom:10,lineHeight:1.6}}>カウンセリング・診療記録をAIが分析し、患者が「初回来院 → 検討 → 決断 → リピート」の各フェーズで感じている不安・期待・行動パターンを可視化します。ホームページ改善・問診票設計・接遇向上に活用できます。</p>
-<div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-{[{v:"gemini-3-pro",label:"Gemini 3.1 Pro",desc:"高精度"},{v:"gemini-3-5-flash",label:"Gemini 3.5 Flash",desc:"高速"},{v:"claude",label:"Claude Sonnet 4.6",desc:"日本語精度"}].map(m=>{const selected=journeyModels.includes(m.v);return(<button key={m.v} onClick={()=>toggleJourneyModel(m.v)} disabled={journeyLoading} style={{position:"relative",flex:"1 1 140px",padding:"8px 10px 6px",borderRadius:10,border:selected?"2px solid #0369a1":"1px solid #cbd5e1",background:selected?"#e0f2fe":"#fff",fontSize:11,fontWeight:selected?700:500,color:selected?"#0369a1":"#64748b",cursor:journeyLoading?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"center"}}>{selected&&<span style={{position:"absolute",top:3,left:6,color:"#0369a1",fontSize:12,fontWeight:700}}>✓</span>}<div>{m.label}</div><div style={{fontSize:9,marginTop:2,fontWeight:400,opacity:0.8}}>{m.desc}</div></button>)})}
-</div>
+<FixedModelNote id="journey"/>
 {journeyLoading?(<button onClick={stopJourneyMap} style={{width:"100%",padding:"14px",borderRadius:12,border:"2px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>⏹ AI生成中... (クリックで停止)</button>):(<button onClick={journeyModels.length>1?runJourneyMapAll:runJourneyMap} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,.12)"}}>{journeyModels.length>1?`🗺️ ${journeyModels.length}個のAIで一斉生成`:"🗺️ 患者ジャーニーマップを生成する"}</button>)}
 </div>
 </div>
@@ -7180,7 +7163,7 @@ if(page==="counsel")return(<div style={{maxWidth:mob?"100%":700,margin:"0 auto",
 <button onClick={saveJourneyResult} disabled={journeySaving} style={{padding:"6px 14px",borderRadius:10,border:"none",background:journeySaving?"#e2e8f0":"linear-gradient(135deg,#0369a1,#0891b2)",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"inherit",cursor:journeySaving?"not-allowed":"pointer"}}>{journeySaving?"⏳ 保存中...":"💾 保存"}</button>
 <button onClick={()=>{saveFavorite("カウンセリング","[患者ジャーニーマップ] "+new Date().toLocaleDateString("ja-JP"),journeyResult,"");setJourneyModal(false)}} style={{padding:"6px 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fffbeb",fontSize:12,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐ お気に入り保存</button>
 {journeySaveMsg&&<span style={{fontSize:11,fontWeight:600,color:journeySaveMsg.includes("失敗")?"#dc2626":"#16a34a"}}>{journeySaveMsg}</span>}
-{journeyMeta?.model&&<span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{csModelLabel(journeyMeta.model)||journeyMeta.model}</span>}
+{journeyMeta?.model&&<span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{csModelLabel(journeyMeta.model)||journeyMeta.model}{fallbackNote(journeyMeta.model)}</span>}
 </div>
 <pre style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.8,fontFamily:"inherit",background:"#f8fafc",padding:14,borderRadius:12}}>{journeyResult}</pre>
 {journeyMeta?.usage&&<div style={{marginTop:12,padding:10,background:"#f8f4ff",border:"1px solid #d4cce8",borderRadius:8,fontSize:12,color:"#475569"}}>

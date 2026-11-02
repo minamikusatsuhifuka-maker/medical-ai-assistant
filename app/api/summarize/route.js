@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, applyThinking } from "../../lib/gemini-models";
+import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, applyThinking, geminiTestFail } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -101,6 +101,11 @@ function buildGeminiModelList(model_preference) {
   if (model_preference === "gemini-3-6-flash") {
     return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
   }
+  // gemini-3-8-flash: 共通の順番（3.8 先頭）。2026-11-02 §3 でカウンセリング分析が送る（診察の既定は下の EXAM_SUMMARY_MODELS のまま）
+  // "common" は名前にモデル番号を持たない共通の鍵（画面の内部キー）。先頭が変わっても画面を直さなくてよい
+  if (model_preference === "common" || model_preference === "gemini-3-8-flash") {
+    return GEMINI_MODELS;
+  }
   // gemini-3-7-flash: 3.7 を明示指定（診察の既定は下記のとおり 3.6 なので、試すときはこちらを選ぶ）
   if (model_preference === "gemini-3-7-flash") {
     return GEMINI_MODELS;
@@ -119,6 +124,7 @@ async function callGemini(text, prompt, model_preference) {
   let lastError = null;
   for (const model of models) {
     try {
+      if (geminiTestFail(model)) throw new Error(`${model}: 検証のため失敗させた`); // 開発時だけ（本番では効かない）
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       // Gemini 3.x は思考が既定ONで要約が遅くなる。要約は抽出・整形タスクで深い推論は不要のため最小化。
       // 付与値のモデル別分岐は gemini-models.js に集約。

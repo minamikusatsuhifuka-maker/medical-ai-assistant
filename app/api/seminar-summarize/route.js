@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS } from "../../lib/gemini-models";
+import { GEMINI_MODELS, geminiTestFail } from "../../lib/gemini-models";
 
 export const maxDuration = 800;
 export const dynamic = "force-dynamic";
@@ -51,7 +51,13 @@ const SEMINAR_PROMPT = `あなたは医療クリニックの学習支援AIです
 - マークダウン形式で構造化
 - 前置きや注釈（「音声認識の精度が〜」等）は一切書かない`;
 
+// 2026-11-02 指示書 model-display-unify §3: この画面は選択肢をなくし、共通の順番（GEMINI_MODELS＝3.8 先頭）だけを使う。
+// 古い端末が送る model_preference（gemini-3-pro・gemini-3-5-flash・claude 等）はすべてこれに読み替える。
 function buildGeminiModelList(model_preference) {
+  return GEMINI_MODELS;
+}
+// 旧: model_preference で使い分けていた版（参照用に残す・呼ばない）
+function buildGeminiModelListLegacy(model_preference) {
   if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
   if (model_preference === "gemini-pro") return ["gemini-2.5-pro", ...GEMINI_MODELS];
   if (model_preference === "gemini-3-5-flash") return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
@@ -66,6 +72,7 @@ async function callGemini(transcript, model_preference) {
   let lastError = null;
   for (const model of models) {
     try {
+      if (geminiTestFail(model)) throw new Error(`${model}: 検証のため失敗させた`);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
         method: "POST",
@@ -125,7 +132,7 @@ export async function POST(req) {
     if (!transcript || transcript.length < 100) {
       return NextResponse.json({ error: "書き起こしテキストが短すぎます（100文字以上必要）" }, { status: 400 });
     }
-    const useClaude = model_preference === "claude";
+    const useClaude = false; // §3: Claude の選択肢はなくした（古い端末の claude も共通の順番で生成）
     const r = useClaude ? await callClaude(transcript) : await callGemini(transcript, model_preference);
     const usage = await logUsage({
       route: "/api/seminar-summarize",
