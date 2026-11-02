@@ -54,13 +54,6 @@ const SYSTEM_PROMPT = `あなたは医療マーケティング・患者体験設
 function buildGeminiModelList(model_preference) {
   return GEMINI_MODELS;
 }
-// 旧: model_preference で使い分けていた版（参照用に残す・呼ばない）
-function buildGeminiModelListLegacy(model_preference) {
-  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview","gemini-3-pro-preview",...GEMINI_MODELS];
-  if (model_preference === "gemini-pro") return ["gemini-2.5-pro",...GEMINI_MODELS];
-  // デフォルト: gemini-models.js の GEMINI_MODELS（先頭のモデルは gemini-models.js を参照）
-  return GEMINI_MODELS;
-}
 
 async function callGemini(content, model_preference) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -96,30 +89,6 @@ async function callGemini(content, model_preference) {
   throw new Error("Gemini全モデル失敗: " + lastError);
 }
 
-async function callClaude(content) {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) throw new Error("CLAUDE_API_KEY が設定されていません");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 16384,
-      temperature: 0.7,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: content.substring(0, 10000) }],
-    }),
-  });
-  const data = await res.json();
-  if (data.content?.[0]?.text) return {
-    result: data.content[0].text,
-    model: data.model || "claude-sonnet-4-6",
-    input_tokens: data.usage?.input_tokens || 0,
-    output_tokens: data.usage?.output_tokens || 0,
-  };
-  throw new Error("Claude応答エラー: " + JSON.stringify(data));
-}
-
 export async function POST(request) {
   let mp = null;
   try {
@@ -128,8 +97,8 @@ export async function POST(request) {
     if (!content || content.trim().length < 10) {
       return NextResponse.json({ error: "コンテンツが不足しています" }, { status: 400 });
     }
-    const useClaude = false; // §3: Claude の選択肢はなくした（古い端末の claude も共通の順番で生成）
-    const r = useClaude ? await callClaude(content) : await callGemini(content, model_preference);
+    // Claude の選択肢はなくした（§3）。古い端末が claude を送っても共通の順番（GEMINI_MODELS）で生成する
+    const r = await callGemini(content, model_preference);
     const usage = await logUsage({
       route: "/api/journey-map",
       model: r.model,

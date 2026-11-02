@@ -39,14 +39,6 @@ const GENSPARK_PROMPT = `あなたはプレゼン資料作成の専門家です�
 function buildGeminiModelList(model_preference) {
   return GEMINI_MODELS;
 }
-// 旧: model_preference で使い分けていた版（参照用に残す・呼ばない）
-function buildGeminiModelListLegacy(model_preference) {
-  if (model_preference === "gemini-3-pro") return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
-  if (model_preference === "gemini-pro") return ["gemini-2.5-pro", ...GEMINI_MODELS];
-  if (model_preference === "gemini-3-5-flash") return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
-  // デフォルト: gemini-models.js の GEMINI_MODELS（先頭のモデルは gemini-models.js を参照）
-  return GEMINI_MODELS;
-}
 
 async function callGemini(summary, model_preference) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -83,30 +75,6 @@ async function callGemini(summary, model_preference) {
   throw new Error("Gemini全モデル失敗: " + lastError);
 }
 
-async function callClaude(summary) {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) throw new Error("CLAUDE_API_KEY が設定されていません");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      temperature: 0.7,
-      system: GENSPARK_PROMPT,
-      messages: [{ role: "user", content: summary }],
-    }),
-  });
-  const data = await res.json();
-  if (data.content?.[0]?.text) return {
-    result: data.content[0].text,
-    model: data.model || "claude-sonnet-4-6",
-    input_tokens: data.usage?.input_tokens || 0,
-    output_tokens: data.usage?.output_tokens || 0,
-  };
-  throw new Error("Claude応答エラー: " + JSON.stringify(data));
-}
-
 export async function POST(req) {
   let mp = null;
   try {
@@ -115,8 +83,8 @@ export async function POST(req) {
     if (!summary || summary.trim().length < 50) {
       return NextResponse.json({ error: "要約テキストが不足しています" }, { status: 400 });
     }
-    const useClaude = false; // §3: Claude の選択肢はなくした（古い端末の claude も共通の順番で生成）
-    const r = useClaude ? await callClaude(summary) : await callGemini(summary, model_preference);
+    // Claude の選択肢はなくした（§3）。古い端末が claude を送っても共通の順番（GEMINI_MODELS）で生成する
+    const r = await callGemini(summary, model_preference);
     const usage = await logUsage({
       route: "/api/seminar-genspark",
       model: r.model,

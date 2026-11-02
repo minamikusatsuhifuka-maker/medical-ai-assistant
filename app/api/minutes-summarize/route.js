@@ -147,50 +147,6 @@ async function callGeminiList(models, text, prompt, maxOutputTokens = 8192) {
   }
   throw new Error("Gemini全モデル失敗: " + lastError);
 }
-// 既存互換: flash → 2.5 pro フォールバック（呼び出し元が変わるまで維持）
-async function callGeminiFallback(text, prompt, maxOutputTokens = 8192) {
-  return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
-}
-
-// Claude 呼び出し
-async function callClaude(text, prompt, maxTokens = 8192) {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) throw new Error("CLAUDE_API_KEY 未設定");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: Math.min(maxTokens, 8192),
-      temperature: 0.3,
-      system: prompt,
-      messages: [{ role: "user", content: text }],
-    }),
-  });
-  const data = await res.json();
-  if (data.content?.[0]?.text) {
-    try {
-      await logUsage({
-        route: "/api/minutes-summarize",
-        model: data.model || "claude-sonnet-4-6",
-        context: "minutes",
-        input_tokens: data.usage?.input_tokens || 0,
-        output_tokens: data.usage?.output_tokens || 0,
-        request_meta: { char_length: text.length },
-      });
-    } catch (e) { console.error("[logUsage] minutes-claude:", e); }
-    return {
-      summary: data.content[0].text,
-      model: "claude-sonnet-4-6",
-      finishReason: data.stop_reason === "end_turn" ? "STOP" : (data.stop_reason || ""),
-    };
-  }
-  throw new Error("Claude応答エラー: " + JSON.stringify(data));
-}
 
 // 統一的モデル呼び出し
 // 2026-11-02: 議事録は Gemini 3.8 Flash に固定。古い端末・古い画面が送る model（3.7/3.6/3.5/3.1 Pro/Claude 等）は
@@ -199,30 +155,6 @@ async function callModel(model, text, prompt, maxOutputTokens, used) {
   const result = await callGeminiList(MINUTES_SUMMARY_MODELS, text, prompt, maxOutputTokens);
   if (used) used.add(result.model);
   return result;
-}
-// 旧: model パラメータで使い分けていた版（参照用に残す・呼ばない）
-async function callModelLegacy(model, text, prompt, maxOutputTokens) {
-  if (model === "claude") {
-    return await callClaude(text, prompt, maxOutputTokens);
-  }
-  if (model === "gemini-pro") {
-    return await callGeminiList(["gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"], text, prompt, maxOutputTokens);
-  }
-  if (model === "gemini-3-pro") {
-    return await callGeminiList(["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-3.5-flash", "gemini-2.5-flash"], text, prompt, maxOutputTokens);
-  }
-  if (model === "gemini-3-5-flash") {
-    return await callGeminiList(["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"], text, prompt, maxOutputTokens);
-  }
-  // 3.6 の明示指定は 3.7 に繰り上げない（UIで選べる比較用の選択肢として残すため）
-  if (model === "gemini-3-6-flash") {
-    return await callGeminiList(["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"], text, prompt, maxOutputTokens);
-  }
-  if (model === "gemini-3-7-flash") {
-    return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
-  }
-  // デフォルト（gemini-flash 等の既存互換キー含む）: gemini-models.js の GEMINI_MODELS（先頭のモデルは gemini-models.js を参照）
-  return await callGeminiList(GEMINI_MODELS, text, prompt, maxOutputTokens);
 }
 
 // チャンク要約（既存プロンプト維持）
