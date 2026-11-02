@@ -5,7 +5,6 @@ export async function GET() {
     hasOpenAI: !!process.env.OPENAI_API_KEY,
     hasGemini: !!process.env.GEMINI_API_KEY,
     geminiKeyPrefix: gk.substring(0, 10) + "...",
-    hasClaude: !!process.env.CLAUDE_API_KEY,
     hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   });
