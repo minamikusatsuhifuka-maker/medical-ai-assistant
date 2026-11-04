@@ -104,6 +104,16 @@ async function runTheme(browser, theme) {
   await fail(false, false);
   await reset(); await selectAndCopy(page.locator("pre", { hasText: "両頬に紅斑" }));
   await record("履歴モーダル 文字を選んでCtrl+C", SUMMARY);
+  // 一部だけ選ぶ（全文に差し替わらない）
+  const pre = page.locator("pre", { hasText: "両頬に紅斑" }).first();
+  await reset();
+  await pre.evaluate((el, part) => {
+    const n = el.firstChild, i = n.data.indexOf(part), d = el.ownerDocument, r = d.createRange();
+    r.setStart(n, i); r.setEnd(n, i + part.length); const sel = d.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }, "両頬に紅斑\nP) ステロイド");
+  await page.keyboard.press("ControlOrMeta+C"); await page.waitForTimeout(120);
+  await record("部分: 履歴本文の2行にまたがる選択", "両頬に紅斑\nP) ステロイド");
+  await pre.evaluate((el) => el.ownerDocument.getSelection().removeAllRanges());
   // 手動コピー小窓
   await fail(true, true); await modalCopy.click();
   const manual = page.locator('[data-manual-copy="1"]');
@@ -136,6 +146,30 @@ async function runTheme(browser, theme) {
   await reset(); await sumTa.focus(); await sumTa.evaluate((e) => e.select());
   await page.keyboard.press("ControlOrMeta+C"); await page.waitForTimeout(120);
   await record("要約欄 文字を選んでCtrl+C", AUTO);
+  // ---- 一部だけ選ぶ（全文に差し替わらない）----
+  const partial = async (ta, name, part) => {
+    await ta.focus();
+    await ta.evaluate((e, part) => { const i = e.value.indexOf(part); e.setSelectionRange(i, i + part.length); }, part);
+    await reset(); await page.keyboard.press("ControlOrMeta+C"); await page.waitForTimeout(120);
+    await record(name, part);
+  };
+  await tx.fill(TRANSCRIPT);
+  await partial(tx, "部分: 書き起こし欄の1行の途中", "市販薬では改善");
+  await partial(tx, "部分: 書き起こし欄の2行にまたがる選択", "改善しませんでした。\nステロイドの");
+  await partial(sumTa, "部分: 要約欄の1行の途中", "保湿剤とステロイド");
+  // 実際のマウスで書き起こし欄をなぞる（setSelectionRange を使わない）
+  const box = await tx.boundingBox();
+  await tx.evaluate((e) => { e.scrollTop = 0; e.setSelectionRange(0, 0); });
+  await page.mouse.move(box.x + 40, box.y + 22); await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 22, { steps: 8 }); await page.mouse.up();
+  const dragged = await tx.evaluate((e) => e.value.slice(e.selectionStart, e.selectionEnd));
+  if (!dragged || dragged.length >= TRANSCRIPT.length) throw new Error("マウスの選択が部分になっていません: " + JSON.stringify(dragged));
+  await reset(); await page.keyboard.press("ControlOrMeta+C"); await page.waitForTimeout(120);
+  await record(`部分: 書き起こし欄をマウスでなぞる（${dragged.length}文字「${dragged}」/全${TRANSCRIPT.length}文字）`, dragged);
+  // 何も選んでいないときは、前のクリップボードを壊さない
+  await tx.evaluate((e) => e.setSelectionRange(2, 2));
+  await tx.focus(); await reset(); await page.keyboard.press("ControlOrMeta+C"); await page.waitForTimeout(120);
+  await record("部分: 選択なしの Ctrl+C はクリップボードを変えない", "SENTINEL");
   // アプリ内の欄に貼っても空行が増えない
   await mainCopy.click(); await page.waitForTimeout(200);
   const before = await sumTa.inputValue(); // textarea は CRLF を LF で返す。貼ったあとに同じ値なら空行は増えていない
@@ -150,6 +184,17 @@ async function runTheme(browser, theme) {
   await page.waitForTimeout(150);
   await reset(); await selectAndCopy(page.locator("div", { hasText: "手背に紅斑" }).last());
   await record("要約 HL表示 文字を選んでCtrl+C", AUTO);
+  // HL 表示の一部（強調の span をまたいでも、選んだ範囲の文字だけ）
+  const hlDiv = page.locator("div", { hasText: "手背に紅斑" }).last();
+  await reset();
+  const hlPart = await hlDiv.evaluate((el) => {
+    const d = el.ownerDocument, w = d.createTreeWalker(el, NodeFilter.SHOW_TEXT), ns = []; let n;
+    while ((n = w.nextNode())) ns.push(n);
+    const r = d.createRange(); r.setStart(ns[0], 1); const last = ns[ns.length - 1]; r.setEnd(last, Math.max(1, last.data.length - 2));
+    const sel = d.getSelection(); sel.removeAllRanges(); sel.addRange(r); return sel.toString();
+  });
+  await page.keyboard.press("ControlOrMeta+C"); await page.waitForTimeout(120);
+  await record("部分: HL表示の一部", hlPart);
   await page.getByRole("button", { name: /🎨 HL/ }).click();
 
   // ---- PiP ----
