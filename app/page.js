@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { supabase } from "./lib/supabase";
+import { toClipboardText, attachPlainTextCopy } from "./lib/clipboard-plain";
 import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions, genSessionId } from "./lib/transcript-autosave";
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
@@ -962,6 +963,7 @@ const hoverPvCloseTimer=useRef(null);
 const hoverPvCacheRef=useRef({});
 const hoverPvLastCloseRef=useRef(0);
 const[newNoiseInput,setNewNoiseInput]=useState("");
+useEffect(()=>attachPlainTextCopy(document),[]);
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
 useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm){if(isValidSummaryModel(sm))setSummaryModel(sm);else{/* 選択肢から外したモデル(gemini-pro/claude)が保存されている端末は既定へ戻す */setSummaryModel(DEFAULT_SUMMARY_MODEL);try{localStorage.setItem("mk_summaryModel",DEFAULT_SUMMARY_MODEL)}catch{}}}/* 議事録の要約は Gemini 3.8 Flash に固定（2026-11-02）。古い選択（mk_minutesModel）は読まずに消す */try{localStorage.removeItem("mk_minutesModel")}catch{}/* §3: セミナーの選択肢はなくした。古い選択は読まずに消す */try{localStorage.removeItem("mk_smnSummaryModel")}catch{}const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np){const c=cleanNoisePatterns(JSON.parse(np));setNoisePatterns(c.kept);if(c.removed.length){notePurgedNoise(c.removed);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(c.kept))}catch{}}}const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const mstv=localStorage.getItem("mk_minSilenceThreshold");if(mstv!==null&&!isNaN(parseFloat(mstv)))setMinSilenceThreshold(parseFloat(mstv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1");const acs=localStorage.getItem("mk_autoCopySum");if(acs!==null)setAutoCopySum(acs==="1")}catch{}},[]);
 // ホバー可能端末の判定（タッチ端末ではホバープレビューを丸ごと無効化）
@@ -4696,7 +4698,7 @@ const deleteRecSelected=async()=>{
 };
 // クリップボードへのコピー（全コピー箇所の共通口）。
 // ①クリック直後に await を挟まず writeText を呼ぶ（挟むとユーザー操作起点が失われ拒否される実装系がある）
-// ②拒否されたら画面外 textarea + execCommand("copy")（権限が拒否・未許可の環境でも動く）
+// ②拒否されたら画面外 textarea + execCommand("copy")（権限が拒否・未許可の環境でも動く）。textarea は値の CRLF を LF に戻すので、改行は attachPlainTextCopy の copy イベントで CRLF に揃える
 // ③両方ダメなら手動コピー小窓を出す（無言で失敗させない）。quiet=自動コピー用（失敗時の小窓・失敗表示なし）
 // doc=コピーを実行する文書（PiP小窓内のボタンは小窓側のdocumentで行う。フォーカスが小窓にあるため）
 const copyTextToClipboard=(text,label="テキスト",opts={})=>{
@@ -4708,7 +4710,7 @@ const copyTextToClipboard=(text,label="テキスト",opts={})=>{
   const fail=(e)=>{console.error("[copyText] コピー失敗:",e);if(!quiet){sSt(`⚠️ ${label}を自動でコピーできませんでした。表示された枠から手動でコピーしてください`);btnFbSet("copy","err","⚠ コピー失敗 → 手動でコピーしてください");setManualCopy({text:t,label})}return false};
   const cb=doc.defaultView&&doc.defaultView.navigator&&doc.defaultView.navigator.clipboard;
   if(!cb||!cb.writeText)return Promise.resolve(legacy()?done():fail(new Error("clipboard API なし・execCommand失敗")));
-  let p;try{p=cb.writeText(t)}catch(e){p=Promise.reject(e)}
+  let p;try{p=cb.writeText(toClipboardText(t))}catch(e){p=Promise.reject(e)}
   return p.then(done,(e)=>{console.warn("[copyText] writeText拒否→execCommandで再試行:",e&&e.name,e&&e.message);return legacy()?done():fail(e)});
 };
 // 要約完了後の自動コピー。非同期処理の完了時（ユーザー操作の外）なのでブラウザに拒否されうる。
@@ -4723,6 +4725,7 @@ const autoCopySummary=async(text,okMsg,ngMsg)=>{
 // PiP
 const openPip=useCallback(async()=>{try{if(!("documentPictureInPicture" in window)){sSt("Chrome 116以降で利用可能です");return}
 const pw=await window.documentPictureInPicture.requestWindow({width:270,height:175});
+attachPlainTextCopy(pw.document);
 const rm=R.find(r=>r.id===rid);const rmName=rm?`${rm.i}${rm.l}`:"";
 pw.document.body.style.margin="0";pw.document.body.style.overflow="hidden";
 const pipTheme=localStorage.getItem('mk_theme')||'pearl';
@@ -6793,7 +6796,7 @@ if(page==="summary_lab")return(<div style={{maxWidth:mob?"100%":900,margin:"0 au
   <textarea value={labText} onChange={e=>setLabText(e.target.value)} placeholder="ここに書き起こしテキストを貼り付け..." style={{width:"100%",minHeight:160,padding:10,borderRadius:8,border:`1px solid ${C.g200}`,fontFamily:"inherit",fontSize:13,resize:"vertical",boxSizing:"border-box"}}/>
   <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
     <button onClick={()=>{if(iR.current){setLabText(iR.current);sSt("✓ 録音書き起こしから読み込み")}else{sSt("⚠️ 録音書き起こしがありません")}}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>📥 録音から読み込み</button>
-    <button onClick={()=>{if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(t=>{setLabText(t);sSt("✓ クリップボードから貼り付け")}).catch(()=>{sSt("⚠️ クリップボード読み取り失敗")})}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>📋 クリップボード</button>
+    <button onClick={()=>{if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(t=>{setLabText(t.replace(/\r\n/g,"\n"));sSt("✓ クリップボードから貼り付け")}).catch(()=>{sSt("⚠️ クリップボード読み取り失敗")})}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>📋 クリップボード</button>
     <button onClick={()=>{setLabText("");sSt("クリアしました")}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.w,fontSize:11,fontWeight:600,color:C.g600,cursor:"pointer",fontFamily:"inherit"}}>🗑 クリア</button>
   </div>
 </div>

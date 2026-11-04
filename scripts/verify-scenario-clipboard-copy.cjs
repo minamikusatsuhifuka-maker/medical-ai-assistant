@@ -22,7 +22,7 @@ const TRANSCRIPT = "二週間前から赤みとかゆみが続いています。
 const AUTO_SUMMARY = "S) 手湿疹の再燃\nP) 保湿剤とステロイド外用、1か月後に再診";
 
 (async () => {
-  const browser = await pw.chromium.launch({ headless: true });
+  const browser = await pw.chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 950 }, permissions: ["clipboard-read", "clipboard-write"] });
   // 失敗の注入: window.__clipFail = {wt: writeTextを拒否, ex: execCommand("copy")をfalseに}
   await ctx.addInitScript(() => {
@@ -51,7 +51,7 @@ const AUTO_SUMMARY = "S) 手湿疹の再燃\nP) 保湿剤とステロイド外�
   const page = await ctx.newPage();
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
-  const clip = () => page.evaluate(() => navigator.clipboard.readText());
+  const clip = () => page.evaluate(() => navigator.clipboard.readText().then((t) => t.replace(/\r\n/g, "\n"))); // 改行は CRLF で入る（形式の確認は verify-scenario-clipboard-plaintext.cjs）
   const resetClip = () => page.evaluate(() => window.__wtRaw("SENTINEL"));
   const fail = (wt, ex) => page.evaluate(([wt, ex]) => { window.__clipFail = { wt, ex }; }, [wt, ex]);
   const fb = page.locator('[data-copy-fb="1"]');
