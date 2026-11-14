@@ -48,6 +48,11 @@ export const EXAM_MODEL_CHAINS = {
   "exam-hydrogen": ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.6-flash"],
   "exam-3-8": ["gemini-3.8-flash", "gemini-3.6-flash"],
 };
+// 診察の要約の「⚖ 比較」ボタンで並べるモデル（指示書 three-way-compare・2026-11-15）。列の数・順番・ボタンの文字はここから作る。
+// 各列はそのモデルだけで作る（失敗しても別のモデルに切り替えない＝比較にならないため）。/api/summarize へは "exact:<モデル名>" で送る。
+export const EXAM_COMPARE_MODELS = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-4-hydrogen"];
+export const EXACT_PREFIX = "exact:";
+
 // 既定（共有の値が無いとき・古い画面が "gemini" を送ったとき）。exam-to-hydrogen §2（2026-11-15 院長の判断）で Hydrogen。
 // thinkingLevel は low（applyThinking の既定）。既定の High は診察 12 回中 2 回が途中で切れた
 export const EXAM_DEFAULT_CHOICE = "exam-hydrogen";

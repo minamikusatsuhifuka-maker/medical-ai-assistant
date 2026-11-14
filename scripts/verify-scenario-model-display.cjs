@@ -1,8 +1,8 @@
 // 2026-11-14: 共通の順番の先頭が gemini-4-hydrogen になったので、期待する表示を「Gemini 4 Hydrogen」に直した（内部キー gemini-3-8-flash は不変）
 // 検証シナリオ: モデル名の表示（§2・§5）。診察の要約の選択肢は「Gemini 4 Hydrogen」（既定）と「Gemini 3.8 Flash」（2026-11-15 exam-to-hydrogen）。
-// 比較ボタンは「3.6/4 Hydrogen」。説明資料・タスク管理の見出しは生成前は共通の先頭（Gemini 4 Hydrogen）。古い「3.7」「3.5 ✨最新」が出ない（実ブラウザ）
+// 比較ボタンは「3.6/3.8/4」（2026-11-15 three-way-compare で 3 列。3 列の中身は verify-scenario-exam-compare.cjs）。説明資料・タスク管理の見出しは生成前は共通の先頭（Gemini 4 Hydrogen）。古い「3.7」「3.5 ✨最新」が出ない（実ブラウザ）
 // 実行: node scripts/verify-scenario-model-display.cjs <BASE_URL> [ab]
-//   ab を付けると診察の「⚖ 3.6/4 Hydrogen 比較」を本物の API で実行し、2 列とも完了することも確かめる（records は作らない＝Supabase は全モック）
+//   ab を付けると診察の「⚖ 3.6/3.8/4 比較」を本物の API で実行し、3 列とも完了することも確かめる（records は作らない＝Supabase は全モック）
 let pw;
 try { pw = require("playwright"); }
 catch { pw = require("/Users/tpjatpja/.npm/_npx/e41f203b7505f1fb/node_modules/playwright"); }
@@ -29,16 +29,16 @@ const EXAM = "2週間前から首のあたりが痒くて赤くなってきま�
 
   console.log("--- 診察の画面 ---");
   const abText = await ab.first().innerText();
-  assert(abText.includes("3.6/4 Hydrogen") && !abText.includes("3.7"), `比較ボタンは「${abText.trim()}」（3.7 の表示なし）`);
+  assert(abText.includes("3.6/3.8/4") && !abText.includes("3.7"), `比較ボタンは「${abText.trim()}」（3.7 の表示なし）`);
   const top = await page.locator("body").innerText();
   assert(!/3\.6 \/ 3\.7|3\.6\/3\.7/.test(top), "「3.6 / 3.7」の表示が無い");
   if (RUN_AB) {
     await page.locator('textarea[placeholder*="録音ボタン"]').first().fill(EXAM);
     await ab.first().click();
-    await page.waitForFunction(() => /⚖ Gemini 3\.6 \/ 4 Hydrogen 比較/.test(document.body.innerText) && !/比較（実行中）/.test(document.body.innerText), null, { timeout: 180000 });
+    await page.waitForFunction(() => /⚖ 3\.6\/3\.8\/4 比較/.test(document.body.innerText) && !/比較（実行中）/.test(document.body.innerText), null, { timeout: 180000 });
     const t = await page.locator("body").innerText();
-    assert(/⚖ Gemini 3\.6 \/ 4 Hydrogen 比較/.test(t), "比較の見出しは「Gemini 3.6 / 4 Hydrogen 比較」");
-    assert(t.includes("Gemini 3.6 Flash") && t.includes("Gemini 4 Hydrogen"), "2 列の名前は Gemini 3.6 Flash と Gemini 4 Hydrogen");
+    assert(/⚖ 3\.6\/3\.8\/4 比較/.test(t), "比較の見出しは「⚖ 3.6/3.8/4 比較」");
+    assert(t.includes("Gemini 3.6 Flash") && t.includes("Gemini 3.8 Flash") && t.includes("Gemini 4 Hydrogen"), "3 列の名前は Gemini 3.6 Flash・Gemini 3.8 Flash・Gemini 4 Hydrogen");
   }
 
   console.log("--- 設定（診察の要約AIモデル）---");

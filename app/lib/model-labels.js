@@ -15,6 +15,12 @@ export function modelLabel(id) {
   return String(id);
 }
 
+// 短い表示（比較ボタン用）: gemini-3.6-flash → "3.6"、gemini-4-hydrogen → "4"
+export function modelShortLabel(id) {
+  const m = String(id || "").toLowerCase().match(/gemini-(\d+(?:\.\d+)?)/);
+  return m ? m[1] : modelLabel(id);
+}
+
 // 共通の順番の先頭（36ルート・分析系の画面・議事録）
 export const COMMON_PRIMARY_MODEL = GEMINI_MODELS[0];
 export const COMMON_PRIMARY_LABEL = modelLabel(GEMINI_MODELS[0]);

@@ -8,7 +8,9 @@ import { saveTranscriptSession, deleteTranscriptSession, getRecoverableSessions,
 import { isDangerousCorrection, isDangerousNoisePattern } from "./lib/dangerous-correction";
 import { markUngroundedDrugs, DRUG_NAME_PROMPT_RULES } from "./lib/drug-guard";
 import { filterNoiseCore, repeatChunkCheck, REPEAT_CHUNK_WINDOW } from "./lib/noise-filter";
-import { COMMON_PRIMARY_MODEL, COMMON_PRIMARY_LABEL, EXAM_PRIMARY_LABEL, chainLabel, friendlyModelError } from "./lib/model-labels";
+import { COMMON_PRIMARY_MODEL, COMMON_PRIMARY_LABEL, EXAM_PRIMARY_LABEL, chainLabel, friendlyModelError, modelLabel, modelShortLabel } from "./lib/model-labels";
+import { EXAM_COMPARE_MODELS, EXACT_PREFIX } from "./lib/gemini-models";
+import { calcCost } from "./lib/pricing";
 import { buildDictMatcher, applyDictSafe, applyDictOnce } from "./lib/dict-apply";
 import { EXPLAIN_CATEGORIES, planMerge } from "./lib/explain-knowledge";
 import { INTAKE_CATEGORIES, INTAKE_DISCLAIMER, INTAKE_FIXED_QUESTIONS, findIntakeTopicMatch, planIntakeMergeV2 } from "./lib/intake-knowledge";
@@ -4507,12 +4509,14 @@ const sum=async(tx)=>{
   sumPendingRef.current=null;
   if(p&&p!==sumInputRef.current)await sum(p);
 };
-// ---- 3.6 / 3.8 同時実行・並列比較（診察のみ・明示ボタンからのみ実行）----
-// 同じ書き起こし・同じプロンプトで2モデルを並列に走らせ、初回応答/完了時間と本文を並べて出す。
-// 採用するまで履歴には保存しない（比較のたびに履歴が2件増えるのを防ぐ）。
-const AB_SUM_MODELS=[{key:"gemini-3-6-flash",label:"Gemini 3.6 Flash"},{key:"gemini-3-7-flash",label:COMMON_PRIMARY_LABEL}]; // 2 つめの中は 3.7 指定（実体は共通の先頭＝3.8）
-const abShort=(l)=>String(l||"").replace(/^Gemini /,"").replace(/ Flash$/,"");
-const AB_SUM_TITLE=AB_SUM_MODELS.map(m=>abShort(m.label)).join(" / ");
+// ---- 比較（診察のみ・明示ボタンからのみ実行）----
+// 同じ書き起こし・同じプロンプトで複数のモデルを並列に走らせ、初回応答/完了時間と本文を並べて出す。
+// 並べるモデルは gemini-models.js の EXAM_COMPARE_MODELS（2026-11-15 three-way-compare: 3.6 / 3.8 / 4 Hydrogen）。表示名は model-labels.js。
+// 各列はそのモデルだけで作る（exact:）。採用するまで履歴には保存しない。処方の抽出（extract-rx）も採用した 1 列だけ。
+const AB_SUM_MODELS=EXAM_COMPARE_MODELS.map(id=>({key:EXACT_PREFIX+id,id,label:modelLabel(id),short:modelShortLabel(id)}));
+const AB_SUM_TITLE=AB_SUM_MODELS.map(m=>m.short).join("/");
+// 1 列の金額（円）。サーバーが done で返すトークン数（出力は思考込み）と料金表から
+const abCostJpy=(m,u)=>{try{if(!u)return null;return calcCost(m.id,u.input||0,u.output||0,u.cached||0).cost_jpy}catch{return null}};
 const runAbSum=async()=>{
   const t=(iR.current||"");
   if(!examTextGuard(t,"abSum"))return;
@@ -4520,15 +4524,15 @@ const runAbSum=async()=>{
   // thinkingLevel はサーバ側 applyThinking() がモデル別に正しい値を付ける（3.6=minimal / 3.7=low）。
   const enhancedPrompt=buildExamPrompt();
   setAbSum({running:true,results:Object.fromEntries(AB_SUM_MODELS.map(m=>[m.key,{label:m.label,text:"",ttft:null,total:null,err:"",done:false}]))});
-  btnFbSet("abSum","run","2モデルで要約中…");
-  sSt("⚖ Gemini "+AB_SUM_TITLE+" を同時実行して比較中...");
+  btnFbSet("abSum","run",AB_SUM_MODELS.length+"モデルで要約中…");
+  sSt("⚖ "+AB_SUM_TITLE+" を同時実行して比較中...");
   const patch=(key,upd)=>setAbSum(p=>p?{...p,results:{...p.results,[key]:{...p.results[key],...upd}}}:p);
   const one=async(m)=>{
     const t0=performance.now();
     try{
-      const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,mode:"gemini",prompt:enhancedPrompt,model_preference:m.key,stream:true})});
+      const r=await fetch("/api/summarize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,mode:"gemini",prompt:enhancedPrompt,model_preference:m.key,stream:true,context:"exam-compare"})});
       if(!r.ok||!r.body){patch(m.key,{err:`HTTP ${r.status}`,done:true,total:Math.round(performance.now()-t0)});return}
-      const reader=r.body.getReader();const decoder=new TextDecoder();let buffer="",acc="",usedModel="",ttft=null,errMsg="";
+      const reader=r.body.getReader();const decoder=new TextDecoder();let buffer="",acc="",usedModel="",ttft=null,errMsg="",usage=null;
       while(true){
         const{done,value}=await reader.read();if(done)break;
         buffer+=decoder.decode(value,{stream:true});
@@ -4540,12 +4544,13 @@ const runAbSum=async()=>{
             if(j.error){errMsg=String(j.error)}
             if(j.chunk){if(ttft===null){ttft=Math.round(performance.now()-t0);patch(m.key,{ttft})}acc+=j.chunk;if(j.model)usedModel=j.model;patch(m.key,{text:acc})}
             if(j.model&&!usedModel)usedModel=j.model;
+            if(j.done&&j.usage)usage=j.usage;
           }catch{}
         }
       }
       const total=Math.round(performance.now()-t0);
       if(errMsg||!acc.trim())patch(m.key,{err:errMsg||"応答が空でした",total,done:true});
-      else patch(m.key,{text:acc,model:usedModel,total,done:true});
+      else patch(m.key,{text:acc,model:usedModel,total,done:true,costJpy:abCostJpy(m,usage)});
     }catch(e){
       patch(m.key,{err:"通信エラー: "+String(e?.message||e).slice(0,60),total:Math.round(performance.now()-t0),done:true});
     }
@@ -4554,13 +4559,13 @@ const runAbSum=async()=>{
   await Promise.allSettled(AB_SUM_MODELS.map(one));
   setAbSum(p=>{
     if(!p)return p;
-    // 「先に終わった方」＝完了時間が短い方。両方成功したときだけ⚡最速を出す。
+    // 「先に終わった方」＝完了時間が最も短い列。2 列以上成功したときだけ⚡最速を出す。
     const ok=AB_SUM_MODELS.map(m=>({key:m.key,...p.results[m.key]})).filter(r=>!r.err&&r.total!=null);
-    const fastest=ok.length===2?ok.reduce((a,b)=>a.total<=b.total?a:b).key:null;
+    const fastest=ok.length>=2?ok.reduce((a,b)=>a.total<=b.total?a:b).key:null;
     return{...p,running:false,fastest};
   });
   btnFbSet("abSum","ok","✓ 比較完了");
-  sSt("⚖ 比較完了。採用する方を選んでください");
+  sSt("⚖ 比較完了。採用する列を選んでください");
 };
 // 比較結果の採用: 通常の要約結果として反映し、既存の保存・処方抽出・カルテコピー導線にそのまま乗せる
 const adoptAbSum=async(key)=>{
@@ -8069,7 +8074,7 @@ const fn=actions[sc.id];if(fn)fn();
 </div>
 <div style={{display:"flex",gap:mob?4:8,marginBottom:14,flexWrap:mob?"wrap":"nowrap"}}>
 <button onClick={()=>sum()} disabled={ld||sumRunning||!inp.trim()} title="AIで要約する" onMouseEnter={e=>showTip(e,"AIで要約する")} onMouseLeave={hideTip} style={{flex:1,padding:"4px 16px",borderRadius:10,border:"none",background:ld?"rgba(160,220,100,0.2)":"linear-gradient(135deg, rgba(140,210,80,0.8), rgba(180,230,100,0.75), rgba(200,240,120,0.7))",color:"#1a3a10",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:"pointer",opacity:!inp.trim()?0.4:1,boxShadow:!ld&&inp.trim()?"0 4px 15px rgba(61,90,30,.3), 0 2px 4px rgba(0,0,0,.1)":"none",transition:"all 0.2s",minWidth:60,whiteSpace:"nowrap",height:mob?44:undefined}}>{ld?"⏳ 処理中...":"⚡ 要約"}</button><BtnFb k="sum"/>
-<button onClick={runAbSum} disabled={ld||!inp.trim()||!!abSum?.running} title={"同じ書き起こしで Gemini "+AB_SUM_MODELS.map(m=>abShort(m.label)).join(" と ")+" を同時に走らせ、速度と内容を並べて比較します"} onMouseEnter={e=>showTip(e,AB_SUM_MODELS.map(m=>abShort(m.label)).join("と")+"を同時実行して比較")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${C.p}55`,background:abSum?.running?C.g100:"#eef7e2",color:abSum?.running?C.g400:"#3a6820",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(ld||!inp.trim()||abSum?.running)?"default":"pointer",opacity:!inp.trim()?0.4:1,whiteSpace:"nowrap",height:mob?44:undefined}}>{abSum?.running?"⏳ 比較中...":"⚖ "+AB_SUM_MODELS.map(m=>abShort(m.label)).join("/")+" 比較"}</button><BtnFb k="abSum"/>
+<button onClick={runAbSum} disabled={ld||!inp.trim()||!!abSum?.running} title={"同じ書き起こしで "+AB_SUM_MODELS.map(m=>m.label).join("・")+" を同時に走らせ、速度と内容を並べて比較します（"+AB_SUM_MODELS.length+"回分の料金がかかります）"} onMouseEnter={e=>showTip(e,AB_SUM_MODELS.map(m=>m.label).join("・")+"を同時実行して比較（"+AB_SUM_MODELS.length+"回分の料金）")} onMouseLeave={hideTip} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${C.p}55`,background:abSum?.running?C.g100:"#eef7e2",color:abSum?.running?C.g400:"#3a6820",fontSize:11,fontWeight:700,fontFamily:"inherit",cursor:(ld||!inp.trim()||abSum?.running)?"default":"pointer",opacity:!inp.trim()?0.4:1,whiteSpace:"nowrap",height:mob?44:undefined}}>{abSum?.running?"⏳ 比較中...":"⚖ "+AB_SUM_TITLE+" 比較"}</button><BtnFb k="abSum"/>
 {inp.trim()&&<button onClick={()=>manualClean(inp,(c)=>{sInp(c);iR.current=c},"inp")} disabled={cleaningTx} title="書き起こしを補正（捏造除去・用語補正）" onMouseEnter={e=>showTip(e,"書き起こしを補正（捏造除去・用語補正）")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:"1px solid #ddd6fe",background:"#f5f3ff",fontSize:14,fontWeight:600,color:"#7c3aed",fontFamily:"inherit",cursor:cleaningTx?"wait":"pointer",whiteSpace:"nowrap",height:mob?44:undefined}}>{cleaningTx?(cleanProg&&cleanProg.total>1?`⏳${cleanProg.cur}/${cleanProg.total}`:"⏳"):"✨補正"}</button>}{undoCleanBtn("inp")}<BtnFb k="clean:inp"/>
 <button onClick={()=>{if((inp.trim()||out.trim())&&!window.confirm("書き起こし・要約を保存せずに破棄します。よろしいですか？"))return;saveUndo();sInp("");sOut("");sSt("クリアしました")}} title="書き起こし・要約を破棄してクリア" onMouseEnter={e=>showTip(e,"書き起こし・要約を破棄してクリア")} onMouseLeave={hideTip} style={{padding:"10px 16px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>🗑</button>
 <button onClick={undo} title="要約を元に戻す" onMouseEnter={e=>showTip(e,"要約を元に戻す")} onMouseLeave={hideTip} style={{padding:"10px 14px",borderRadius:14,border:`1px solid ${C.g200}`,background:C.w,fontSize:14,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer",opacity:undoRef.current?1:.35,minWidth:44,whiteSpace:"nowrap",height:mob?44:undefined}}>↩</button>
@@ -8097,21 +8102,24 @@ const fn=actions[sc.id];if(fn)fn();
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}
 </div>}
 </div>
-{/* ⚖ 3.6/3.8 比較モード（2 つめは 3.7 指定・実体は 3.8）: 表示中は通常の要約欄を隠して2カラム（モバイルは上下2段）で並べる */}
+{/* ⚖ 比較モード（EXAM_COMPARE_MODELS の列）: 表示中は通常の要約欄を隠して並べる。3 列が入らない幅では縦に積む（コンテナの幅で判定） */}
 {abSum&&<div style={{marginBottom:8,padding:10,borderRadius:12,border:`1.5px solid ${C.p}55`,background:"#fbfdf7"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-<span style={{fontSize:12,fontWeight:700,color:"#3a6820"}}>⚖ Gemini {AB_SUM_TITLE} 比較{abSum.running&&"（実行中）"}</span>
+<span style={{fontSize:12,fontWeight:700,color:"#3a6820"}}>⚖ {AB_SUM_TITLE} 比較{abSum.running&&"（実行中）"}</span>
+{(()=>{const cs=AB_SUM_MODELS.map(m=>abSum.results[m.key]?.costJpy).filter(v=>v!=null);if(!cs.length)return null;const sum=cs.reduce((a,b)=>a+b,0);return <span data-ab-cost-total="1" style={{fontSize:11,fontWeight:700,color:"#92400e"}}>この比較 約{sum<10?sum.toFixed(1):Math.round(sum)}円{abSum.running?"（途中）":""}</span>})()}
 <span style={{fontSize:10,color:C.g400}}>採用するまで履歴には保存されません</span>
 <button onClick={()=>{setAbSum(null);sSt("比較を閉じました")}} style={{padding:"3px 10px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.g500,fontFamily:"inherit",cursor:"pointer"}}>✕ 閉じる</button>
 </div>
-<div style={{display:"flex",flexDirection:mob?"column":"row",gap:10}}>
+<style>{".ab-wrap{container-type:inline-size}.ab-cols{display:flex;flex-direction:column;gap:10px}@container (min-width:"+(AB_SUM_MODELS.length*250)+"px){.ab-cols{flex-direction:row}}"}</style>
+<div className="ab-wrap"><div className="ab-cols" data-ab-cols="1">
 {AB_SUM_MODELS.map(m=>{const r=abSum.results[m.key];const fastest=abSum.fastest===m.key;return(
-<div key={m.key} style={{flex:1,minWidth:0,padding:8,borderRadius:10,border:`1.5px solid ${fastest?"#65a30d":C.g200}`,background:C.w}}>
+<div key={m.key} data-ab-col={m.id} style={{flex:1,minWidth:0,padding:8,borderRadius:10,border:`1.5px solid ${fastest?"#65a30d":C.g200}`,background:C.w}}>
 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
 <span style={{fontSize:12,fontWeight:700,color:C.pD}}>{m.label}</span>
 {fastest&&<span style={{fontSize:10,fontWeight:700,color:"#3f6212",background:"#ecfccb",border:"1px solid #bef264",borderRadius:6,padding:"1px 6px"}}>⚡最速</span>}
 {r.ttft!=null&&<span style={{fontSize:10,color:C.g500}}>初回 {(r.ttft/1000).toFixed(1)}秒</span>}
 {r.total!=null&&<span style={{fontSize:11,fontWeight:700,color:"#3a6820"}}>完了 {(r.total/1000).toFixed(1)}秒</span>}
+{r.costJpy!=null&&<span data-ab-cost={m.id} style={{fontSize:10,color:C.g500}}>約{r.costJpy<10?r.costJpy.toFixed(1):Math.round(r.costJpy)}円</span>}
 {!r.done&&abSum.running&&<span style={{fontSize:10,color:"#92400e"}}>⏳ 実行中…</span>}
 </div>
 {r.err
@@ -8122,7 +8130,7 @@ const fn=actions[sc.id];if(fn)fn();
 <button onClick={()=>adoptAbSum(m.key)} disabled={!r.text.trim()||!r.done} style={{padding:"4px 12px",borderRadius:8,border:"none",background:(r.text.trim()&&r.done)?"linear-gradient(135deg, rgba(140,210,80,0.85), rgba(180,230,100,0.8))":C.g100,fontSize:11,fontWeight:700,color:(r.text.trim()&&r.done)?"#1a3a10":C.g400,fontFamily:"inherit",cursor:(r.text.trim()&&r.done)?"pointer":"default"}}>✓ この結果を採用</button>
 </div></>}
 </div>)})}
-</div>
+</div></div>
 </div>}
 <textarea value={out} onChange={e=>sOut(e.target.value)} placeholder={ld&&!out?`⏳ ${examChoiceLabel(summaryModel)} で要約中…（最初の文字が出るまで数秒〜10秒ほど。出始めたら順に表示されます）`:"要約結果がここに表示されます..."} style={{width:"100%",height:(mob?150:200)*consultTaSize,padding:10,borderRadius:12,border:`1.5px solid ${C.g200}`,background:out?"linear-gradient(135deg,#f7fee7,#ecfccb)":C.g50,fontSize:15,color:C.g900,fontFamily:"inherit",resize:"vertical",lineHeight:1.6,boxSizing:"border-box",display:(hlMode||abSum)?"none":undefined}}/>
 {out&&hlMode&&<div style={{width:"100%",minHeight:120,padding:10,borderRadius:10,border:`1px solid ${C.g200}`,background:"#fafafa",fontSize:13,lineHeight:1.8,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"inherit",overflowY:"auto",maxHeight:400}} dangerouslySetInnerHTML={{__html:highlightSummary(out)}}/>}

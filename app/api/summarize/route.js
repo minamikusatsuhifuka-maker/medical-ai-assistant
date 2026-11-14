@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, EXAM_MODEL_CHAINS, EXAM_MODEL_SETTING_KEY, EXAM_DEFAULT_CHOICE, isExamChoice, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
+import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, EXAM_MODEL_CHAINS, EXAM_MODEL_SETTING_KEY, EXAM_DEFAULT_CHOICE, EXAM_COMPARE_MODELS, EXACT_PREFIX, isExamChoice, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -86,7 +86,8 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
       }
 
       if (used && totalText.trim().length > 10) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model, primary, total: totalText, finishReason })}\n\n`));
+        // usage: 比較ボタンが 1 回の金額を画面に出すため（入力・出力＝思考込み・キャッシュ）
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model, primary, total: totalText, finishReason, usage: { input: usage?.promptTokenCount || 0, output: geminiOutputTokens(usage), cached: usage?.cachedContentTokenCount || 0 } })}\n\n`));
         // 2026-11-14: ストリーミング（診察の要約）は利用ログに残していなかった。月の金額を正しく数えるため記録する。
         // 画面の完了（保存・コピー）を待たせないよう、done を送ったあとに記録する
         try {
@@ -143,6 +144,11 @@ async function resolveExamPreference(model_preference) {
 
 // Gemini 非ストリーミング（従来のJSON応答）
 function buildGeminiModelList(model_preference) {
+  // 比較ボタンの列（three-way-compare）: そのモデルだけ。比較用の一覧に無いモデルは受けない
+  if (typeof model_preference === "string" && model_preference.startsWith(EXACT_PREFIX)) {
+    const m = model_preference.slice(EXACT_PREFIX.length);
+    if (EXAM_COMPARE_MODELS.includes(m)) return [m];
+  }
   // 診察の要約の 2 択（設定 ▸ 要約AIモデル・exam-to-hydrogen §1）
   if (isExamChoice(model_preference)) return EXAM_MODEL_CHAINS[model_preference];
   // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→標準Flashリスト）
