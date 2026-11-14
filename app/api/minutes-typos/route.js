@@ -39,7 +39,7 @@ async function scanChunk(text, apiKey) {
   const requestBody = JSON.stringify({
     system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ parts: [{ text: `以下はクリニックの会議・ミーティングの音声書き起こしテキストです。\n医療・経営・マーケティング用語の音声認識誤りを全て見つけてください：\n\n${text}` }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+    generationConfig: { temperature: 0.2, maxOutputTokens: 4000 },
   });
   const { data } = await callGeminiWithFallback(apiKey, requestBody, "minutes-typos");
   const content = extractGeminiText(data);

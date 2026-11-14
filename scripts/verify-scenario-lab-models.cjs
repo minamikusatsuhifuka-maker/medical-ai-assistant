@@ -1,4 +1,5 @@
-// 検証シナリオ: 要約テストラボの選択肢は Gemini 3.8 Flash / Gemini 3.6 Flash の2つだけ（Claude は補充しない判断で外した・2026-11-02）。
+// 2026-11-14: 共通の順番の先頭が gemini-4-hydrogen になったので、期待する表示を「Gemini 4 Hydrogen」に直した（内部キー gemini-3-8-flash は不変）
+// 検証シナリオ: 要約テストラボの選択肢は Gemini 4 Hydrogen / Gemini 3.6 Flash の2つだけ（Claude は補充しない判断で外した・2026-11-02）。
 // 古い選択（Claude・3.1 Pro・3.5 Flash）が残っていても既定の2つに戻り、2つで一斉に要約できる（実ブラウザ・API は本物）
 // 実行: node scripts/verify-scenario-lab-models.cjs <BASE_URL>
 //   Supabase は全モック（ラボの結果は保存しない）
@@ -30,7 +31,7 @@ const TEXT = "患者: 2週間前から首のあたりが痒くて、赤くなっ
   const runBtn = page.locator("button:visible", { hasText: "個のAIで" });
   for (let k = 0; k < 8; k++) { await page.locator("button:visible").filter({ hasText: /要約ラボ/ }).first().click().catch(() => {}); try { await runBtn.first().waitFor({ state: "visible", timeout: 3000 }); break; } catch {} }
   await page.waitForTimeout(1000);
-  for (const want of ["Gemini 3.8 Flash", "Gemini 3.6 Flash"]) assert(await page.locator("button:visible", { hasText: want }).count() >= 1, `選択肢「${want}」がある`);
+  for (const want of ["Gemini 4 Hydrogen", "Gemini 3.6 Flash"]) assert(await page.locator("button:visible", { hasText: want }).count() >= 1, `選択肢「${want}」がある`);
   for (const old of ["Claude Sonnet 4.6", "Gemini 3.1 Pro", "Gemini 3.5 Flash", "Gemini 2.5 Pro"]) assert(await page.locator("button:visible", { hasText: old }).count() === 0, `選択肢「${old}」は無い`);
   assert(JSON.parse(await page.evaluate(() => localStorage.getItem("mk_labModels"))).join(",") === "gemini-3-8-flash,gemini-3-6-flash", "古い選択（Claude・3.1 Pro・3.5）だけだった端末は既定の2つに戻る");
   assert((await runBtn.first().innerText()).includes("2個のAIで一斉要約"), "2つで一斉に要約するボタン");
@@ -40,7 +41,7 @@ const TEXT = "患者: 2週間前から首のあたりが痒くて、赤くなっ
   await page.waitForTimeout(1500);
   const body = await page.locator("body").innerText();
   const done = (body.match(/✓ 完了/g) || []).length;
-  assert(done === 2, `要約が完了した枠 ${done}（Gemini 3.8・3.6）`);
+  assert(done === 2, `要約が完了した枠 ${done}（Gemini 4 Hydrogen・3.6）`);
   assert(!/Claude/.test(body), "結果にも Claude の枠は無い");
   assert(!/⚠️ エラー/.test(body), "エラーの枠は無い");
   assert(!/credit balance|anthropic|invalid_request_error|HTTP \d{3}/i.test(body), "生の API エラーの文は画面に出ない");

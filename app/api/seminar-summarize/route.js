@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, geminiTestFail } from "../../lib/gemini-models";
+import { GEMINI_MODELS, geminiTestFail, applyThinking, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 800;
 export const dynamic = "force-dynamic";
@@ -72,7 +72,7 @@ async function callGemini(transcript, model_preference) {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: SEMINAR_PROMPT }] },
           contents: [{ parts: [{ text: transcript }] }],
-          generationConfig: { temperature: 0.5, maxOutputTokens: 16384 },
+          generationConfig: applyThinking({ temperature: 0.5, maxOutputTokens: 16384 }, model),
         }),
       });
       if (!res.ok) { lastError = `${model}: HTTP ${res.status}`; continue; }
@@ -83,7 +83,7 @@ async function callGemini(transcript, model_preference) {
         return {
           summary, model,
           input_tokens: data.usageMetadata?.promptTokenCount || 0,
-          output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+          output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0,
         };
       }
       lastError = `${model}: empty response`;

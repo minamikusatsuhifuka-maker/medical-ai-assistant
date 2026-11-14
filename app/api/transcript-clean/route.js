@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS } from "../../lib/gemini-models";
+import { GEMINI_MODELS, applyThinking, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 120;
 
@@ -46,7 +46,7 @@ async function callGemini(model, text) {
     body: JSON.stringify({
       contents: [{ parts: [{ text: CLEAN_PROMPT + "\n\n" + text }] }],
       // 補正なので低温度。出力は素のテキスト（枠固定JSONではない）。
-      generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+      generationConfig: applyThinking({ temperature: 0.1, maxOutputTokens: 8192 }, model),
     }),
   });
   if (!res.ok) throw new Error(`${model}: HTTP ${res.status}`);
@@ -59,7 +59,7 @@ async function callGemini(model, text) {
       model,
       context: "transcript-clean",
       input_tokens: data.usageMetadata?.promptTokenCount || 0,
-      output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+      output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0,
       request_meta: { char_length: text.length },
     });
   } catch (e) { console.error("[logUsage] transcript-clean:", e); }

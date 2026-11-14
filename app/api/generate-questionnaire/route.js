@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -36,9 +36,9 @@ export async function POST(request) {
     // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
     const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 3500 },
     }), "generate-questionnaire");
-    try { await logUsage({ route: "/api/generate-questionnaire", model: usedModel, context: "questionnaire", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { disease: disease || null, isFirstVisit } }); } catch(e) { console.error("[logUsage] questionnaire:", e); }
+    try { await logUsage({ route: "/api/generate-questionnaire", model: usedModel, context: "questionnaire", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { disease: disease || null, isFirstVisit } }); } catch(e) { console.error("[logUsage] questionnaire:", e); }
     const questionnaire = extractGeminiText(data).trim();
     return Response.json({ questionnaire });
   } catch (e) {

@@ -1,15 +1,16 @@
+// 2026-11-14: 共通の順番の先頭が gemini-4-hydrogen になったので、期待する表示を「Gemini 4 Hydrogen」に直した（内部キー gemini-3-8-flash は不変）
 // 検証シナリオ: セミナー学習・カウンセリング分析・ジャーニーマップは選択肢なし（共通の順番＝3.8 先頭）。
 // 古い設定が残っていても壊れず、生成すると使ったモデルが出る。フォールバックしたら注意が出る（実ブラウザ）
 // 実行: node scripts/verify-scenario-analysis-model-fixed.cjs <BASE_URL> [EXPECT]
-//   EXPECT … 生成で期待するモデルの表示名（既定 "Gemini 3.8 Flash"）。dev を GEMINI_TEST_FAIL_MODELS=gemini-3.8-flash,gemini-3.7-flash
+//   EXPECT … 生成で期待するモデルの表示名（既定 "Gemini 4 Hydrogen"）。dev を GEMINI_TEST_FAIL_MODELS=gemini-3.8-flash,gemini-3.7-flash
 //            で起動したときは "Gemini 3.6 Flash" を渡す（フォールバックの注意も確かめる）
 //   Supabase は全モック（分析の行は作らない）。ジャーニーマップは記録の読み込みもモックで返す
 let pw;
 try { pw = require("playwright"); }
 catch { pw = require("/Users/tpjatpja/.npm/_npx/e41f203b7505f1fb/node_modules/playwright"); }
 const BASE = process.argv[2] || "http://localhost:3100";
-const EXPECT = process.argv[3] || "Gemini 3.8 Flash";
-const FALLBACK = EXPECT !== "Gemini 3.8 Flash";
+const EXPECT = process.argv[3] || "Gemini 4 Hydrogen";
+const FALLBACK = EXPECT !== "Gemini 4 Hydrogen";
 function assert(cond, msg) { if (!cond) throw new Error("ASSERT FAILED: " + msg); console.log("  ✓ " + msg); }
 const SEMINAR = "本日のセミナーでは、クリニックの受付業務の改善について話しました。".repeat(6) + "患者さんの待ち時間を減らすために、予約の枠を見直すことが大切です。";
 const COUNSEL = "患者: シミが気になっていて、レーザー治療を考えています。費用と回数が心配です。\n医師: まず肌の状態を確認して、3回程度の照射をおすすめします。費用は1回あたりの目安をお伝えします。";
@@ -38,12 +39,12 @@ const RECORDS = [{ id: "v1", created_at: "2026-10-01T00:00:00Z", input_text: COU
   const tab = async (label, ready) => { for (let k = 0; k < 8; k++) { await (label instanceof RegExp ? page.locator("button:visible").filter({ hasText: label }) : page.locator("button:visible", { hasText: label })).first().click().catch(() => {}); try { await page.locator(ready).first().waitFor({ state: "visible", timeout: 3000 }); return; } catch {} } throw new Error("画面を開けない: " + label); };
   const noOldChoices = async (sel, label) => {
     const box = page.locator(sel);
-    assert(await box.count() === 1 && (await box.innerText()).includes("使うモデル: Gemini 3.8 Flash"), `${label}: 「使うモデル: Gemini 3.8 Flash」の表示だけ`);
+    assert(await box.count() === 1 && (await box.innerText()).includes("使うモデル: Gemini 4 Hydrogen"), `${label}: 「使うモデル: Gemini 4 Hydrogen」の表示だけ`);
     for (const old of ["Gemini 3.1 Pro", "Gemini 3.5 Flash", "Claude Sonnet 4.6"]) assert(await page.locator("button:visible", { hasText: old }).count() === 0, `${label}: 選択肢「${old}」は出ない`);
   };
   const checkFallback = async (label) => {
     const fb = page.locator('[data-model-fallback="1"]:visible');
-    if (FALLBACK) assert(await fb.count() >= 1 && (await fb.first().innerText()).includes(`Gemini 3.8 Flash が使えず ${EXPECT} で生成`), `${label}: 「Gemini 3.8 Flash が使えず ${EXPECT} で生成」が出る`);
+    if (FALLBACK) assert(await fb.count() >= 1 && (await fb.first().innerText()).includes(`Gemini 4 Hydrogen が使えず ${EXPECT} で生成`), `${label}: 「Gemini 4 Hydrogen が使えず ${EXPECT} で生成」が出る`);
     else assert(await fb.count() === 0, `${label}: フォールバックの注意は出ない`);
   };
 

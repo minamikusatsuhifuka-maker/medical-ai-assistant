@@ -15,6 +15,7 @@ export async function logUsage({
   context = null,
   input_tokens = 0,
   output_tokens = 0,
+  cached_tokens = 0,
   duration_seconds = null,
   request_meta = null,
   success = true,
@@ -26,7 +27,7 @@ export async function logUsage({
   if (duration_seconds !== null && duration_seconds !== undefined && Number(duration_seconds) > 0) {
     ({ cost_usd, cost_jpy, family, model_resolved } = calcWhisperCost(duration_seconds));
   } else {
-    ({ cost_usd, cost_jpy, family, model_resolved } = calcCost(model, input_tokens, output_tokens));
+    ({ cost_usd, cost_jpy, family, model_resolved } = calcCost(model, input_tokens, output_tokens, cached_tokens));
   }
   const finalMeta = { ...(request_meta || {}), ...(duration_seconds != null ? { duration_seconds: Number(duration_seconds) } : {}) };
   const summary = { input_tokens, output_tokens, total_tokens, cost_usd, cost_jpy, family, model_resolved, usd_jpy_rate: USD_JPY };

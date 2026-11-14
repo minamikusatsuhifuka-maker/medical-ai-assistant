@@ -1,4 +1,4 @@
-import { ACTIVE_MODELS, PREVIEW_MODELS } from "../../lib/gemini-models";
+import { ACTIVE_MODELS, PREVIEW_MODELS, applyThinking } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ async function probeModel(apiKey, model) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: "ping" }] }],
-        generationConfig: { maxOutputTokens: 1 },
+        generationConfig: applyThinking({ maxOutputTokens: 1 }, model),
       }),
     });
     return res.ok;

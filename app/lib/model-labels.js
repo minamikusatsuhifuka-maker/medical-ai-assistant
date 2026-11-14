@@ -7,6 +7,7 @@ export function modelLabel(id) {
   const s = String(id || "").toLowerCase();
   if (!s) return "";
   if (s.includes("claude")) return "Claude Sonnet 4.6";
+  if (s.includes("gemini-4-hydrogen")) return "Gemini 4 Hydrogen";
   if (s.includes("3.1-flash-lite")) return "Gemini 3.1 Flash-Lite";
   if (s.includes("3.1-pro") || s.includes("3-pro-preview")) return "Gemini 3.1 Pro";
   const m = s.match(/gemini-(\d+)\.(\d+)-(flash-lite|flash|pro)/);

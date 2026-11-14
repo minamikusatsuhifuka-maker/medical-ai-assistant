@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -46,10 +46,10 @@ ${combined.substring(0, 10000)}`;
     // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで500）
     const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 3000 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 5000 },
     }), "monthly-report");
 
-    try { await logUsage({ route: "/api/monthly-report", model: usedModel, context: "monthly-report", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0, month: month || null } }); } catch(e) { console.error("[logUsage] monthly-report:", e); }
+    try { await logUsage({ route: "/api/monthly-report", model: usedModel, context: "monthly-report", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { record_count: records?.length || 0, month: month || null } }); } catch(e) { console.error("[logUsage] monthly-report:", e); }
     const report = extractGeminiText(data).trim();
 
     return Response.json({ report });

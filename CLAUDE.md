@@ -31,12 +31,15 @@
 ## APIファイル一覧
 - summarize/route.js: Gemini/Claude切替対応（gemini-3-5-flash-lite 指定は旧クライアント互換で標準リストに丸める）
 - transcribe/route.js: Whisper（変更禁止）
-- その他Geminiルートは app/lib/gemini-models.js の GEMINI_MODELS（3.7 Flash第一候補）にフォールバック集約。モデル変更はこの1ファイルで行う
+- その他Geminiルートは app/lib/gemini-models.js の GEMINI_MODELS（2026-11-14 から gemini-4-hydrogen 先頭 → 3.8 → …）にフォールバック集約。モデル変更はこの1ファイルで行う
 
 ### thinkingLevel はモデル世代で値が違う（重要）
 - **Gemini 3.7 以降は `thinkingLevel:"minimal"` が使えない**（HTTP 400 INVALID_ARGUMENT）。3.7 は low / medium(既定) / high のみ
 - そのため `model.startsWith("gemini-3")` で一律 minimal を付けると 3.7 で全リクエストが落ちる
 - 分岐は `app/lib/gemini-models.js` の `thinkingLevelFor()` / `applyThinking()` に集約済み。genConfig を組む側で直接 thinkingConfig を書かない
+- **gemini-4-hydrogen は thinkingLevel を付けないと既定 High**（思考が low の約 6 倍・診察の要約で 30 秒超・上限 8192 を食い潰して空になる）。新しい Gemini 呼び出しは必ず `applyThinking(cfg, model, GEMINI_THINKING.xxx)` か `callGeminiWithFallback` を通す。強さは `GEMINI_THINKING`（既定 low・議事録 medium）
+- 利用ログの出力トークンは `geminiOutputTokens(usageMetadata)`（思考の分を含む）。料金表 `app/lib/pricing.js` に無いモデルは `(fallback)` で高めに数えられるので、モデルを足したら料金表にも足す
+- 実測と判断は `docs/gemini-4-hydrogen-2026-11-14.md`
 
 ### モデルの判断と本番の鍵（2026-11-02）
 - 診察の要約は 3.6 先頭のまま。理由と 3.6/3.8 の比較は `docs/exam-model-decision-2026-11-02.md`

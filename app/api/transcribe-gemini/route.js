@@ -1,4 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
+import { geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -64,7 +65,7 @@ export async function POST(request) {
         model: "gemini-3.1-flash-lite-preview",
         context: "transcribe",
         input_tokens: data.usageMetadata?.promptTokenCount || 0,
-        output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+        output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0,
         request_meta: { audio_bytes: audioBuffer.byteLength, text_length: text.length },
       });
     } catch (e) { console.error("[logUsage] transcribe-gemini:", e); }

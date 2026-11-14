@@ -817,7 +817,7 @@ const SUMMARY_MODEL_OPTIONS=[
   // 表示名は gemini-models.js の並びから作る（2026-11-02 §5）。v（中のキー）は変えない:
   //   gemini … EXAM_SUMMARY_MODELS（3.6 先頭・8/14 の判断のまま）／gemini-3-7-flash … GEMINI_MODELS（3.8 先頭。3.7 を指定しても実体は 3.8）
   {v:"gemini",label:EXAM_PRIMARY_LABEL+" ✨",desc:"応答が速く安定（推奨）"},
-  {v:"gemini-3-7-flash",label:COMMON_PRIMARY_LABEL,desc:"記載はやや丁寧／待ち時間が不安定"},
+  {v:"gemini-3-7-flash",label:COMMON_PRIMARY_LABEL,desc:"共通の先頭／最初の文字まで約8秒（3.6 は約1秒）"},
 ];
 const DEFAULT_SUMMARY_MODEL="gemini";
 const isValidSummaryModel=(v)=>SUMMARY_MODEL_OPTIONS.some(o=>o.v===v);
@@ -1063,7 +1063,7 @@ const csModelLabel=(m)=>{
   if(s==="claude")return"Claude Sonnet 4.6";
   if(s==="gemini-pro")return"Gemini 2.5 Pro";
   if(s==="common")return COMMON_PRIMARY_LABEL;
-  if(s==="gemini-3-8-flash")return"Gemini 3.8 Flash";
+  if(s==="gemini-3-8-flash")return COMMON_PRIMARY_LABEL; /* 内部キー＝共通の順番（2026-11-14 から先頭は Hydrogen） */
   if(s==="gemini-3-7-flash")return"Gemini 3.7 Flash";
   if(s==="gemini-3-6-flash")return"Gemini 3.6 Flash";
   if(s==="gemini-3-5-flash-lite")return"Gemini 3.5 Flash-Lite";
@@ -1071,6 +1071,7 @@ const csModelLabel=(m)=>{
   if(s==="gemini")return"Gemini 3.6 Flash";
   // API応答の実モデル名（最新版優先）
   if(s.includes("claude"))return"Claude Sonnet 4.6";
+  if(s.includes("gemini-4-hydrogen"))return"Gemini 4 Hydrogen";
   if(s.includes("3.1-pro")||s.includes("3-pro-preview")||s.includes("gemini-3-pro"))return"Gemini 3.1 Pro";
   if(s.includes("3.8-flash")||s.includes("3-8-flash"))return"Gemini 3.8 Flash";
   if(s.includes("3.7-flash")||s.includes("3-7-flash"))return"Gemini 3.7 Flash";
@@ -1089,7 +1090,8 @@ const csModelSubLabel=(m)=>{
   if(s==="gemini-3-pro"||s.includes("3.1-pro"))return"最新・最高精度 ⭐";
   if(s==="claude"||s.includes("claude"))return"日本語精度";
   if(s==="gemini-pro"||s.includes("2.5-pro"))return"バランス型";
-  if(s==="gemini-3-8-flash"||s.includes("3.8-flash"))return"共通の先頭（3.7 を指定しても実体は 3.8）";
+  if(s==="gemini-3-8-flash"||s.includes("gemini-4-hydrogen"))return"共通の先頭";
+  if(s.includes("3.8-flash"))return"3.7 を指定しても実体は 3.8";
   if(s==="gemini-3-7-flash"||s.includes("3.7-flash"))return"最新・記載が丁寧";
   if(s==="gemini-3-6-flash"||s==="gemini"||s.includes("3.6-flash"))return"速く安定 ✨";
   if(s==="gemini-3-5-flash-lite"||s.includes("3.5-flash-lite"))return"最速・簡易";
@@ -1097,7 +1099,7 @@ const csModelSubLabel=(m)=>{
   if(s.includes("2.5-flash")||s.includes("2-5-flash"))return"高速";
   return"";
 };
-const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 3.8 Flash")return"#047857";if(lbl==="Gemini 3.7 Flash")return"#059669";if(lbl==="Gemini 3.6 Flash")return"#0d9488";if(lbl==="Gemini 3.5 Flash-Lite")return"#0ea5e9";if(lbl==="Gemini 3.5 Flash")return"#10b981";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
+const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Claude Sonnet 4.6")return"#d97706";if(lbl==="Gemini 3.1 Pro")return"#9333ea";if(lbl==="Gemini 4 Hydrogen")return"#1d4ed8";if(lbl==="Gemini 3.8 Flash")return"#047857";if(lbl==="Gemini 3.7 Flash")return"#059669";if(lbl==="Gemini 3.6 Flash")return"#0d9488";if(lbl==="Gemini 3.5 Flash-Lite")return"#0ea5e9";if(lbl==="Gemini 3.5 Flash")return"#10b981";if(lbl==="Gemini 2.5 Flash")return"#10b981";return"#4285f4"};
 // 生成モデル名バッジ（csModelLabel で表示名に変換、内部キーは露出させない）
 // 選択肢をなくした画面のモデル表示（2026-11-02 §3）と、共通の先頭以外で生成したときの注意（黙って別のモデルを使わない）
 const FixedModelNote=({id})=>(<div data-fixed-model={id} style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:10}}>使うモデル: {COMMON_PRIMARY_LABEL}<span style={{fontWeight:400,color:C.g400,marginLeft:6,fontSize:11}}>（失敗したときは {chainLabel()} の順に自動で切り替え、使ったモデルを結果に表示します）</span></div>);
@@ -1564,6 +1566,7 @@ const toggleJourneyModel=(m)=>{
 const[labText,setLabText]=useState("");
 const[labTemplate,setLabTemplate]=useState("free");
 // 要約テストラボの選択肢（2026-11-02: 3.8 Flash / 3.6 Flash の2つ。3.1 Pro・3.5・2.5 Pro・Claude Sonnet 4.6 は外した）
+// 2026-11-14: 1 つめ（内部キー gemini-3-8-flash）は共通の順番なので、中身は Gemini 4 Hydrogen（表示も COMMON_PRIMARY_LABEL）
 // Claude は補充しない院長の判断（exam-model-decision 追加）。古い端末に残った claude の選択は読み込みで外す
 // gemini-3-8-flash は /api/summarize で共通の順番（GEMINI_MODELS）、gemini-3-6-flash は 3.6 → 3.5 → 2.5
 const LAB_MODEL_OPTIONS=["gemini-3-8-flash","gemini-3-6-flash"];

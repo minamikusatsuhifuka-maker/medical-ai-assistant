@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 import { filterDangerousCorrections, CORRECTION_PROMPT_GUARD } from "../../lib/dangerous-correction";
 
 export const maxDuration = 60;
@@ -45,7 +45,7 @@ export async function POST(request) {
     const requestBody = JSON.stringify({
       system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ parts: [{ text: userPrompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
     });
 
     let data, usedModel;
@@ -58,7 +58,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "AI校正APIエラー" }, { status: 500 });
     }
 
-    try { await logUsage({ route: "/api/fix-typos", model: usedModel, context: "typos-fix", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] fix-typos:", e); }
+    try { await logUsage({ route: "/api/fix-typos", model: usedModel, context: "typos-fix", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] fix-typos:", e); }
     // thinking partを除外してtext partのみ結合
     const content = extractGeminiText(data) || "";
     console.log("fix-typos model:", usedModel, "content:", content.slice(0, 500));

@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, MINUTES_SUMMARY_MODELS, geminiTestFail } from "../../lib/gemini-models";
+import { GEMINI_MODELS, MINUTES_SUMMARY_MODELS, geminiTestFail, applyThinking, geminiOutputTokens, GEMINI_THINKING } from "../../lib/gemini-models";
 
 // 対策1: maxDuration を 800秒に拡大（Vercel Pro上限）
 export const maxDuration = 800;
@@ -113,7 +113,7 @@ async function callGeminiSingle(geminiModel, text, prompt, maxOutputTokens) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt + "\n\n" + text }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens },
+      generationConfig: applyThinking({ temperature: 0.3, maxOutputTokens }, geminiModel, GEMINI_THINKING.minutes),
     }),
   });
   if (!res.ok) throw new Error(`${geminiModel}: HTTP ${res.status}`);
@@ -127,7 +127,7 @@ async function callGeminiSingle(geminiModel, text, prompt, maxOutputTokens) {
       model: geminiModel,
       context: "minutes",
       input_tokens: data.usageMetadata?.promptTokenCount || 0,
-      output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+      output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0,
       request_meta: { char_length: text.length },
     });
   } catch (e) { console.error("[logUsage] minutes-gemini:", e); }

@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 30;
 
@@ -26,10 +26,10 @@ ${text.substring(0, 2000)}`;
     // 中央ヘルパー経由でフォールバック呼び出し（全滅時はthrow→下のcatchで items:[] を返す従来挙動）
     const { data, model: usedModel } = await callGeminiWithFallback(apiKey, JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2500 },
     }), "extract-rx");
 
-    try { await logUsage({ route: "/api/extract-rx", model: usedModel, context: "rx-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] extract-rx:", e); }
+    try { await logUsage({ route: "/api/extract-rx", model: usedModel, context: "rx-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] extract-rx:", e); }
     const raw = extractGeminiText(data) || "";
     const clean = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
     const start = clean.indexOf("{");

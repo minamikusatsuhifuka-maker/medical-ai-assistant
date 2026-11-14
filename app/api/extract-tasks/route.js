@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 300;
 
@@ -147,7 +147,7 @@ ${text}`;
   // 旧 gemini-2.0-flash は404（提供終了）。校正系と同じ中央フォールバック（3.5-flash→2.5-flash→2.5-pro）に統一。
   const requestBody = JSON.stringify({
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
+    generationConfig: { temperature: 0.2, maxOutputTokens: 5000 },
   });
 
   const { data, model: usedModel } = await callGeminiWithFallback(apiKey, requestBody, "extract-tasks");
@@ -160,7 +160,7 @@ ${text}`;
       model: usedModel,
       context: "task-extract",
       input_tokens: data.usageMetadata?.promptTokenCount || 0,
-      output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+      output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0,
       request_meta: { char_length: text.length },
     });
   } catch (e) { console.error("[logUsage] extract-tasks:", e); }

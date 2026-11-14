@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, extractGeminiText, applyThinking } from "../../lib/gemini-models";
+import { GEMINI_MODELS, extractGeminiText, applyThinking, geminiOutputTokens } from "../../lib/gemini-models";
 import { INTAKE_CATEGORY_IDS, scrubPII, fixNonWords } from "../../lib/intake-knowledge";
 
 export const maxDuration = 120;
@@ -154,7 +154,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "AI抽出APIエラー" }, { status: 500 });
     }
 
-    try { await logUsage({ route: "/api/intake-extract", model: usedModel, context: "intake-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { disease, records: records.length } }); } catch (e) { console.error("[logUsage] intake-extract:", e); }
+    try { await logUsage({ route: "/api/intake-extract", model: usedModel, context: "intake-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { disease, records: records.length } }); } catch (e) { console.error("[logUsage] intake-extract:", e); }
 
     const content = extractGeminiText(data) || "";
     if (!content.trim()) {

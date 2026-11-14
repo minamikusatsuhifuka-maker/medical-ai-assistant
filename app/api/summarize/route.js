@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, applyThinking, geminiTestFail } from "../../lib/gemini-models";
+import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -25,7 +25,7 @@ const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書で�
 - 出力はカルテのみ。余計な言葉は一切不要`;
 
 // Gemini ストリーミング（SSE）
-async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, controller) {
+async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, controller, logInfo = {}) {
   for (const model of modelList) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
@@ -48,6 +48,7 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
       let buffer = "";
       let totalText = "";
       let used = false;
+      let usage = null; // 最後のチャンクの usageMetadata（思考の分を含めて利用ログに残す）
 
       while (true) {
         const { done, value } = await reader.read();
@@ -61,6 +62,7 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
           if (data === "[DONE]") continue;
           try {
             const json = JSON.parse(data);
+            if (json.usageMetadata) usage = json.usageMetadata;
             const parts = json.candidates?.[0]?.content?.parts || [];
             const chunk = parts.filter(p => !p.thought).map(p => p.text || "").join("");
             if (chunk) {
@@ -74,6 +76,15 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
 
       if (used && totalText.trim().length > 10) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model, total: totalText })}\n\n`));
+        // 2026-11-14: ストリーミング（診察の要約）は利用ログに残していなかった。月の金額を正しく数えるため記録する。
+        // 画面の完了（保存・コピー）を待たせないよう、done を送ったあとに記録する
+        try {
+          await logUsage({
+            route: "/api/summarize", model, context: logInfo.context || "exam-stream",
+            input_tokens: usage?.promptTokenCount || 0, output_tokens: geminiOutputTokens(usage), cached_tokens: usage?.cachedContentTokenCount || 0,
+            request_meta: { char_length: text.length, model_preference: logInfo.model_preference || null, stream: true, thoughts_tokens: usage?.thoughtsTokenCount || 0 },
+          });
+        } catch (e) { console.error("[logUsage] summarize-stream:", e); }
         return true;
       }
     } catch {}
@@ -156,7 +167,7 @@ async function callGemini(text, prompt, model_preference) {
           return {
             summary, model,
             input_tokens: um.promptTokenCount || 0,
-            output_tokens: um.candidatesTokenCount || 0,
+            output_tokens: geminiOutputTokens(um),
           };
         }
         lastError = `${model}: empty response`;
@@ -192,7 +203,7 @@ export async function POST(request) {
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
-          const ok = await tryGeminiStream(apiKey, text, finalPrompt, modelList, encoder, controller);
+          const ok = await tryGeminiStream(apiKey, text, finalPrompt, modelList, encoder, controller, { context: ctx, model_preference });
           if (!ok) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "要約に失敗しました" })}\n\n`));
           }

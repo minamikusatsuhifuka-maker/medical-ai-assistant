@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -49,10 +49,10 @@ ${combined.substring(0, 8000)}`;
     // 旧 gemini-2.0-flash 直叩きは404（廃番）。中央ヘルパーの有効モデルフォールバックに統一。
     const requestBody = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 6000 },
     });
     const { data, model } = await callGeminiWithFallback(apiKey, requestBody, "treatment-material");
-    try { await logUsage({ route: "/api/treatment-material", model, context: "treatment-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { record_count: records?.length || 0 } }); } catch(e) { console.error("[logUsage] treatment-material:", e); }
+    try { await logUsage({ route: "/api/treatment-material", model, context: "treatment-material", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { record_count: records?.length || 0 } }); } catch(e) { console.error("[logUsage] treatment-material:", e); }
     const material = extractGeminiText(data).trim();
 
     // Gensparkプロンプトを生成

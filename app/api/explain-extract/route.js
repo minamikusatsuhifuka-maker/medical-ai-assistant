@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, extractGeminiText, applyThinking } from "../../lib/gemini-models";
+import { GEMINI_MODELS, extractGeminiText, applyThinking, geminiOutputTokens } from "../../lib/gemini-models";
 import { scrubPII } from "../../lib/explain-knowledge";
 
 export const maxDuration = 120;
@@ -90,7 +90,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "AI抽出APIエラー" }, { status: 500 });
     }
 
-    try { await logUsage({ route: "/api/explain-extract", model: usedModel, context: "explain-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { records: records.length, date: date || null } }); } catch (e) { console.error("[logUsage] explain-extract:", e); }
+    try { await logUsage({ route: "/api/explain-extract", model: usedModel, context: "explain-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { records: records.length, date: date || null } }); } catch (e) { console.error("[logUsage] explain-extract:", e); }
 
     const content = extractGeminiText(data) || "";
     if (!content.trim()) {

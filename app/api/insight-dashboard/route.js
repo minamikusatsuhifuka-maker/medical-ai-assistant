@@ -164,7 +164,7 @@ export async function POST(request) {
     const { data } = await callGeminiWithFallback(apiKey, JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: content.substring(0, 12000) }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 4000 },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 6000 },
     }), "insight-dashboard");
 
     const result = extractGeminiText(data) || "";

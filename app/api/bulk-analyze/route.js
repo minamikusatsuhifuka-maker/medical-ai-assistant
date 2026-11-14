@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 
 export const maxDuration = 60;
 
@@ -39,7 +39,7 @@ export async function POST(request) {
       generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
     }), "bulk-analyze");
 
-    try { await logUsage({ route: "/api/bulk-analyze", model: usedModel, context: "bulk-analyze", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }); } catch(e) { console.error("[logUsage] bulk-analyze:", e); }
+    try { await logUsage({ route: "/api/bulk-analyze", model: usedModel, context: "bulk-analyze", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0 }); } catch(e) { console.error("[logUsage] bulk-analyze:", e); }
     const content = extractGeminiText(data) || "";
 
     return NextResponse.json({ result: content, model: usedModel });

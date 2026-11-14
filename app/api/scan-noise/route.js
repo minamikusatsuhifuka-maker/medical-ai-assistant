@@ -1,5 +1,5 @@
 import { logUsage } from "../../lib/log-usage";
-import { callGeminiWithFallback, extractGeminiText } from "../../lib/gemini-models";
+import { callGeminiWithFallback, extractGeminiText, geminiOutputTokens } from "../../lib/gemini-models";
 import { filterDangerousNoiseCandidates, NOISE_PROMPT_GUARD } from "../../lib/dangerous-correction";
 
 export const maxDuration = 30;
@@ -42,7 +42,7 @@ ${text.substring(0, 5000)}`;
 
     const requestBody = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 1000 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 3000 },
     });
 
     let data, usedModel;
@@ -55,7 +55,7 @@ ${text.substring(0, 5000)}`;
       return Response.json({ candidates: [], error: "ノイズAI呼び出しに失敗しました" }, { status: 500 });
     }
 
-    try { await logUsage({ route: "/api/scan-noise", model: usedModel, context: "noise-scan", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] scan-noise:", e); }
+    try { await logUsage({ route: "/api/scan-noise", model: usedModel, context: "noise-scan", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] scan-noise:", e); }
     let content = extractGeminiText(data);
     content = content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
 
