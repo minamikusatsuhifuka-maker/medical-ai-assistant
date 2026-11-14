@@ -79,7 +79,11 @@ const BODY_ECZEMA_RE = new RegExp(`^((?:${PART_ALT})(?:[・、](?:${PART_ALT}))*
 const PART_ONLY_RE = new RegExp(`^(?:${PART_ALT})(?:[・、](?:${PART_ALT}))*$`);
 const categoryOfPart = (part) => (BODY_CATEGORY_MAP.find((c) => c.parts.includes(part)) || {}).category || "体部";
 
-// 部位が判別できない裸の包括語（湿疹/皮膚炎/湿疹・皮膚炎 等）は「体部湿疹」に寄せる（最も一般的な部位のため・院長決定）
+// 部位が判別できない裸の包括語（湿疹/皮膚炎/湿疹・皮膚炎 等）は「湿疹（部位不明）」として体部湿疹と分けて数える。
+// 2026-11-15 院長の決定（site-map-and-heading-decision §3）: 見出しは会話に部位が無ければ裸の「湿疹」のまま残すので、
+//   集計で体部に寄せると体部湿疹が実態より多くなる（事前問診の疾患の多い順が狂う）。過去の記録は書き換えず、集計の仕方だけを変える。
+//   （2026-07 から 11-15 までは「体部湿疹」に寄せていた）
+export const ECZEMA_UNKNOWN_SITE = "湿疹（部位不明）";
 const GENERIC_ECZEMA_RE = /^(湿疹|皮膚炎|湿疹皮膚炎|湿疹・皮膚炎|皮膚炎・湿疹)$/;
 
 // 括弧内が包括語（具体病名でない）の場合は括弧内を採らず括弧外を主キーにする（§2-C例外。過去データにこの型が残っている）
@@ -139,6 +143,8 @@ export function toCanonicalDisease(heading, aliasMap) {
   if ([...h].length <= 2 && /[）)：:]/.test(h)) return null;
   // 半角括弧→全角に統一
   h = h.replace(/\(/g, "（").replace(/\)/g, "）");
+  // 集計用の名前「湿疹（部位不明）」はそのまま返す（もう一度通しても括弧内の「部位不明」を主キーにしない＝冪等）
+  if (h === ECZEMA_UNKNOWN_SITE) return aliasMap && aliasMap[h] ? aliasMap[h] : h;
 
   let key = h;
   const m = h.match(/（([^（）]+)）/);
@@ -166,8 +172,8 @@ export function toCanonicalDisease(heading, aliasMap) {
   if (pheno) {
     key = pheno;
   } else if (GENERIC_ECZEMA_RE.test(key)) {
-    // 部位が判別できない裸の湿疹/皮膚炎 → 体部湿疹（最も一般的な部位のため・院長決定）
-    key = "体部湿疹";
+    // 部位が判別できない裸の湿疹/皮膚炎 → 湿疹（部位不明）（2026-11-15 まで体部湿疹に寄せていた）
+    key = ECZEMA_UNKNOWN_SITE;
   } else {
     // 湿疹・皮膚炎の部位を5カテゴリに正規化（頭部/顔面/手/体部/陰部・臀部）。
     // 「湿疹|皮膚炎で終わる」見出しにのみ適用するため、白癬系（足白癬・爪白癬・股部白癬）や
