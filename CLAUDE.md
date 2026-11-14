@@ -42,7 +42,9 @@
 - 実測と判断は `docs/gemini-4-hydrogen-2026-11-14.md`
 
 ### モデルの判断と本番の鍵（2026-11-02）
-- 診察の要約は 3.6 先頭のまま。理由と 3.6/3.8 の比較は `docs/exam-model-decision-2026-11-02.md`
+- 診察の要約は 2026-11-15 から Gemini 4 Hydrogen（Low）既定・Hydrogen → 3.8 → 3.6（院長の判断・`docs/exam-to-hydrogen-2026-11-15.md`）。設定 ▸ 要約AIモデル の 2 択は Supabase の app_settings（exam_summary_model）で全端末共有、サーバーも要約のたびに読む。院長が戻すのは設定で「Gemini 3.8 Flash」を押すだけ
+- 2 週間の記録: `scripts/report-exam-model.mjs`（利用ログの request_meta の exam_choice / fallback / attempts）
+- 以前の判断（3.6 のまま）と 3.6/3.8 の比較は `docs/exam-model-decision-2026-11-02.md`
 - 本番の鍵で手元を動かすときは `docs/runbook-prod-env.md`（**このフォルダで `vercel env run` すると `.env.local` の偽の鍵が優先される**）
 - Claude Sonnet 4.6 は使わない（補充しない院長の判断・2026-11-02）。要約テストラボの選択肢は 3.8 / 3.6 の2つ。API の Claude の経路も削除済み
 
