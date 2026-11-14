@@ -29,14 +29,18 @@ ${text.substring(0, 2000)}`;
       generationConfig: { temperature: 0.1, maxOutputTokens: 2500 },
     }), "extract-rx");
 
-    try { await logUsage({ route: "/api/extract-rx", model: usedModel, context: "rx-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { char_length: text?.length || 0 } }); } catch(e) { console.error("[logUsage] extract-rx:", e); }
     const raw = extractGeminiText(data) || "";
-    const clean = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-    const start = clean.indexOf("{");
-    const end = clean.lastIndexOf("}");
-    if (start === -1 || end === -1) return Response.json({ items: [] });
-    const parsed = JSON.parse(clean.slice(start, end + 1));
-    return Response.json({ items: parsed.items || [] });
+    const finishReason = data.candidates?.[0]?.finishReason || null;
+    // 取り出しの結果を先に決めてから利用ログに残す（2週間の記録で「空を返した回」「上限で切れた回」を数えるため・heading-site-map-decision §4）
+    let items = [], parsedOk = false;
+    try {
+      const clean = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+      const start = clean.indexOf("{");
+      const end = clean.lastIndexOf("}");
+      if (start !== -1 && end !== -1) { items = JSON.parse(clean.slice(start, end + 1)).items || []; parsedOk = true; }
+    } catch { parsedOk = false; }
+    try { await logUsage({ route: "/api/extract-rx", model: usedModel, context: "rx-extract", input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0, request_meta: { char_length: text?.length || 0, finish_reason: finishReason, parsed: parsedOk, items: items.length, empty: !parsedOk, thoughts_tokens: data.usageMetadata?.thoughtsTokenCount || 0 } }); } catch(e) { console.error("[logUsage] extract-rx:", e); }
+    return Response.json({ items });
   } catch (e) {
     return Response.json({ items: [] });
   }

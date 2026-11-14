@@ -3,6 +3,8 @@
 //   - 実際の件数と金額（モデル別・日別）
 //   - 空応答（本文が空・短すぎ）と途中で切れた回（finish_reason が STOP 以外）
 //   - フォールバックが働いた回（選んだモデル primary と使ったモデルが違う）と全滅（success=false）
+//   - extract-rx（処方の取り出し）が空を返した回・上限で切れた回（heading-site-map-decision §4・記録は 2026-11-15 から）
+//   - 書き起こし補正で長さの比（補正後 ÷ 原文）が 0.9 を下回った回（同上）
 // 実行（本番の env はメモリ上だけ・docs/runbook-prod-env.md）:
 //   npx vercel env run -e production --cwd <リンク情報だけのフォルダ> -- node scripts/report-exam-model.mjs [開始日 2026-11-15] [終了日]
 // ※ 2026-11-15 より前の行には exam_choice / attempts が無い（記録を始めたのが 11-15）。
@@ -38,3 +40,30 @@ console.log(`途中で切れた（STOP 以外で終わった）${truncated.lengt
 console.log(`フォールバックが働いた ${fallback.length} 回: ` + JSON.stringify(fallback.reduce((m, r) => { const k = `${r.request_meta.primary}→${r.model}`; m[k] = (m[k] || 0) + 1; return m; }, {})));
 console.log(`失敗した試み（HTTP など・空応答を含む）${attempts.length} 回: ` + JSON.stringify(attempts.reduce((m, a) => { const k = `${a.model} ${a.fail}`; m[k] = (m[k] || 0) + 1; return m; }, {})));
 console.log("日別:", Object.entries(byDay).map(([d, v]) => `${d} ${v.n}件 約${Math.round(v.jpy)}円`).join(" / ") || "なし");
+
+// ---- extract-rx と書き起こし補正（heading-site-map-decision §4） ----
+async function fetchRoute(route) {
+  let out = [], o = 0;
+  while (true) {
+    const q = `route=eq.${route}&created_at=gte.${jstStart(from)}` + (to ? `&created_at=lt.${new Date(new Date(`${to}T00:00:00+09:00`).getTime() + 864e5).toISOString()}` : "");
+    const d = await (await fetch(`${U}/rest/v1/api_usage_logs?select=created_at,model,success,request_meta&${q}&order=created_at.asc&limit=1000&offset=${o}`, { headers: H })).json();
+    if (!Array.isArray(d)) { console.error("読めない:", d); return out; }
+    out.push(...d); if (d.length < 1000) break; o += 1000;
+  }
+  return out;
+}
+const rx = await fetchRoute("/api/extract-rx");
+const rxMeta = rx.filter((r) => r.request_meta && "parsed" in r.request_meta);
+const rxEmpty = rxMeta.filter((r) => r.request_meta.empty);
+const rxCut = rxMeta.filter((r) => r.request_meta.finish_reason && r.request_meta.finish_reason !== "STOP");
+const rxZero = rxMeta.filter((r) => r.request_meta.parsed && r.request_meta.items === 0);
+console.log(`\n■ 処方の取り出し（extract-rx）${rx.length} 回（結果を記録した回 ${rxMeta.length}）`);
+console.log(`空を返した（JSON が読めない）${rxEmpty.length} 回・上限などで切れた（STOP 以外）${rxCut.length} 回・読めたが薬 0 件 ${rxZero.length} 回`);
+if (rxCut.length) console.log("  切れた回:", rxCut.map((r) => `${r.created_at.slice(0, 16)} ${r.model} ${r.request_meta.finish_reason}`).join(" / "));
+const tc = await fetchRoute("/api/transcript-clean");
+const tcMeta = tc.filter((r) => r.request_meta && r.request_meta.len_ratio != null);
+const tcLow = tcMeta.filter((r) => r.request_meta.len_ratio < 0.9);
+const ratios = tcMeta.map((r) => r.request_meta.len_ratio).sort((a, b) => a - b);
+console.log(`\n■ 書き起こし補正（transcript-clean）${tc.length} 回（長さの比を記録した回 ${tcMeta.length}）`);
+console.log(`長さの比が 0.9 を下回った ${tcLow.length} 回` + (ratios.length ? `（中央値 ${ratios[ratios.length >> 1]}・最小 ${ratios[0]}）` : ""));
+if (tcLow.length) console.log("  下回った回:", tcLow.map((r) => `${r.created_at.slice(0, 16)} ${r.model} ${r.request_meta.len_ratio}`).join(" / "));

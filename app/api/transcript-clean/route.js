@@ -60,7 +60,8 @@ async function callGemini(model, text) {
       context: "transcript-clean",
       input_tokens: data.usageMetadata?.promptTokenCount || 0,
       output_tokens: geminiOutputTokens(data.usageMetadata), cached_tokens: data.usageMetadata?.cachedContentTokenCount || 0,
-      request_meta: { char_length: text.length },
+      // 長さの比（補正後 ÷ 原文）。0.9 を下回る＝削りすぎの疑い（2週間の記録で数える・heading-site-map-decision §4）
+      request_meta: { char_length: text.length, out_length: out.trim().length, len_ratio: text.length ? +(out.trim().length / text.length).toFixed(3) : null, finish_reason: data.candidates?.[0]?.finishReason || null },
     });
   } catch (e) { console.error("[logUsage] transcript-clean:", e); }
   if (!out.trim()) throw new Error(`${model}: empty response`);
