@@ -813,14 +813,18 @@ ${rows}あるので、**検索ボックスに疾患名を入れて**絞り込ん
 // 診察の「🤖 要約AIモデル」で選べるモデル。UIとlocalStorageの検証で同じ定義を使う（二重管理を作らない）。
 // 2026-08-25 院長要望: Gemini 2.5 Pro(gemini-pro) と Claude Sonnet 4.6(claude) を選択肢から削除。
 // 2026-11-02: 要約テストラボからも Claude を外し、/api/summarize の Claude の経路は削除した（補充しない判断）。
+// 診察の要約の「要約AIモデル」（指示書 exam-to-hydrogen §1・2026-11-14）。2 択。v は /api/summarize の EXAM_MODEL_CHAINS のキー。
+// 選んだ値は Supabase の app_settings（key=exam_summary_model）に入り、全端末に効く（サーバーも要約のたびに読み直す）。
+// 読めないときは端末の保存（localStorage mk_summaryModel）で動く（fail-open）。
 const SUMMARY_MODEL_OPTIONS=[
-  // 表示名は gemini-models.js の並びから作る（2026-11-02 §5）。v（中のキー）は変えない:
-  //   gemini … EXAM_SUMMARY_MODELS（3.6 先頭・8/14 の判断のまま）／gemini-3-7-flash … GEMINI_MODELS（3.8 先頭。3.7 を指定しても実体は 3.8）
-  {v:"gemini",label:EXAM_PRIMARY_LABEL+" ✨",desc:"応答が速く安定（推奨）"},
-  {v:"gemini-3-7-flash",label:COMMON_PRIMARY_LABEL,desc:"共通の先頭／最初の文字まで約8秒（3.6 は約1秒）"},
+  {v:"exam-hydrogen",label:"Gemini 4 Hydrogen",desc:"最初の文字まで約8秒（失敗したら 3.8 → 3.6 に自動で切り替え）"},
+  {v:"exam-3-8",label:"Gemini 3.8 Flash",desc:"戻す用・最初の文字まで約2〜3秒（失敗したら 3.6 に切り替え）"},
 ];
+// 既定（どちらも選ばれていない・共有の値も無い）。§1 の段階では今までどおり 3.6（"gemini"）
 const DEFAULT_SUMMARY_MODEL="gemini";
-const isValidSummaryModel=(v)=>SUMMARY_MODEL_OPTIONS.some(o=>o.v===v);
+const EXAM_SETTING_KEY="exam_summary_model";
+const isValidSummaryModel=(v)=>v===DEFAULT_SUMMARY_MODEL||SUMMARY_MODEL_OPTIONS.some(o=>o.v===v);
+const examChoiceLabel=(v)=>(SUMMARY_MODEL_OPTIONS.find(o=>o.v===v)||{}).label||EXAM_PRIMARY_LABEL;
 
 export default function Home(){
 const{isMobile:mob,isTablet:tab,w:winW}=useResponsive();
@@ -835,7 +839,7 @@ const rb={borderRadius:"50%",border:"none",fontFamily:"inherit",cursor:"pointer"
 const[page,setPage]=useState("main"); // main|room|hist|settings|help|about
 const[modelCheck,setModelCheck]=useState(null); // Geminiモデル稼働チェック結果 {ok,missing,missingPreview,known_new,available,checkedAt}
 const[modelChecking,setModelChecking]=useState(false);
-const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[minutesModel,setMinutesModel]=useState("gemini-3-8-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1"),[abSum,setAbSum]=useState(null);
+const[rs,sRS]=useState("inactive"),[inp,sInp]=useState(""),[out,sOut]=useState(""),[st,sSt]=useState("待機中"),[el,sEl]=useState(0),[ld,sLd]=useState(false),[prog,setProg]=useState(0),[lv,sLv]=useState(0),[md,sMd]=useState("gemini"),[geminiModel,setGeminiModel]=useState(""),[summaryModel,setSummaryModel]=useState("gemini"),[examSrc,setExamSrc]=useState("default"),[examSaveMsg,setExamSaveMsg]=useState(""),[examUsed,setExamUsed]=useState(null),[minutesModel,setMinutesModel]=useState("gemini-3-8-flash"),[rxItems,setRxItems]=useState([]),[rxLd,setRxLd]=useState(false),[rxOpen,setRxOpen]=useState(false),[autoTplMsg,setAutoTplMsg]=useState(""),[pc,sPC]=useState(0),[tid,sTid]=useState("soap-std"),[rid,sRid]=useState("r1"),[abSum,setAbSum]=useState(null);
 // トップメニューのカスタマイズ表示: 表示onのボタンのみトップに常時表示し、残りは「⋯その他」で展開。設定はlocalStorage(mk_topMenuVisible)
 const[topMenuVisible,setTopMenuVisible]=useState(null);
 const[menuMore,setMenuMore]=useState(false);
@@ -965,7 +969,39 @@ const hoverPvLastCloseRef=useRef(0);
 const[newNoiseInput,setNewNoiseInput]=useState("");
 useEffect(()=>attachPlainTextCopy(document),[]);
 useEffect(()=>{try{const saved=localStorage.getItem("mk_theme")||"pearl";if(saved!==themeName){setThemeName(saved);}const t=THEMES[saved]||THEMES["pearl"];document.body.style.background=t.bodyBg;document.body.style.minHeight="100vh"}catch{}},[]);
-useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm){if(isValidSummaryModel(sm))setSummaryModel(sm);else{/* 選択肢から外したモデル(gemini-pro/claude)が保存されている端末は既定へ戻す */setSummaryModel(DEFAULT_SUMMARY_MODEL);try{localStorage.setItem("mk_summaryModel",DEFAULT_SUMMARY_MODEL)}catch{}}}/* 議事録の要約は Gemini 3.8 Flash に固定（2026-11-02）。古い選択（mk_minutesModel）は読まずに消す */try{localStorage.removeItem("mk_minutesModel")}catch{}/* §3: セミナーの選択肢はなくした。古い選択は読まずに消す */try{localStorage.removeItem("mk_smnSummaryModel")}catch{}const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np){const c=cleanNoisePatterns(JSON.parse(np));setNoisePatterns(c.kept);if(c.removed.length){notePurgedNoise(c.removed);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(c.kept))}catch{}}}const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const mstv=localStorage.getItem("mk_minSilenceThreshold");if(mstv!==null&&!isNaN(parseFloat(mstv)))setMinSilenceThreshold(parseFloat(mstv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1");const acs=localStorage.getItem("mk_autoCopySum");if(acs!==null)setAutoCopySum(acs==="1")}catch{}},[]);
+useEffect(()=>{try{const l=localStorage.getItem("mk_logo");if(l)setLogoUrl(l);const s=localStorage.getItem("mk_logoSize");if(s)setLogoSize(parseInt(s));const d=localStorage.getItem("mk_dict");if(d)setDict(sanitizeDict(JSON.parse(d)));const sn=localStorage.getItem("mk_snippets");if(sn)setSnippets(JSON.parse(sn));const ps=localStorage.getItem("mk_pipSnippets");if(ps)setPipSnippets(JSON.parse(ps));const as=localStorage.getItem("mk_audioSave");if(as)setAudioSave(as==="1");const de=localStorage.getItem("mk_dictEnabled");if(de)setDictEnabled(de==="1");const sc=localStorage.getItem("mk_shortcuts");if(sc)setShortcuts(JSON.parse(sc));const o=localStorage.getItem("mk_tplOrder");if(o)setTplOrder(JSON.parse(o));const tm=localStorage.getItem("mk_topMenuVisible");if(tm){const tmArr=JSON.parse(tm);if(Array.isArray(tmArr))setTopMenuVisible(tmArr)}const tv=localStorage.getItem("mk_tplVisible");if(tv){let tvArr=JSON.parse(tv);if(!localStorage.getItem("mk_tplVisibleCounselMig")){if(Array.isArray(tvArr)&&!tvArr.includes("counseling-std")){tvArr=[...tvArr,"counseling-std"];localStorage.setItem("mk_tplVisible",JSON.stringify(tvArr))}localStorage.setItem("mk_tplVisibleCounselMig","1")}setTplVisible(tvArr)}const dt=localStorage.getItem("mk_defaultTpl");if(dt)sTid(dt);const sm=localStorage.getItem("mk_summaryModel");if(sm){if(isValidSummaryModel(sm)){setSummaryModel(sm);if(sm!==DEFAULT_SUMMARY_MODEL)setExamSrc(p=>p==="shared"?p:"device")}else{/* 選択肢から外したモデル(gemini-pro/claude)が保存されている端末は既定へ戻す */setSummaryModel(DEFAULT_SUMMARY_MODEL);try{localStorage.setItem("mk_summaryModel",DEFAULT_SUMMARY_MODEL)}catch{}}}/* 議事録の要約は Gemini 3.8 Flash に固定（2026-11-02）。古い選択（mk_minutesModel）は読まずに消す */try{localStorage.removeItem("mk_minutesModel")}catch{}/* §3: セミナーの選択肢はなくした。古い選択は読まずに消す */try{localStorage.removeItem("mk_smnSummaryModel")}catch{}const rph=localStorage.getItem("mk_rpHistory");if(rph)setRpHistory(JSON.parse(rph));const snsh=localStorage.getItem("mk_snsHistory");if(snsh)setSnsHistory(JSON.parse(snsh));const fs=localStorage.getItem("mk_fontSize");if(fs)setFontSize(fs);const ff=localStorage.getItem("mk_fontFamily");if(ff)setFontFamily(ff);const mh=localStorage.getItem("mk_mobileHide");if(mh)setMobileHideItems(JSON.parse(mh));const sfs=localStorage.getItem("mk_snippetFontSize");if(sfs)setSnippetFontSize(parseInt(sfs));const np=localStorage.getItem("mk_noisePatterns");if(np){const c=cleanNoisePatterns(JSON.parse(np));setNoisePatterns(c.kept);if(c.removed.length){notePurgedNoise(c.removed);try{localStorage.setItem("mk_noisePatterns",JSON.stringify(c.kept))}catch{}}}const ae=localStorage.getItem("mk_asrEngine");if(ae)setAsrEngine(ae);const stv=localStorage.getItem("mk_silenceThreshold");if(stv!==null&&!isNaN(parseFloat(stv)))setSilenceThreshold(parseFloat(stv));const mstv=localStorage.getItem("mk_minSilenceThreshold");if(mstv!==null&&!isNaN(parseFloat(mstv)))setMinSilenceThreshold(parseFloat(mstv));const hp=localStorage.getItem("mk_hoverPreview");if(hp!==null)setHoverPreview(hp==="1");const acs=localStorage.getItem("mk_autoCopySum");if(acs!==null)setAutoCopySum(acs==="1")}catch{}},[]);
+// 全端末で共有する「要約AIモデル」を読む（exam-to-hydrogen §1）。起動時・画面に戻ったとき・1 分ごと。
+// 読めなければ端末の保存分のまま（fail-open）。読めたら端末の保存も上書きする（次に読めなかったときの控え）
+const loadSharedExamRef=useRef(null);
+loadSharedExamRef.current=async()=>{
+  if(!supabase)return;
+  try{
+    const{data,error}=await supabase.from("app_settings").select("value").eq("key",EXAM_SETTING_KEY).maybeSingle();
+    if(error)throw error;
+    const v=data?.value;
+    if(v&&isValidSummaryModel(v)&&v!==DEFAULT_SUMMARY_MODEL){setSummaryModel(v);setExamSrc("shared");try{localStorage.setItem("mk_summaryModel",v)}catch{}}
+    else setExamSrc(p=>p==="shared"?"device":p);
+  }catch(e){console.warn("共有の要約AIモデルを読めない（端末の設定で続行）:",e?.message||e);setExamSrc(p=>p==="shared"?"device":p)}
+};
+useEffect(()=>{
+  const run=()=>{try{loadSharedExamRef.current&&loadSharedExamRef.current()}catch{}};
+  run();
+  const onVis=()=>{if(document.visibilityState==="visible")run()};
+  window.addEventListener("focus",run);document.addEventListener("visibilitychange",onVis);
+  const iv=setInterval(run,60000);
+  return()=>{window.removeEventListener("focus",run);document.removeEventListener("visibilitychange",onVis);clearInterval(iv)};
+},[]);
+// 設定 ▸ 要約AIモデル で選んだとき。端末に保存してから、全端末用に Supabase へ書く
+const chooseExamModel=async(v)=>{
+  setSummaryModel(v);try{localStorage.setItem("mk_summaryModel",v)}catch{}
+  setExamSrc("device");setExamSaveMsg("保存中…");
+  if(!supabase){setExamSaveMsg("⚠ 全端末への保存ができません（この端末だけに効きます）");return}
+  try{
+    const{error}=await supabase.from("app_settings").upsert({key:EXAM_SETTING_KEY,value:v,updated_at:new Date().toISOString()},{onConflict:"key"});
+    if(error)throw error;
+    setExamSrc("shared");setExamSaveMsg("✓ 全端末に反映しました（"+examChoiceLabel(v)+"）");
+  }catch(e){console.error("要約AIモデルの共有保存に失敗:",e);setExamSaveMsg("⚠ 全端末への保存に失敗しました（この端末だけに効きます）")}
+};
 // ホバー可能端末の判定（タッチ端末ではホバープレビューを丸ごと無効化）
 useEffect(()=>{try{setCanHover(window.matchMedia("(hover: hover) and (pointer: fine)").matches)}catch{}},[]);
 useEffect(()=>{try{const ua=navigator.userAgent||"";const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);setIsIOSDevice(ios)}catch{}},[]);
@@ -1063,6 +1099,8 @@ const csModelLabel=(m)=>{
   if(s==="claude")return"Claude Sonnet 4.6";
   if(s==="gemini-pro")return"Gemini 2.5 Pro";
   if(s==="common")return COMMON_PRIMARY_LABEL;
+  if(s==="exam-hydrogen")return"Gemini 4 Hydrogen";
+  if(s==="exam-3-8")return"Gemini 3.8 Flash";
   if(s==="gemini-3-8-flash")return COMMON_PRIMARY_LABEL; /* 内部キー＝共通の順番（2026-11-14 から先頭は Hydrogen） */
   if(s==="gemini-3-7-flash")return"Gemini 3.7 Flash";
   if(s==="gemini-3-6-flash")return"Gemini 3.6 Flash";
@@ -1104,6 +1142,8 @@ const csModelColorByLabel=(model)=>{const lbl=csModelLabel(model);if(lbl==="Clau
 // 選択肢をなくした画面のモデル表示（2026-11-02 §3）と、共通の先頭以外で生成したときの注意（黙って別のモデルを使わない）
 const FixedModelNote=({id})=>(<div data-fixed-model={id} style={{fontSize:12,fontWeight:600,color:C.g600,marginBottom:10}}>使うモデル: {COMMON_PRIMARY_LABEL}<span style={{fontWeight:400,color:C.g400,marginLeft:6,fontSize:11}}>（失敗したときは {chainLabel()} の順に自動で切り替え、使ったモデルを結果に表示します）</span></div>);
 const fallbackNote=(used)=>{try{if(!used)return null;const lbl=csModelLabel(used);if(!lbl||lbl===COMMON_PRIMARY_LABEL)return null;return(<span data-model-fallback="1" style={{display:"inline-block",fontSize:11,fontWeight:600,color:"#92400e",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle"}}>⚠ {COMMON_PRIMARY_LABEL} が使えず {lbl} で生成</span>)}catch{return null}};
+// 診察の要約で、選んだモデル（primary）が使えず次のモデルで作ったときの注意（exam-to-hydrogen §1・§2）
+const examFallbackNote=(u)=>{try{if(!u||!u.model||!u.primary||u.model===u.primary)return null;return(<span data-exam-fallback="1" style={{display:"inline-block",fontSize:11,fontWeight:600,color:"#92400e",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle",whiteSpace:"nowrap"}}>⚠ {csModelLabel(u.primary)} が使えず {csModelLabel(u.model)} で生成</span>)}catch{return null}};
 const modelBadge=(model)=>{if(!model)return null;const col=csModelColorByLabel(model);return(<span style={{display:"inline-block",fontSize:11,fontWeight:600,color:col,background:col+"18",border:`1px solid ${col}55`,borderRadius:6,padding:"1px 8px",marginLeft:8,verticalAlign:"middle",whiteSpace:"nowrap"}}>{csModelLabel(model)}</span>)};
 const csModelDesc=(m)=>m==="gemini-3-pro"?"最新・最高精度 ⭐":m==="claude"?"日本語精度":"バランス型";
 const csModelColor=(m)=>m==="gemini-3-pro"?"#9333ea":m==="claude"?"#d97706":"#4285f4";
@@ -4449,8 +4489,8 @@ const reader=r.body.getReader();const decoder=new TextDecoder();let buffer="";le
 while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop()||"";
 for(const line of lines){if(!line.startsWith("data: "))continue;try{const json=JSON.parse(line.slice(6));
 if(json.error){sOut("エラー: "+json.error);btnFbSet("sum","err","⚠ 失敗: "+String(json.error).slice(0,40));return}
-if(json.chunk){if(!finalSummary)btnFbClear("sum");/* ストリーミング: 結果欄に文字が流れ始めたら⏳表示を消す */finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
-if(json.done){const g=applyDrugGuard(finalSummary);sOut(g.text);setGeminiModel(usedModel);setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,g.text);extractRx(g.text);await autoCopySummary(g.text,`要約完了 ✓ [${usedModel}]`+drugWarnSuffix(g),`要約完了 [${usedModel}]`+drugWarnSuffix(g));}}catch{}}}}
+if(json.chunk){if(!finalSummary){btnFbClear("sum");setExamUsed({model:json.model,primary:json.primary||json.model,running:true,text:""})}/* ストリーミング: 結果欄に文字が流れ始めたら⏳表示を消す */finalSummary+=json.chunk;sOut(finalSummary);if(json.model)usedModel=json.model;setProg(Math.min(85,40+Math.floor(finalSummary.length/10)))}
+if(json.done){const g=applyDrugGuard(finalSummary);sOut(g.text);setGeminiModel(usedModel);setExamUsed({model:json.model||usedModel,primary:json.primary||json.model||usedModel,running:false,text:g.text,finishReason:json.finishReason||""});setProg(90);sumDoneRef.current=true;btnFbSet("sum","ok","✓ 要約完了");await saveRecord(iR.current,g.text);extractRx(g.text);await autoCopySummary(g.text,`要約完了 ✓ [${usedModel}]`+drugWarnSuffix(g),`要約完了 [${usedModel}]`+drugWarnSuffix(g));}}catch{}}}}
 }catch{sSt("エラーが発生しました");btnFbSet("sum","err","⚠ 失敗: 通信エラー")}finally{sLd(false);setProg(0)}};
 // 要約の連打ガード: 実行中は新しい要約を受け付けない（ボタン2連打・ショートカット・音声コマンド共通の入口）
 // 例外: 録音中の要約で最終チャンク到着後に stopSum から呼ばれる sum(ft)（テキスト付き）は、実行中なら完了後に1回だけ実行する。
@@ -7703,10 +7743,11 @@ return(<div key={p} style={{display:"flex",alignItems:"center",gap:6,padding:"6p
 </div>
 <div style={{...card,marginBottom:16}}>
 <h3 style={{fontSize:15,fontWeight:700,color:C.pDD,marginBottom:8}}>🤖 要約AIモデル</h3>
-<p style={{fontSize:12,color:C.g400,marginBottom:10}}>要約に使用するAIモデルを選択できます。設定は自動保存されます。</p>
+<p style={{fontSize:12,color:C.g400,marginBottom:6}}>診察の要約に使うAIモデルです。<b>選ぶと全端末に効きます</b>（スタッフの端末も次の要約から同じモデルになります）。</p>
+<div data-exam-model-status="1" style={{fontSize:12,fontWeight:600,color:C.pD,marginBottom:10}}>いま: {summaryModel===DEFAULT_SUMMARY_MODEL?`未選択（${EXAM_PRIMARY_LABEL} で動いています）`:examChoiceLabel(summaryModel)}<span style={{fontWeight:400,color:C.g400,marginLeft:6,fontSize:11}}>{examSrc==="shared"?"（全端末の設定）":examSrc==="device"?"（この端末の設定・全端末の設定を読めていません）":""}</span>{examSaveMsg&&<span data-exam-model-save="1" style={{display:"block",marginTop:4,color:examSaveMsg.startsWith("✓")?"#047857":examSaveMsg.startsWith("⚠")?"#b45309":C.g500}}>{examSaveMsg}</span>}</div>
 <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
 {SUMMARY_MODEL_OPTIONS.map(m=>(
-<label key={m.v} onClick={()=>{setSummaryModel(m.v);try{localStorage.setItem("mk_summaryModel",m.v)}catch{}}} style={{flex:"1 1 220px",minWidth:200,padding:"10px 14px",borderRadius:12,border:`2px solid ${summaryModel===m.v?C.p:C.g200}`,background:summaryModel===m.v?C.pLL:C.w,cursor:"pointer",transition:"all 0.15s"}}>
+<label key={m.v} data-exam-model-option={m.v} onClick={()=>chooseExamModel(m.v)} style={{flex:"1 1 220px",minWidth:200,padding:"10px 14px",borderRadius:12,border:`2px solid ${summaryModel===m.v?C.p:C.g200}`,background:summaryModel===m.v?C.pLL:C.w,cursor:"pointer",transition:"all 0.15s"}}>
 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
 <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${summaryModel===m.v?C.pD:C.g300}`,display:"flex",alignItems:"center",justifyContent:"center"}}>{summaryModel===m.v&&<div style={{width:8,height:8,borderRadius:"50%",background:C.pD}}/>}</div>
 <span style={{fontSize:13,fontWeight:summaryModel===m.v?700:500,color:summaryModel===m.v?C.pD:C.g600}}>{m.label}</span>
@@ -8049,7 +8090,7 @@ const fn=actions[sc.id];if(fn)fn();
 ?<div data-sum-copy="ok" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6,padding:"6px 10px",borderRadius:10,background:"#dcfce7",border:"1px solid #bbf7d0",color:"#15803d",fontSize:12,fontWeight:700}}><span>✓ 要約をクリップボードにコピーしました</span><button onClick={()=>cp(out)} style={{padding:"3px 10px",borderRadius:8,border:"1px solid #86efac",background:"#fff",fontSize:11,fontWeight:700,color:"#15803d",fontFamily:"inherit",cursor:"pointer"}}>もう一度コピー</button></div>
 :<button data-sum-copy="prompt" onClick={()=>{const t=out;copyTextToClipboard(t,"要約").then(ok=>{if(ok)setSumCopyPrompt({text:t,ok:true})})}} style={{width:"100%",marginBottom:6,padding:"12px 10px",borderRadius:12,border:"none",background:"#f59e0b",color:"#fff",fontSize:16,fontWeight:800,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 2px 8px rgba(245,158,11,.35)"}}>📋 要約をコピー<span style={{display:"block",fontSize:11,fontWeight:600,opacity:.9}}>{sumCopyPrompt.off?"（自動コピーはOFFです）":"（自動ではコピーできませんでした。ここを押すとコピーします）"}</span></button>)}
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:6}}>
-<span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>{summaryModel==="claude"?"Claude":"Gemini"} 要約結果{out&&modelBadge(geminiModel)}</span>
+<span style={{fontSize:13,fontWeight:700,color:C.pD,whiteSpace:"nowrap"}}>要約結果{examUsed&&(examUsed.running||examUsed.text===out)?<>{modelBadge(examUsed.model)}{examFallbackNote(examUsed)}</>:<span data-exam-model-next="1" style={{fontSize:11,fontWeight:500,color:C.g400,marginLeft:8}}>要約モデル: {summaryModel===DEFAULT_SUMMARY_MODEL?EXAM_PRIMARY_LABEL:examChoiceLabel(summaryModel)}</span>}</span>
 {out&&<div style={{display:"flex",gap:3,whiteSpace:"nowrap",flexWrap:"wrap"}}><button onClick={runTypoCheckOut} disabled={typoLdOut} style={{padding:"2px 6px",borderRadius:8,border:`1px solid ${C.p}44`,background:typoLdOut?"#e5e7eb":"#fffbeb",fontSize:11,fontWeight:600,color:typoLdOut?C.g400:"#92400e",fontFamily:"inherit",cursor:typoLdOut?"wait":"pointer"}}>{typoLdOut?"🔬...":"🔬"}</button><button onClick={()=>cp(out)} title="要約をコピー" onMouseEnter={e=>showTip(e,"要約をコピー")} onMouseLeave={hideTip} style={{padding:"4px 12px",borderRadius:8,border:`1px solid ${C.g200}`,background:C.g50,fontSize:11,fontWeight:600,color:C.pD,fontFamily:"inherit",cursor:"pointer"}}>📋 コピー</button>
 <button onClick={()=>{setFavSaveModal({title:new Date().toLocaleDateString("ja-JP")+(pId?" | "+pId:""),input_text:inp||"",output_text:out||"",recordId:""})}} title="お気に入りに保存" style={{padding:"2px 6px",borderRadius:8,border:"1px solid #f59e0b44",background:"#fffbeb",fontSize:11,fontWeight:600,color:"#92400e",fontFamily:"inherit",cursor:"pointer"}}>⭐</button>
 {out&&<button onClick={()=>setHlMode(v=>!v)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,border:`1px solid ${C.g200}`,background:hlMode?"#dbeafe":"#fff",color:hlMode?"#0369a1":C.g500,fontFamily:"inherit",cursor:"pointer"}}>{hlMode?"🎨 HL ON":"🎨 HL"}</button>}

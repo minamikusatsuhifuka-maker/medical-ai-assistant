@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
+import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, EXAM_MODEL_CHAINS, EXAM_MODEL_SETTING_KEY, isExamChoice, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -26,12 +26,21 @@ const DEFAULT_PROMPT = `あなたは皮膚科専門の優秀な医療秘書で�
 
 // Gemini ストリーミング（SSE）
 async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, controller, logInfo = {}) {
+  const primary = modelList[0];
+  // 切り替わり・空応答・途中で切れた回を数えるための記録（exam-to-hydrogen §5）。利用ログの request_meta に残す
+  const attempts = [];
+  const meta = (extra = {}) => ({
+    char_length: text.length, model_preference: logInfo.model_preference || null, exam_choice: logInfo.exam_choice || null,
+    exam_choice_source: logInfo.exam_choice_source || null, stream: true, primary, attempts, ...extra,
+  });
   for (const model of modelList) {
     try {
+      // 検証用: 開発時だけ、指定したモデルをわざと失敗させて切り替わりを確かめる（本番では効かない）
+      if (geminiTestFail(model)) { attempts.push({ model, fail: "test-fail" }); continue; }
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
       // Gemini 3.x は思考が既定ONで、ストリーミングでは思考完了まで出力が始まらず要約が遅くなる。
       // 要約は抽出・整形タスクで深い推論は不要のため思考を最小化する。
-      // 付与値のモデル別分岐（3.7以降は minimal が400・2.5系は非対応）は gemini-models.js に集約。
+      // 付与値のモデル別分岐（3.7以降は minimal が400・2.5系は非対応・Hydrogen は既定 High なので必ず low）は gemini-models.js に集約。
       const genConfig = applyThinking({ temperature: 0.3, maxOutputTokens: 8192 }, model);
       const res = await fetch(url, {
         method: "POST",
@@ -42,13 +51,14 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
           generationConfig: genConfig,
         }),
       });
-      if (!res.ok) continue;
+      if (!res.ok) { attempts.push({ model, fail: `HTTP ${res.status}` }); continue; }
 
       const reader = res.body.getReader();
       let buffer = "";
       let totalText = "";
       let used = false;
       let usage = null; // 最後のチャンクの usageMetadata（思考の分を含めて利用ログに残す）
+      let finishReason = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -63,37 +73,77 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
           try {
             const json = JSON.parse(data);
             if (json.usageMetadata) usage = json.usageMetadata;
+            if (json.candidates?.[0]?.finishReason) finishReason = json.candidates[0].finishReason;
             const parts = json.candidates?.[0]?.content?.parts || [];
             const chunk = parts.filter(p => !p.thought).map(p => p.text || "").join("");
             if (chunk) {
               totalText += chunk;
               used = true;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk, model })}\n\n`));
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk, model, primary })}\n\n`));
             }
           } catch {}
         }
       }
 
       if (used && totalText.trim().length > 10) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model, total: totalText })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model, primary, total: totalText, finishReason })}\n\n`));
         // 2026-11-14: ストリーミング（診察の要約）は利用ログに残していなかった。月の金額を正しく数えるため記録する。
         // 画面の完了（保存・コピー）を待たせないよう、done を送ったあとに記録する
         try {
           await logUsage({
             route: "/api/summarize", model, context: logInfo.context || "exam-stream",
             input_tokens: usage?.promptTokenCount || 0, output_tokens: geminiOutputTokens(usage), cached_tokens: usage?.cachedContentTokenCount || 0,
-            request_meta: { char_length: text.length, model_preference: logInfo.model_preference || null, stream: true, thoughts_tokens: usage?.thoughtsTokenCount || 0 },
+            request_meta: meta({ thoughts_tokens: usage?.thoughtsTokenCount || 0, finish_reason: finishReason || null, fallback: model !== primary, truncated: !!finishReason && finishReason !== "STOP" }),
           });
         } catch (e) { console.error("[logUsage] summarize-stream:", e); }
         return true;
       }
-    } catch {}
+      // 本文が空（または短すぎる）＝空応答。思考で上限を使い切った MAX_TOKENS もここに来る
+      attempts.push({ model, fail: "empty", finish_reason: finishReason || null, thoughts_tokens: usage?.thoughtsTokenCount || 0, chars: totalText.length });
+    } catch (e) { attempts.push({ model, fail: String(e?.message || e).slice(0, 120) }); }
   }
+  // 全部だめだった回も残す（success:false）
+  try {
+    await logUsage({ route: "/api/summarize", model: primary || "unknown", context: logInfo.context || "exam-stream", success: false, error_message: "全モデル失敗", request_meta: meta() });
+  } catch (e) { console.error("[logUsage] summarize-stream(fail):", e); }
   return false;
+}
+
+// 全端末で共有する「要約AIモデル」（app_settings）を読む（exam-to-hydrogen §1）。
+// 10 秒だけ覚えておく（要約のたびに DB を待たせない）。読めない・値が変なら null＝端末が送った値で動く（fail-open）
+let _sharedExamCache = { at: 0, value: null };
+async function readSharedExamChoice() {
+  if (Date.now() - _sharedExamCache.at < 10_000) return _sharedExamCache.value;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 1500);
+    const res = await fetch(`${url}/rest/v1/app_settings?select=value&key=eq.${EXAM_MODEL_SETTING_KEY}`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: ctl.signal, cache: "no-store" });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    const v = rows?.[0]?.value;
+    _sharedExamCache = { at: Date.now(), value: isExamChoice(v) ? v : null };
+  } catch (e) {
+    console.error("[summarize] 共有の要約AIモデルを読めない（端末の値で続行）:", e?.message || e);
+    _sharedExamCache = { at: Date.now(), value: null };
+  }
+  return _sharedExamCache.value;
+}
+
+// 診察の要約の選好を決める。"gemini"（今までの既定）と exam-* だけが対象。共有の値が読めればそれを優先する
+async function resolveExamPreference(model_preference) {
+  if (model_preference !== "gemini" && !isExamChoice(model_preference)) return { pref: model_preference, choice: null, source: null };
+  const shared = await readSharedExamChoice();
+  if (shared) return { pref: shared, choice: shared, source: "shared" };
+  return { pref: model_preference, choice: isExamChoice(model_preference) ? model_preference : null, source: "device" };
 }
 
 // Gemini 非ストリーミング（従来のJSON応答）
 function buildGeminiModelList(model_preference) {
+  // 診察の要約の 2 択（設定 ▸ 要約AIモデル・exam-to-hydrogen §1）
+  if (isExamChoice(model_preference)) return EXAM_MODEL_CHAINS[model_preference];
   // gemini-3-pro: 最新3.1 Pro優先（フォールバックとして3 Pro系→標準Flashリスト）
   if (model_preference === "gemini-3-pro") {
     return ["gemini-3.1-pro-preview", "gemini-3-pro-preview", ...GEMINI_MODELS];
@@ -198,12 +248,13 @@ export async function POST(request) {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY未設定" }, { status: 500 });
 
-      const modelList = buildGeminiModelList(model_preference);
+      const exam = await resolveExamPreference(model_preference);
+      const modelList = buildGeminiModelList(exam.pref);
 
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
-          const ok = await tryGeminiStream(apiKey, text, finalPrompt, modelList, encoder, controller, { context: ctx, model_preference });
+          const ok = await tryGeminiStream(apiKey, text, finalPrompt, modelList, encoder, controller, { context: ctx, model_preference, exam_choice: exam.choice, exam_choice_source: exam.source });
           if (!ok) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "要約に失敗しました" })}\n\n`));
           }
@@ -221,7 +272,8 @@ export async function POST(request) {
     }
 
     // Gemini 非ストリーミング（従来の動作）
-    const result = await callGemini(text, finalPrompt, model_preference);
+    const examNs = await resolveExamPreference(model_preference);
+    const result = await callGemini(text, finalPrompt, examNs.pref);
     const usage = await logUsage({
       route: "/api/summarize",
       model: result.model,

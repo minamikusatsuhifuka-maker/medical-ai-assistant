@@ -38,6 +38,16 @@ export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"]
 // 3.7 の応答が安定したら、この定数を GEMINI_MODELS に戻すだけで切り替わる（院長判断待ち）。
 export const EXAM_SUMMARY_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
 
+// 診察の要約の「要約AIモデル」設定（指示書 exam-to-hydrogen §1・2026-11-14）。
+// 設定 ▸ 要約AIモデル の 2 択。選んだ値は Supabase の app_settings（key=exam_summary_model）に入り、全端末に効く。
+// サーバー（/api/summarize）も要約のたびに共有の値を読み直す（読めなければ端末が送った値で動く＝fail-open）。
+export const EXAM_MODEL_SETTING_KEY = "exam_summary_model";
+export const EXAM_MODEL_CHAINS = {
+  "exam-hydrogen": ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.6-flash"],
+  "exam-3-8": ["gemini-3.8-flash", "gemini-3.6-flash"],
+};
+export const isExamChoice = (v) => Object.prototype.hasOwnProperty.call(EXAM_MODEL_CHAINS, v);
+
 // 議事録の要約だけは Gemini 3.8 Flash に固定（2026-11-02 指示書 minutes-model-3-8-only）。画面の選択肢は無くした。
 // 自動フォールバックは 3.8 → 3.7 → 3.6 の順で残し、その後ろに従来の 3.5 → 2.5 を付けて全滅を避ける。
 // 実測（2026-11-02・本番APIキー）: gemini-3.8-flash は 200（thinkingLevel low は可・minimal は 400）。
