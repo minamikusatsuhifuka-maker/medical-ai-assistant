@@ -1,5 +1,5 @@
 // 2026-11-14: 共通の順番の先頭が gemini-4-hydrogen になったので、期待する表示を「Gemini 4 Hydrogen」に直した（内部キー gemini-3-8-flash は不変）
-// 検証シナリオ: モデル名の表示（§2・§5）。診察の要約は既定 3.6 のまま、2 つめの選択肢は「Gemini 4 Hydrogen」と表示。
+// 検証シナリオ: モデル名の表示（§2・§5）。診察の要約の選択肢は「Gemini 4 Hydrogen」（既定）と「Gemini 3.8 Flash」（2026-11-15 exam-to-hydrogen）。
 // 比較ボタンは「3.6/4 Hydrogen」。説明資料・タスク管理の見出しは生成前は共通の先頭（Gemini 4 Hydrogen）。古い「3.7」「3.5 ✨最新」が出ない（実ブラウザ）
 // 実行: node scripts/verify-scenario-model-display.cjs <BASE_URL> [ab]
 //   ab を付けると診察の「⚖ 3.6/4 Hydrogen 比較」を本物の API で実行し、2 列とも完了することも確かめる（records は作らない＝Supabase は全モック）
@@ -46,7 +46,7 @@ const EXAM = "2週間前から首のあたりが痒くて赤くなってきま�
   const card = page.locator("div", { has: page.getByText("🤖 要約AIモデル") }).last();
   const ct = await card.innerText();
   console.log("   要約AIモデル:", JSON.stringify(ct.slice(0, 160)));
-  assert(ct.includes("Gemini 3.6 Flash ✨") && ct.includes("Gemini 4 Hydrogen") && !ct.includes("3.7"), "診察の選択肢は「Gemini 3.6 Flash ✨（既定）」と「Gemini 4 Hydrogen」（3.7 の表示なし）");
+  assert(ct.includes("Gemini 4 Hydrogen") && ct.includes("Gemini 3.8 Flash") && !ct.includes("3.6 Flash ✨") && !ct.includes("3.7"), "診察の選択肢は「Gemini 4 Hydrogen」と「Gemini 3.8 Flash」（2026-11-15 exam-to-hydrogen・3.7 の表示なし）");
   const st = await page.locator("body").innerText();
   assert(!/3\.5 Flash ✨|最新・超高速/.test(st), "「3.5 Flash ✨最新」が無い");
   // 案内・フッター（help / about の画面）は共通部品から出す。ソースに固定の「3.6 / 3.7」が残っていないことで確かめる

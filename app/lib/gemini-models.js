@@ -29,6 +29,8 @@ export const ACTIVE_MODELS = ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3
 // 一部ルートが選好「gemini-3-pro」で使うプレビュー版。提供が流動的なので廃番警告は控えめに扱う（参考情報）。
 export const PREVIEW_MODELS = ["gemini-3.1-pro-preview", "gemini-3-pro-preview"];
 
+// ※ 2026-11-15（exam-to-hydrogen §2）から、診察の要約（画面の要約ボタン）は EXAM_MODEL_CHAINS を使う。
+//   EXAM_SUMMARY_MODELS は、モデルを指定しない /api/summarize の呼び出し（資料作成・TODO 生成など）の既定として残っている。
 // 診察要約だけは「速さの安定」を最優先するため、当面 3.6 を先頭にする（2026-11-14 の Hydrogen 移行でも変えない＝院長の指示。
 //   疾患見出しの比較結果を見るまで 3.6 のまま。Hydrogen(Low) は最初の文字まで中央値 7.8 秒・3.6 は 1.3 秒）（他ルートは GEMINI_MODELS＝3.7 先頭）。
 // 2026-08-14 本番URL経由の実測（診察SOAP・ストリーミング・各8回）:
@@ -46,6 +48,9 @@ export const EXAM_MODEL_CHAINS = {
   "exam-hydrogen": ["gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.6-flash"],
   "exam-3-8": ["gemini-3.8-flash", "gemini-3.6-flash"],
 };
+// 既定（共有の値が無いとき・古い画面が "gemini" を送ったとき）。exam-to-hydrogen §2（2026-11-15 院長の判断）で Hydrogen。
+// thinkingLevel は low（applyThinking の既定）。既定の High は診察 12 回中 2 回が途中で切れた
+export const EXAM_DEFAULT_CHOICE = "exam-hydrogen";
 export const isExamChoice = (v) => Object.prototype.hasOwnProperty.call(EXAM_MODEL_CHAINS, v);
 
 // 議事録の要約だけは Gemini 3.8 Flash に固定（2026-11-02 指示書 minutes-model-3-8-only）。画面の選択肢は無くした。

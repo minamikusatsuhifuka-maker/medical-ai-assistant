@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logUsage } from "../../lib/log-usage";
-import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, EXAM_MODEL_CHAINS, EXAM_MODEL_SETTING_KEY, isExamChoice, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
+import { GEMINI_MODELS, EXAM_SUMMARY_MODELS, EXAM_MODEL_CHAINS, EXAM_MODEL_SETTING_KEY, EXAM_DEFAULT_CHOICE, isExamChoice, applyThinking, geminiTestFail, geminiOutputTokens } from "../../lib/gemini-models";
 
 // Vercel関数タイムアウト延長（並列分析の60s超応答に対応・504解消）
 export const maxDuration = 300;
@@ -136,7 +136,9 @@ async function resolveExamPreference(model_preference) {
   if (model_preference !== "gemini" && !isExamChoice(model_preference)) return { pref: model_preference, choice: null, source: null };
   const shared = await readSharedExamChoice();
   if (shared) return { pref: shared, choice: shared, source: "shared" };
-  return { pref: model_preference, choice: isExamChoice(model_preference) ? model_preference : null, source: "device" };
+  // 共有の値が無い（または読めない）: 端末が exam-* を送っていればそれ。今までの既定 "gemini" は Hydrogen（§2・2026-11-15）
+  if (isExamChoice(model_preference)) return { pref: model_preference, choice: model_preference, source: "device" };
+  return { pref: EXAM_DEFAULT_CHOICE, choice: EXAM_DEFAULT_CHOICE, source: "default" };
 }
 
 // Gemini 非ストリーミング（従来のJSON応答）
