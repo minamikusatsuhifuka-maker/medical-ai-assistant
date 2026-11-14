@@ -110,10 +110,10 @@ async function tryGeminiStream(apiKey, text, prompt, modelList, encoder, control
 }
 
 // 全端末で共有する「要約AIモデル」（app_settings）を読む（exam-to-hydrogen §1）。
-// 10 秒だけ覚えておく（要約のたびに DB を待たせない）。読めない・値が変なら null＝端末が送った値で動く（fail-open）
-let _sharedExamCache = { at: 0, value: null };
+// 要約のたびに読み直す（覚えておかない）。切り替えた直後の要約から必ず効かせるため。
+// 1 回の読み込みは 0.1 秒前後で、要約の待ち時間（Hydrogen は最初の文字まで約 8 秒）に比べて小さい。
+// 1.5 秒で読めない・値が変なら null＝端末が送った値で動く（fail-open）
 async function readSharedExamChoice() {
-  if (Date.now() - _sharedExamCache.at < 10_000) return _sharedExamCache.value;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   try {
@@ -124,12 +124,11 @@ async function readSharedExamChoice() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = await res.json();
     const v = rows?.[0]?.value;
-    _sharedExamCache = { at: Date.now(), value: isExamChoice(v) ? v : null };
+    return isExamChoice(v) ? v : null;
   } catch (e) {
     console.error("[summarize] 共有の要約AIモデルを読めない（端末の値で続行）:", e?.message || e);
-    _sharedExamCache = { at: Date.now(), value: null };
+    return null;
   }
-  return _sharedExamCache.value;
 }
 
 // 診察の要約の選好を決める。"gemini"（今までの既定）と exam-* だけが対象。共有の値が読めればそれを優先する
